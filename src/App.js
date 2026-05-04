@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { getSupabase } from './supabaseClient';
 import { 
   Calculator, Settings, Sun, User, FileText, CheckCircle, Zap, DollarSign, 
   Trash2, Plus, ChevronDown, ChevronUp, HardHat, BatteryCharging, 
   ShieldCheck, Activity, MapPin, Phone, TrendingUp, Award, Clock, Wrench, AlertCircle,
-  Home, LineChart, Map, Gift, Users, LogOut, PenTool
+  Home, LineChart, Map, Gift, Users, LogOut, PenTool, Loader2, CloudUpload
 } from 'lucide-react';
 
 const BrandLogoSvg = ({ className }) => (
@@ -206,6 +207,102 @@ export default function App() {
   
   const [adminPrices, setAdminPrices] = useState(loadAdminSettingsFromStorage);
 
+  const supabase = useMemo(() => getSupabase(), []);
+  const skipNextSupabasePersist = useRef(false);
+  const supabaseHydrated = useRef(false);
+  const cloudPersistTimerRef = useRef(null);
+
+  const [adminCloudSaving, setAdminCloudSaving] = useState(false);
+  const [adminCloudSaveFeedback, setAdminCloudSaveFeedback] = useState(null);
+
+  const handleSaveAdminToCloud = useCallback(async () => {
+    if (!supabase) {
+      setAdminCloudSaveFeedback({ type: 'error', text: 'אין חיבור ל-Supabase. הגדירו REACT_APP_SUPABASE_URL ו-REACT_APP_SUPABASE_ANON_KEY.' });
+      return;
+    }
+    if (!supabaseHydrated.current) {
+      setAdminCloudSaveFeedback({ type: 'error', text: 'עדיין טוען מהשרת — נסו שוב בעוד רגע.' });
+      return;
+    }
+    clearTimeout(cloudPersistTimerRef.current);
+    cloudPersistTimerRef.current = null;
+    setAdminCloudSaveFeedback(null);
+    setAdminCloudSaving(true);
+    try {
+      const { error } = await supabase
+        .from('admin_settings')
+        .upsert(
+          { id: 1, payload: adminPrices, updated_at: new Date().toISOString() },
+          { onConflict: 'id' }
+        );
+      if (error) throw error;
+      setAdminCloudSaveFeedback({ type: 'success', text: 'נשמר לענן בהצלחה.' });
+      window.setTimeout(() => setAdminCloudSaveFeedback(null), 4000);
+    } catch (err) {
+      const msg = err?.message || String(err);
+      setAdminCloudSaveFeedback({ type: 'error', text: msg });
+    } finally {
+      setAdminCloudSaving(false);
+    }
+  }, [supabase, adminPrices]);
+
+  /** טעינה מ-Supabase פעם אחת; אם אין שורה — זריעה מ-localStorage/ברירת מחדל */
+  useEffect(() => {
+    if (!supabase) {
+      supabaseHydrated.current = true;
+      return undefined;
+    }
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase.from('admin_settings').select('payload').eq('id', 1).maybeSingle();
+      if (cancelled) return;
+      if (error) {
+        console.warn('Supabase admin_settings load:', error.message);
+        supabaseHydrated.current = true;
+        return;
+      }
+      if (data?.payload && typeof data.payload === 'object') {
+        const merged = mergeAdminSettingsFromStorage(data.payload, DEFAULT_ADMIN_PRICES);
+        skipNextSupabasePersist.current = true;
+        setAdminPrices(merged);
+        try {
+          window.localStorage.setItem(ADMIN_SETTINGS_STORAGE_KEY, JSON.stringify(merged));
+        } catch (_) { /* ignore */ }
+      } else {
+        const seed = loadAdminSettingsFromStorage();
+        skipNextSupabasePersist.current = true;
+        setAdminPrices(seed);
+        const { error: upErr } = await supabase.from('admin_settings').upsert(
+          { id: 1, payload: seed, updated_at: new Date().toISOString() },
+          { onConflict: 'id' }
+        );
+        if (upErr) console.warn('Supabase admin_settings seed:', upErr.message);
+      }
+      supabaseHydrated.current = true;
+    })();
+    return () => { cancelled = true; };
+  }, [supabase]);
+
+  /** שמירה לענן (מושהית) — רק אחרי הידרציה; מדלגת אחרי טעינה משרת */
+  useEffect(() => {
+    if (!supabase || !supabaseHydrated.current) return undefined;
+    if (skipNextSupabasePersist.current) {
+      skipNextSupabasePersist.current = false;
+      return undefined;
+    }
+    clearTimeout(cloudPersistTimerRef.current);
+    cloudPersistTimerRef.current = setTimeout(() => {
+      supabase
+        .from('admin_settings')
+        .upsert({ id: 1, payload: adminPrices, updated_at: new Date().toISOString() }, { onConflict: 'id' })
+        .then(({ error }) => {
+          if (error) console.warn('Supabase admin_settings save:', error.message);
+          cloudPersistTimerRef.current = null;
+        });
+    }, 700);
+    return () => clearTimeout(cloudPersistTimerRef.current);
+  }, [supabase, adminPrices]);
+
   const [quoteForm, setQuoteForm] = useState({
     systemType: 'residential', 
     clientName: '',
@@ -259,12 +356,15 @@ export default function App() {
   // --- פונקציית התחברות ---
   const handleLogin = (e) => {
     e.preventDefault();
-    if (loginInput === 'admin') {
+    const rawLogin = String(loginInput ?? '').trim();
+    if (rawLogin === 'admin') {
       setCurrentUser({ role: 'admin', data: null });
       setActiveTab('sales');
       setLoginInput('');
     } else {
-      const agent = adminPrices.agents.find(a => a.tz === loginInput);
+      const agent = adminPrices.agents.find(
+        (a) => String(a.tz ?? '').trim() === rawLogin
+      );
       if (agent) {
         setCurrentUser({ role: 'agent', data: agent });
         setActiveTab('sales');
@@ -840,7 +940,37 @@ export default function App() {
                   הגדרות בסיס ומחירון
                 </h2>
                 <p className="text-slate-500">הזן את מחירי העלות של הרכיבים. כל העלויות המוזנות צריכות להיות לפני מע"מ.</p>
-                <p className="text-slate-600 text-sm mt-2 max-w-2xl">הגדרות המחירון והסוכנים נשמרות אוטומטית בדפדפן (במחשב זה) ונשארות גם אחרי עדכון האתר. מחשב אחר או דפדפן אחר מתחילים מברירת מחדל — לשיתוף צוות נדרש שרת בעתיד.</p>
+                <p className="text-slate-600 text-sm mt-2 max-w-2xl">
+                  {supabase
+                    ? 'הגדרות המחירון והסוכנים נשמרות בענן (Supabase) ומתעדכנות בכל המכשירים. עדיין נשמר עותק מקומי בדפדפן לגיבוי ולמהירות.'
+                    : 'הגדרות נשמרות בדפדפן (localStorage) בלבד. להפעלת סנכרון בין מכשירים: הגדרו REACT_APP_SUPABASE_URL ו-REACT_APP_SUPABASE_ANON_KEY (ראו .env.example ו-supabase/schema.sql).'}
+                </p>
+                {supabase && (
+                  <div className="mt-5 flex flex-wrap items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={handleSaveAdminToCloud}
+                      disabled={adminCloudSaving}
+                      className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-white shadow-lg transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none disabled:hover:scale-100"
+                      style={{ background: 'linear-gradient(135deg, #0d9488, #14b8a6)', boxShadow: '0 4px 15px rgba(20,184,166,0.35)' }}
+                    >
+                      {adminCloudSaving ? (
+                        <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
+                      ) : (
+                        <CloudUpload className="w-4 h-4" aria-hidden />
+                      )}
+                      שמור לענן עכשיו
+                    </button>
+                    {adminCloudSaveFeedback && (
+                      <span
+                        className={`text-sm font-medium ${adminCloudSaveFeedback.type === 'success' ? 'text-emerald-400' : 'text-red-400'}`}
+                        role="status"
+                      >
+                        {adminCloudSaveFeedback.text}
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* 1. ניהול סוכנים (חדש) */}
