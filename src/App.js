@@ -1655,29 +1655,37 @@ export default function App() {
                 </section>
 
                 {/* --- PAGE 3: THE SYSTEM & FINANCIALS --- */}
-                <section className="py-20 px-8 md:px-20 print:break-before-page">
-                   <h2 className="text-3xl md:text-4xl font-black text-blue-900 mb-12 text-center">המערכת ותחזית כלכלית</h2>
+                <section className="py-12 px-4 sm:px-8 md:py-20 md:px-20 print:break-before-page">
+                   <h2 className="mb-8 text-center text-2xl font-black text-blue-900 sm:mb-12 sm:text-3xl md:text-4xl">המערכת ותחזית כלכלית</h2>
                    
-                   {/* Highlights */}
-                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-16">
+                   {/* Highlights — מובייל: עמודה אחת עד רוחב בינוני, כדי למנוע חפיפה של מספרים ויחידות */}
+                   <div className="mb-16 grid grid-cols-1 gap-4 min-[400px]:grid-cols-2 md:grid-cols-4 md:gap-4">
                      
                      {/* Card 1 */}
-                     <div className="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-2xl shadow-lg p-6 flex flex-col items-center text-center h-full border border-slate-700/50">
-                        <Zap className="w-8 h-8 text-orange-400 mb-3"/>
-                        <p className="text-slate-400 text-sm font-medium">הספק המערכת (DC)</p>
-                        <p className="text-3xl font-black mt-1 text-white">{generatedQuote.systemSizeKw}<span className="text-lg font-bold text-slate-500 ml-1">kWp</span></p>
-                        <div className="flex-1 flex flex-col justify-evenly w-full mt-4 gap-2">
+                     <div className="flex h-full min-w-0 flex-col items-center overflow-hidden rounded-2xl border border-slate-700/50 bg-gradient-to-br from-slate-900 to-slate-800 p-4 text-center text-white shadow-lg sm:p-6">
+                        <Zap className="mb-2 h-8 w-8 shrink-0 text-orange-400 sm:mb-3"/>
+                        <p className="px-1 text-xs font-medium leading-snug text-slate-400 sm:text-sm">הספק המערכת (DC)</p>
+                        <div className="mt-2 flex w-full min-w-0 flex-col items-center gap-0.5">
+                          <span className="text-2xl font-black tabular-nums leading-none text-white sm:text-3xl">{generatedQuote.systemSizeKw}</span>
+                          <span className="text-xs font-bold text-slate-400 sm:text-lg">kWp</span>
+                        </div>
+                        <div className="mt-4 flex w-full min-w-0 flex-1 flex-col justify-evenly gap-2">
                            <span className="block text-xs text-center text-blue-300 bg-slate-800/80 px-2 py-2 rounded-lg border border-slate-700">מערכת AC: {generatedQuote.systemSizeAcKw} kWp</span>
                            <span className="block text-xs text-center text-slate-300 bg-slate-800/80 px-2 py-2 rounded-lg border border-slate-700">גודל חיבור נדרש: 3x{generatedQuote.requiredConnectionAmps}A</span>
                         </div>
                      </div>
                      
                      {/* Card 2 */}
-                     <div className="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-2xl shadow-lg p-6 flex flex-col items-center text-center h-full border border-slate-700/50">
-                        <Activity className="w-8 h-8 text-blue-400 mb-3"/>
-                        <p className="text-slate-400 text-sm font-medium">ייצור שנתי משוער</p>
-                        <p className="text-3xl font-black mt-1 text-white">{Math.round(generatedQuote.estimatedYearlyProductionKwh).toLocaleString('en-US')}<span className="text-lg font-bold text-slate-500 ml-1">קוט"ש</span></p>
-                        <div className="flex-1 flex flex-col justify-end w-full mt-4 space-y-1.5">
+                     <div className="flex h-full min-w-0 flex-col items-center overflow-hidden rounded-2xl border border-slate-700/50 bg-gradient-to-br from-slate-900 to-slate-800 p-4 text-center text-white shadow-lg sm:p-6">
+                        <Activity className="mb-2 h-8 w-8 shrink-0 text-blue-400 sm:mb-3"/>
+                        <p className="px-1 text-xs font-medium leading-snug text-slate-400 sm:text-sm">ייצור שנתי משוער</p>
+                        <div className="mt-2 flex w-full min-w-0 flex-col items-center gap-0.5">
+                          <span className="max-w-full break-words text-xl font-black tabular-nums leading-tight text-white sm:text-2xl md:text-3xl">
+                            {Math.round(generatedQuote.estimatedYearlyProductionKwh).toLocaleString('en-US')}
+                          </span>
+                          <span className="text-xs font-bold text-slate-400 sm:text-lg">{'קוט"ש'}</span>
+                        </div>
+                        <div className="mt-4 flex w-full min-w-0 flex-1 flex-col justify-end space-y-1.5">
                           <span className="block text-xs text-center font-medium text-slate-300 bg-slate-800/80 px-2 py-1.5 rounded-lg border border-slate-700">
                             לפי {Math.round(generatedQuote.productionHoursValid)} שעות בממוצע
                           </span>
@@ -1709,11 +1717,13 @@ export default function App() {
                      </div>
                      
                      {/* Card 3 */}
-                     <div className="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-2xl shadow-lg p-6 flex flex-col items-center text-center h-full border border-slate-700/50">
-                        <DollarSign className="w-8 h-8 text-green-400 mb-3"/>
-                        <p className="text-slate-400 text-sm font-medium">הכנסה שנתית צפויה</p>
-                        <p className="text-3xl font-black mt-1 text-green-400">₪{Math.round(generatedQuote.estimatedYearlySavings).toLocaleString('en-US')}</p>
-                        <div className="flex-1 flex flex-col justify-evenly w-full mt-4 gap-2">
+                     <div className="flex h-full min-w-0 flex-col items-center overflow-hidden rounded-2xl border border-slate-700/50 bg-gradient-to-br from-slate-900 to-slate-800 p-4 text-center text-white shadow-lg sm:p-6">
+                        <DollarSign className="mb-2 h-8 w-8 shrink-0 text-green-400 sm:mb-3"/>
+                        <p className="px-1 text-xs font-medium leading-snug text-slate-400 sm:text-sm">הכנסה שנתית צפויה</p>
+                        <p className="mt-2 w-full min-w-0 max-w-full break-words text-center text-xl font-black tabular-nums leading-tight text-green-400 sm:text-2xl md:text-3xl">
+                          ₪{Math.round(generatedQuote.estimatedYearlySavings).toLocaleString('en-US')}
+                        </p>
+                        <div className="mt-4 flex w-full min-w-0 flex-1 flex-col justify-evenly gap-2">
                           {generatedQuote.estimatedYearlySavings <= 27000 ? (
                              <span className="block text-xs text-center text-green-300 bg-slate-800/80 px-2 py-2 rounded-lg border border-slate-700">פטור ממס</span>
                           ) : generatedQuote.estimatedYearlySavings <= 100000 ? (
@@ -1726,14 +1736,16 @@ export default function App() {
                      </div>
                      
                      {/* Card 4 */}
-                     <div className="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-2xl shadow-lg p-6 flex flex-col items-center text-center h-full border border-slate-700/50">
-                        <Clock className="w-8 h-8 text-blue-400 mb-3"/>
-                        <p className="text-slate-400 text-sm font-medium">החזר השקעה (ROI)</p>
-                        <p className="text-3xl font-black mt-1 text-white">
-                          {generatedQuote.roiYears > 0 && isFinite(generatedQuote.roiYears) ? generatedQuote.roiYears.toFixed(1) : "---"}
-                          <span className="text-lg font-bold text-slate-500 ml-1">שנים</span>
-                        </p>
-                        <div className="flex-1 flex flex-col justify-evenly w-full mt-4 gap-2">
+                     <div className="flex h-full min-w-0 flex-col items-center overflow-hidden rounded-2xl border border-slate-700/50 bg-gradient-to-br from-slate-900 to-slate-800 p-4 text-center text-white shadow-lg sm:p-6">
+                        <Clock className="mb-2 h-8 w-8 shrink-0 text-blue-400 sm:mb-3"/>
+                        <p className="px-1 text-xs font-medium leading-snug text-slate-400 sm:text-sm">החזר השקעה (ROI)</p>
+                        <div className="mt-2 flex w-full min-w-0 flex-col items-center gap-0.5">
+                          <span className="text-2xl font-black tabular-nums leading-none text-white sm:text-3xl">
+                            {generatedQuote.roiYears > 0 && isFinite(generatedQuote.roiYears) ? generatedQuote.roiYears.toFixed(1) : '---'}
+                          </span>
+                          <span className="text-xs font-bold text-slate-400 sm:text-lg">שנים</span>
+                        </div>
+                        <div className="mt-4 flex w-full min-w-0 flex-1 flex-col justify-evenly gap-2">
                           <span className="block text-xs text-center font-bold text-orange-400 bg-slate-800/80 px-2 py-2 rounded-lg border border-slate-700">תשואה שנתית: {generatedQuote.annualYield ? generatedQuote.annualYield.toFixed(1) : 0}%</span>
                           <span className="block text-[11px] text-center text-slate-400 bg-slate-800/80 px-2 py-2 rounded-lg border border-slate-700">ללא התחשבות בפחת ומימון</span>
                         </div>
