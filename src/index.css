@@ -2,6 +2,18 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Prevent horizontal overflow from 100vw vs scrollbar width (differs by Chrome profile / incognito). */
+html {
+  overflow-x: hidden;
+}
+body {
+  margin: 0;
+  min-width: 0;
+}
+#root {
+  min-width: 0;
+}
+
 /* === ANIMATION: Fade In === */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(12px); }

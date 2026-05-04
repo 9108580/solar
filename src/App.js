@@ -877,7 +877,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen text-slate-200 font-sans p-4 md:p-8 relative w-full max-w-[100vw] overflow-x-hidden" dir="rtl"
+    <div className="min-h-screen w-full min-w-0 overflow-x-hidden text-slate-200 font-sans p-4 md:p-8 relative" dir="rtl"
          style={{ background: 'linear-gradient(160deg, #060d1c 0%, #091526 50%, #0b1a2e 100%)' }}>
       {/* Ambient glow top-right */}
       <div className="fixed top-0 right-0 w-[500px] h-[500px] rounded-full opacity-10 pointer-events-none"
@@ -1251,12 +1251,12 @@ export default function App() {
                 <label className={`flex min-w-0 flex-1 cursor-pointer items-center justify-center gap-3 rounded-2xl border-2 p-5 transition-all duration-200 ${quoteForm.systemType === 'residential' ? 'border-blue-500/70 text-blue-200 shadow-[0_0_25px_rgba(59,130,246,0.25)]' : 'border-white/8 text-slate-400 hover:border-white/20 hover:text-slate-300'}`}
                       style={quoteForm.systemType === 'residential' ? { background: 'linear-gradient(135deg, rgba(29,78,216,0.25), rgba(37,99,235,0.12))' } : { background: 'rgba(255,255,255,0.035)' }}>
                   <input type="radio" name="systemType" value="residential" checked={quoteForm.systemType === 'residential'} onChange={handleFormChange} className="hidden" />
-                  <span className="text-2xl">🏠</span><span className="text-center text-lg font-bold">מערכת ביתית (פרטית)</span>
+                  <span className="shrink-0 text-2xl">🏠</span><span className="min-w-0 break-words text-center text-lg font-bold">מערכת ביתית (פרטית)</span>
                 </label>
                 <label className={`flex min-w-0 flex-1 cursor-pointer items-center justify-center gap-3 rounded-2xl border-2 p-5 transition-all duration-200 ${quoteForm.systemType === 'commercial' ? 'border-blue-500/70 text-blue-200 shadow-[0_0_25px_rgba(59,130,246,0.25)]' : 'border-white/8 text-slate-400 hover:border-white/20 hover:text-slate-300'}`}
                       style={quoteForm.systemType === 'commercial' ? { background: 'linear-gradient(135deg, rgba(29,78,216,0.25), rgba(37,99,235,0.12))' } : { background: 'rgba(255,255,255,0.035)' }}>
                   <input type="radio" name="systemType" value="commercial" checked={quoteForm.systemType === 'commercial'} onChange={handleFormChange} className="hidden" />
-                  <span className="text-2xl">🏢</span><span className="text-center text-lg font-bold">מערכת מסחרית</span>
+                  <span className="shrink-0 text-2xl">🏢</span><span className="min-w-0 break-words text-center text-lg font-bold">מערכת מסחרית</span>
                 </label>
               </div>
 
