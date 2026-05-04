@@ -877,7 +877,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen w-full min-w-0 overflow-x-hidden text-slate-200 font-sans p-4 md:p-8 relative" dir="rtl"
+    <div className="relative min-h-screen w-full min-w-0 max-w-full text-slate-200 font-sans p-4 md:p-8" dir="rtl"
          style={{ background: 'linear-gradient(160deg, #060d1c 0%, #091526 50%, #0b1a2e 100%)' }}>
       {/* Ambient glow top-right */}
       <div className="fixed top-0 right-0 w-[500px] h-[500px] rounded-full opacity-10 pointer-events-none"
@@ -898,9 +898,9 @@ export default function App() {
                 <BrandLogo className="h-11 w-11 object-contain" />
               </div>
             </div>
-            <div>
-              <h1 className="text-lg md:text-xl font-black text-white tracking-wide leading-tight">מומחי אנרגיה סולארית</h1>
-              <p className="text-blue-400/80 text-xs flex items-center gap-1.5 mt-0.5">
+            <div className="min-w-0">
+              <h1 className="break-words text-lg font-black leading-tight tracking-wide text-white md:text-xl">מומחי אנרגיה סולארית</h1>
+              <p className="mt-0.5 flex flex-wrap items-center gap-1.5 break-words text-xs text-blue-400/80">
                 <span className="inline-block w-2 h-2 rounded-full bg-green-400 shadow-[0_0_6px_rgba(74,222,128,0.8)]"></span>
                 מחובר: {currentUser.role === 'admin' ? 'מנהל ראשי' : currentUser.data.name}
               </p>
@@ -930,7 +930,7 @@ export default function App() {
           </nav>
         </header>
 
-        <main>
+        <main className="min-w-0 max-w-full">
           {/* ================= ADMIN TAB ================= */}
           {activeTab === 'admin' && currentUser.role === 'admin' && (
             <div className="space-y-4 animation-fade-in">
@@ -1237,7 +1237,7 @@ export default function App() {
 
           {/* ================= SALES TAB ================= */}
           {activeTab === 'sales' && (
-            <form onSubmit={calculateQuote} className="space-y-6 animation-fade-in">
+            <form onSubmit={calculateQuote} className="animation-fade-in min-w-0 max-w-full space-y-6">
               <div className="mb-8 pb-6 border-b border-white/8">
                 <h2 className="text-2xl font-black text-white mb-2 flex items-center gap-3">
                   <span className="text-orange-400"><FileText className="w-6 h-6"/></span>
@@ -1265,22 +1265,22 @@ export default function App() {
                 <div className="h-fit min-w-0 overflow-hidden rounded-2xl border border-white/10 shadow-2xl lg:col-span-1"
                      style={{ background: 'linear-gradient(160deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.03) 100%)' }}>
                   <div className="h-0.5 w-full" style={{ background: 'linear-gradient(to right, #f97316, #fbbf24, transparent)' }}></div>
-                  <div className="p-7">
+                  <div className="min-w-0 p-7">
                     <h3 className="text-lg font-bold text-white mb-5 flex items-center gap-2 border-b border-white/8 pb-4">
                       <div className="p-2 rounded-lg" style={{ background: 'rgba(59,130,246,0.2)' }}><User className="w-4 h-4 text-blue-400" /></div>
                       פרטי הלקוח
                     </h3>
-                    <div className="space-y-5">
-                      <div>
+                    <div className="min-w-0 space-y-5">
+                      <div className="min-w-0">
                         <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">שם הלקוח / חברה</label>
                         <input required type="text" name="clientName" value={quoteForm.clientName} onChange={handleFormChange}
-                          className="w-full bg-white/5 border border-white/10 rounded-xl p-3.5 text-white outline-none transition-all duration-200 focus:border-blue-500/60 focus:bg-white/8"
+                          className="w-full min-w-0 max-w-full bg-white/5 border border-white/10 rounded-xl p-3.5 text-white outline-none transition-all duration-200 focus:border-blue-500/60 focus:bg-white/8"
                           onFocus={e => e.target.style.boxShadow='0 0 0 3px rgba(59,130,246,0.18)'} onBlur={e => e.target.style.boxShadow='none'} />
                       </div>
-                      <div>
+                      <div className="min-w-0">
                         <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">יישוב / עיר</label>
                         <input type="text" name="clientCity" value={quoteForm.clientCity} onChange={handleFormChange}
-                          className="w-full bg-white/5 border border-white/10 rounded-xl p-3.5 text-white outline-none transition-all duration-200 focus:border-blue-500/60 focus:bg-white/8"
+                          className="w-full min-w-0 max-w-full bg-white/5 border border-white/10 rounded-xl p-3.5 text-white outline-none transition-all duration-200 focus:border-blue-500/60 focus:bg-white/8"
                           onFocus={e => e.target.style.boxShadow='0 0 0 3px rgba(59,130,246,0.18)'} onBlur={e => e.target.style.boxShadow='none'} />
                       </div>
                     </div>
@@ -1291,54 +1291,54 @@ export default function App() {
                 <div className="min-w-0 overflow-hidden rounded-2xl border border-white/10 shadow-2xl lg:col-span-2"
                      style={{ background: 'linear-gradient(160deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.03) 100%)' }}>
                   <div className="h-0.5 w-full" style={{ background: 'linear-gradient(to right, #1d4ed8, #3b82f6, transparent)' }}></div>
-                  <div className="p-7">
+                  <div className="min-w-0 p-7">
                     <h3 className="text-lg font-bold text-white mb-5 flex items-center gap-2 border-b border-white/8 pb-4">
                       <div className="p-2 rounded-lg" style={{ background: 'rgba(59,130,246,0.2)' }}><Settings className="w-4 h-4 text-blue-400" /></div>
                       אפיון המערכת
                     </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
+                  <div className="grid min-w-0 grid-cols-1 gap-6 md:grid-cols-2">
+                    <div className="min-w-0">
                       <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">גודל מערכת DC (kWp)</label>
                       <input required type="number" step="0.1" min="1" name="systemSizeKw" value={quoteForm.systemSizeKw} onChange={handleDcSizeChange}
-                        className="w-full bg-white/5 border border-white/10 rounded-xl p-3.5 text-white text-2xl font-black outline-none transition-all duration-200 focus:border-blue-500/60"
+                        className="w-full min-w-0 max-w-full bg-white/5 border border-white/10 rounded-xl p-3.5 text-white text-2xl font-black outline-none transition-all duration-200 focus:border-blue-500/60"
                         onFocus={e => e.target.style.boxShadow='0 0 0 3px rgba(59,130,246,0.18)'} onBlur={e => e.target.style.boxShadow='none'} />
                       <p className="text-xs text-slate-500 mt-2">יחושב כ- <strong className="text-blue-400">{currentCalculatedPanels}</strong> פאנלים</p>
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">גודל מערכת AC (kWp)</label>
                       <input required type="number" step="0.1" min="1" name="systemSizeAcKw" value={quoteForm.systemSizeAcKw} onChange={handleFormChange}
-                        className="w-full bg-white/5 border border-white/10 rounded-xl p-3.5 text-white text-2xl font-black outline-none transition-all duration-200 focus:border-blue-500/60"
+                        className="w-full min-w-0 max-w-full bg-white/5 border border-white/10 rounded-xl p-3.5 text-white text-2xl font-black outline-none transition-all duration-200 focus:border-blue-500/60"
                         onFocus={e => e.target.style.boxShadow='0 0 0 3px rgba(59,130,246,0.18)'} onBlur={e => e.target.style.boxShadow='none'} />
                       <p className="text-xs text-slate-500 mt-2">מחושב אוטומטית לפי ה-DC אך ניתן לשינוי</p>
                     </div>
-                    <div className="md:col-span-2 mt-2">
+                    <div className="mt-2 min-w-0 md:col-span-2">
                       <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">סוג גג</label>
                       <select name="roofType" value={quoteForm.roofType} onChange={handleFormChange}
-                        className="w-full bg-slate-950 border border-white/15 rounded-xl p-3.5 text-slate-100 outline-none transition-all duration-200 focus:border-blue-500/60 [color-scheme:dark]">
+                        className="w-full min-w-0 max-w-full bg-slate-950 border border-white/15 rounded-xl p-3.5 text-slate-100 outline-none transition-all duration-200 focus:border-blue-500/60 [color-scheme:dark]">
                         <option value="concrete" className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f1f5f9' }}>גג בטון (דורש משקולות)</option>
                         <option value="other" className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f1f5f9' }}>גג רגיל (איסכורית / פאנל / רעפים)</option>
                       </select>
                     </div>
                   
                     {/* סוג ממיר */}
-                    <div className="md:col-span-2 mt-2">
+                    <div className="mt-2 min-w-0 md:col-span-2">
                       <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">סוג מערכת ההמרה</label>
-                      <div className="flex gap-3">
-                        <label className={`flex-1 flex items-center justify-center gap-2 p-3.5 rounded-xl cursor-pointer border transition-all duration-200 ${quoteForm.inverterSystemType === 'ongrid' ? 'border-blue-500/60 text-blue-200' : 'border-white/8 text-slate-400 hover:border-white/20 hover:text-slate-300'}`}
+                      <div className="flex min-w-0 flex-wrap gap-3">
+                        <label className={`flex min-w-0 flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border p-3.5 text-center transition-all duration-200 ${quoteForm.inverterSystemType === 'ongrid' ? 'border-blue-500/60 text-blue-200' : 'border-white/8 text-slate-400 hover:border-white/20 hover:text-slate-300'}`}
                                style={quoteForm.inverterSystemType === 'ongrid' ? { background: 'rgba(29,78,216,0.2)' } : { background: 'rgba(0,0,0,0.2)' }}>
                           <input type="radio" name="inverterSystemType" value="ongrid" checked={quoteForm.inverterSystemType === 'ongrid'} onChange={handleFormChange} className="hidden" />
-                          מערכת אונגריד (On-Grid)
+                          <span className="min-w-0 break-words">מערכת אונגריד (On-Grid)</span>
                         </label>
-                        <label className={`flex-1 flex items-center justify-center gap-2 p-3.5 rounded-xl cursor-pointer border transition-all duration-200 ${quoteForm.inverterSystemType === 'hybrid' ? 'border-blue-500/60 text-blue-200' : 'border-white/8 text-slate-400 hover:border-white/20 hover:text-slate-300'}`}
+                        <label className={`flex min-w-0 flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border p-3.5 text-center transition-all duration-200 ${quoteForm.inverterSystemType === 'hybrid' ? 'border-blue-500/60 text-blue-200' : 'border-white/8 text-slate-400 hover:border-white/20 hover:text-slate-300'}`}
                                style={quoteForm.inverterSystemType === 'hybrid' ? { background: 'rgba(29,78,216,0.2)' } : { background: 'rgba(0,0,0,0.2)' }}>
                           <input type="radio" name="inverterSystemType" value="hybrid" checked={quoteForm.inverterSystemType === 'hybrid'} onChange={handleFormChange} className="hidden" />
-                          מערכת היברידית (Hybrid)
+                          <span className="min-w-0 break-words">מערכת היברידית (Hybrid)</span>
                         </label>
                       </div>
                     </div>
 
                     {/* בחירת ממירים */}
-                    <div className="md:col-span-2 p-5 bg-black/20 border border-white/10 rounded-2xl">
+                    <div className="min-w-0 md:col-span-2 rounded-2xl border border-white/10 bg-black/20 p-5">
                       <label className="block text-xs font-semibold text-blue-400 uppercase tracking-wider mb-3">בחירת ממירים</label>
                       {(() => {
                         const isHybrid = quoteForm.inverterSystemType === 'hybrid';
@@ -1350,8 +1350,8 @@ export default function App() {
                           <>
                             <div className="space-y-3">
                               {currentSelections.map((item, index) => (
-                                <div key={index} className="flex gap-3 items-center">
-                                  <select value={item.id} onChange={(e) => handleQuoteListChange(formListName, index, 'id', e.target.value)} className="flex-1 bg-slate-950 border border-white/15 rounded-xl p-2.5 text-slate-100 outline-none focus:border-blue-500/60 transition-all [color-scheme:dark]">
+                                <div key={index} className="flex min-w-0 flex-wrap items-center gap-3">
+                                  <select value={item.id} onChange={(e) => handleQuoteListChange(formListName, index, 'id', e.target.value)} className="min-w-0 flex-1 basis-[12rem] bg-slate-950 border border-white/15 rounded-xl p-2.5 text-slate-100 outline-none focus:border-blue-500/60 transition-all [color-scheme:dark]">
                                     {adminList.map(inv => (<option key={inv.id} value={inv.id} className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f1f5f9' }}>{inv.name}</option>))}
                                   </select>
                                   <div className="w-28 flex items-center bg-white/5 border border-white/10 rounded-xl">
@@ -1384,8 +1384,8 @@ export default function App() {
                                <>
                                  <div className="space-y-3">
                                    {quoteForm.selectedBatteries.map((item, index) => (
-                                     <div key={index} className="flex gap-3 items-center">
-                                       <select value={item.id} onChange={(e) => handleQuoteListChange('selectedBatteries', index, 'id', e.target.value)} className="flex-1 bg-slate-950 border border-white/15 rounded-xl p-2.5 text-slate-100 outline-none focus:border-blue-500/60 transition-all [color-scheme:dark]">
+                                     <div key={index} className="flex min-w-0 flex-wrap items-center gap-3">
+                                       <select value={item.id} onChange={(e) => handleQuoteListChange('selectedBatteries', index, 'id', e.target.value)} className="min-w-0 flex-1 basis-[12rem] bg-slate-950 border border-white/15 rounded-xl p-2.5 text-slate-100 outline-none focus:border-blue-500/60 transition-all [color-scheme:dark]">
                                          {adminPrices.batteries.map(bat => (<option key={bat.id} value={bat.id} className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f1f5f9' }}>{bat.name}</option>))}
                                        </select>
                                        <div className="w-28 flex items-center bg-white/5 border border-white/10 rounded-xl"><span className="pl-2 text-slate-500 text-sm">כמות:</span><input type="number" min="1" value={item.quantity} onChange={(e) => handleQuoteListChange('selectedBatteries', index, 'quantity', e.target.value)} className="w-full bg-transparent p-2 text-white outline-none" /></div>
