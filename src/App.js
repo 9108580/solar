@@ -877,7 +877,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen text-slate-200 font-sans p-4 md:p-8 relative" dir="rtl"
+    <div className="min-h-screen text-slate-200 font-sans p-4 md:p-8 relative w-full max-w-[100vw] overflow-x-hidden" dir="rtl"
          style={{ background: 'linear-gradient(160deg, #060d1c 0%, #091526 50%, #0b1a2e 100%)' }}>
       {/* Ambient glow top-right */}
       <div className="fixed top-0 right-0 w-[500px] h-[500px] rounded-full opacity-10 pointer-events-none"
@@ -886,12 +886,12 @@ export default function App() {
       <div className="fixed bottom-0 left-0 w-[400px] h-[400px] rounded-full opacity-8 pointer-events-none"
            style={{ background: 'radial-gradient(circle, rgba(59,130,246,0.4) 0%, transparent 70%)' }}></div>
 
-      <div className="max-w-5xl mx-auto relative z-10">
+      <div className="max-w-5xl mx-auto relative z-10 w-full min-w-0">
         
         {/* Header (Top Nav) */}
-        <header className="flex items-center justify-between mb-10 print:hidden">
+        <header className="flex flex-wrap items-center justify-between gap-4 mb-10 print:hidden min-w-0">
           {/* Left: Logo + Company Name */}
-          <div className="flex items-center gap-4">
+          <div className="flex min-w-0 flex-1 items-center gap-4 sm:flex-initial">
             <div className="relative">
               <div className="absolute -inset-1 rounded-2xl opacity-40 blur-sm" style={{ background: 'linear-gradient(135deg, #f97316, #fbbf24)' }}></div>
               <div className="relative bg-white/10 backdrop-blur-sm rounded-xl p-2 border border-white/20 shadow-2xl">
@@ -908,7 +908,7 @@ export default function App() {
           </div>
           
           {/* Right: Navigation */}
-          <nav className="flex items-center gap-1 rounded-2xl p-1.5 border border-white/10 shadow-xl"
+          <nav className="flex shrink-0 flex-wrap items-center gap-1 rounded-2xl p-1.5 border border-white/10 shadow-xl"
                style={{ background: 'rgba(255,255,255,0.05)', backdropFilter: 'blur(12px)' }}>
             <button onClick={() => setActiveTab('sales')}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 ${activeTab === 'sales' || activeTab === 'quote' ? 'text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
@@ -1247,22 +1247,22 @@ export default function App() {
               </div>
 
               {/* בחירת סוג מערכת */}
-              <div className="flex gap-4 mb-6">
-                <label className={`flex-1 flex items-center justify-center gap-3 p-5 rounded-2xl cursor-pointer border-2 transition-all duration-200 ${quoteForm.systemType === 'residential' ? 'border-blue-500/70 text-blue-200 shadow-[0_0_25px_rgba(59,130,246,0.25)] scale-[1.01]' : 'border-white/8 text-slate-400 hover:border-white/20 hover:text-slate-300'}`}
+              <div className="mb-6 flex min-w-0 gap-4">
+                <label className={`flex min-w-0 flex-1 cursor-pointer items-center justify-center gap-3 rounded-2xl border-2 p-5 transition-all duration-200 ${quoteForm.systemType === 'residential' ? 'border-blue-500/70 text-blue-200 shadow-[0_0_25px_rgba(59,130,246,0.25)]' : 'border-white/8 text-slate-400 hover:border-white/20 hover:text-slate-300'}`}
                       style={quoteForm.systemType === 'residential' ? { background: 'linear-gradient(135deg, rgba(29,78,216,0.25), rgba(37,99,235,0.12))' } : { background: 'rgba(255,255,255,0.035)' }}>
                   <input type="radio" name="systemType" value="residential" checked={quoteForm.systemType === 'residential'} onChange={handleFormChange} className="hidden" />
-                  <span className="text-2xl">🏠</span><span className="font-bold text-lg">מערכת ביתית (פרטית)</span>
+                  <span className="text-2xl">🏠</span><span className="text-center text-lg font-bold">מערכת ביתית (פרטית)</span>
                 </label>
-                <label className={`flex-1 flex items-center justify-center gap-3 p-5 rounded-2xl cursor-pointer border-2 transition-all duration-200 ${quoteForm.systemType === 'commercial' ? 'border-blue-500/70 text-blue-200 shadow-[0_0_25px_rgba(59,130,246,0.25)] scale-[1.01]' : 'border-white/8 text-slate-400 hover:border-white/20 hover:text-slate-300'}`}
+                <label className={`flex min-w-0 flex-1 cursor-pointer items-center justify-center gap-3 rounded-2xl border-2 p-5 transition-all duration-200 ${quoteForm.systemType === 'commercial' ? 'border-blue-500/70 text-blue-200 shadow-[0_0_25px_rgba(59,130,246,0.25)]' : 'border-white/8 text-slate-400 hover:border-white/20 hover:text-slate-300'}`}
                       style={quoteForm.systemType === 'commercial' ? { background: 'linear-gradient(135deg, rgba(29,78,216,0.25), rgba(37,99,235,0.12))' } : { background: 'rgba(255,255,255,0.035)' }}>
                   <input type="radio" name="systemType" value="commercial" checked={quoteForm.systemType === 'commercial'} onChange={handleFormChange} className="hidden" />
-                  <span className="text-2xl">🏢</span><span className="font-bold text-lg">מערכת מסחרית</span>
+                  <span className="text-2xl">🏢</span><span className="text-center text-lg font-bold">מערכת מסחרית</span>
                 </label>
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="grid min-w-0 grid-cols-1 gap-6 lg:grid-cols-3">
                 {/* פרטי לקוח */}
-                <div className="rounded-2xl shadow-2xl lg:col-span-1 h-fit overflow-hidden border border-white/10"
+                <div className="h-fit min-w-0 overflow-hidden rounded-2xl border border-white/10 shadow-2xl lg:col-span-1"
                      style={{ background: 'linear-gradient(160deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.03) 100%)' }}>
                   <div className="h-0.5 w-full" style={{ background: 'linear-gradient(to right, #f97316, #fbbf24, transparent)' }}></div>
                   <div className="p-7">
@@ -1288,7 +1288,7 @@ export default function App() {
                 </div>
 
                 {/* אפיון המערכת */}
-                <div className="rounded-2xl shadow-2xl lg:col-span-2 overflow-hidden border border-white/10"
+                <div className="min-w-0 overflow-hidden rounded-2xl border border-white/10 shadow-2xl lg:col-span-2"
                      style={{ background: 'linear-gradient(160deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.03) 100%)' }}>
                   <div className="h-0.5 w-full" style={{ background: 'linear-gradient(to right, #1d4ed8, #3b82f6, transparent)' }}></div>
                   <div className="p-7">
