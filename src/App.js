@@ -211,9 +211,69 @@ export default function App() {
   const skipNextSupabasePersist = useRef(false);
   const supabaseHydrated = useRef(false);
   const cloudPersistTimerRef = useRef(null);
+  const adminSettingsRevisionRef = useRef(0);
+  const adminSettingsRowExistsRef = useRef(false);
 
   const [adminCloudSaving, setAdminCloudSaving] = useState(false);
   const [adminCloudSaveFeedback, setAdminCloudSaveFeedback] = useState(null);
+  const [supabaseCanWrite, setSupabaseCanWrite] = useState(false);
+
+  const persistAdminSettingsToSupabase = useCallback(async (payload) => {
+    if (!supabase || !supabaseCanWrite) return { ok: false, skipped: true };
+    const nowIso = new Date().toISOString();
+
+    if (!adminSettingsRowExistsRef.current) {
+      const { error: insertErr } = await supabase
+        .from('admin_settings')
+        .insert({ id: 1, payload, revision: 0, updated_at: nowIso });
+      if (insertErr) {
+        if (insertErr.code === '23505') {
+          adminSettingsRowExistsRef.current = true;
+        } else {
+          throw insertErr;
+        }
+      } else {
+        adminSettingsRowExistsRef.current = true;
+        adminSettingsRevisionRef.current = 0;
+        return { ok: true, revision: 0 };
+      }
+    }
+
+    const expectedRevision = adminSettingsRevisionRef.current;
+    const { data, error } = await supabase
+      .from('admin_settings')
+      .update({ payload, revision: expectedRevision + 1, updated_at: nowIso })
+      .eq('id', 1)
+      .eq('revision', expectedRevision)
+      .select('revision')
+      .maybeSingle();
+    if (error) throw error;
+
+    if (!data) {
+      const { data: latest } = await supabase
+        .from('admin_settings')
+        .select('payload, revision')
+        .eq('id', 1)
+        .maybeSingle();
+      if (latest?.payload && typeof latest.payload === 'object') {
+        const merged = mergeAdminSettingsFromStorage(latest.payload, DEFAULT_ADMIN_PRICES);
+        skipNextSupabasePersist.current = true;
+        setAdminPrices(merged);
+        try {
+          window.localStorage.setItem(ADMIN_SETTINGS_STORAGE_KEY, JSON.stringify(merged));
+        } catch (_) { /* ignore */ }
+      }
+      if (latest?.revision !== undefined && latest?.revision !== null) {
+        adminSettingsRevisionRef.current = Number(latest.revision) || 0;
+      }
+      adminSettingsRowExistsRef.current = Boolean(latest);
+      throw new Error('Конфликт сохранения: настройки были изменены на другом устройстве. Загружена последняя версия из облака.');
+    }
+
+    adminSettingsRevisionRef.current = Number(data.revision) || (expectedRevision + 1);
+    adminSettingsRowExistsRef.current = true;
+    return { ok: true, revision: adminSettingsRevisionRef.current };
+  }, [supabase, supabaseCanWrite]);
 
   const handleSaveAdminToCloud = useCallback(async () => {
     if (!supabase) {
@@ -224,18 +284,16 @@ export default function App() {
       setAdminCloudSaveFeedback({ type: 'error', text: 'עדיין טוען מהשרת — נסו שוב בעוד רגע.' });
       return;
     }
+    if (!supabaseCanWrite) {
+      setAdminCloudSaveFeedback({ type: 'error', text: 'שמירה לענן חסומה למשתמש אנונימי. יש להתחבר ל-Supabase Auth כדי לעדכן.' });
+      return;
+    }
     clearTimeout(cloudPersistTimerRef.current);
     cloudPersistTimerRef.current = null;
     setAdminCloudSaveFeedback(null);
     setAdminCloudSaving(true);
     try {
-      const { error } = await supabase
-        .from('admin_settings')
-        .upsert(
-          { id: 1, payload: adminPrices, updated_at: new Date().toISOString() },
-          { onConflict: 'id' }
-        );
-      if (error) throw error;
+      await persistAdminSettingsToSupabase(adminPrices);
       setAdminCloudSaveFeedback({ type: 'success', text: 'נשמר לענן בהצלחה.' });
       window.setTimeout(() => setAdminCloudSaveFeedback(null), 4000);
     } catch (err) {
@@ -244,23 +302,45 @@ export default function App() {
     } finally {
       setAdminCloudSaving(false);
     }
-  }, [supabase, adminPrices]);
+  }, [supabase, adminPrices, supabaseCanWrite, persistAdminSettingsToSupabase]);
 
-  /** טעינה מ-Supabase פעם אחת; אם אין שורה — זריעה מ-localStorage/ברירת מחדל */
+  /** כתיבה ל-Supabase מותרת רק למשתמש מאומת */
   useEffect(() => {
     if (!supabase) {
+      setSupabaseCanWrite(false);
+      return undefined;
+    }
+    let mounted = true;
+    supabase.auth.getSession().then(({ data }) => {
+      if (!mounted) return;
+      setSupabaseCanWrite(Boolean(data.session));
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSupabaseCanWrite(Boolean(session));
+    });
+    return () => {
+      mounted = false;
+      sub.subscription.unsubscribe();
+    };
+  }, [supabase]);
+
+  /** טעינה מ-Supabase רק למשתמש מאומת; אנונימי לא ניגש לענן כלל */
+  useEffect(() => {
+    if (!supabase || !supabaseCanWrite) {
       supabaseHydrated.current = true;
       return undefined;
     }
     let cancelled = false;
     (async () => {
-      const { data, error } = await supabase.from('admin_settings').select('payload').eq('id', 1).maybeSingle();
+      const { data, error } = await supabase.from('admin_settings').select('payload, revision').eq('id', 1).maybeSingle();
       if (cancelled) return;
       if (error) {
         console.warn('Supabase admin_settings load:', error.message);
         supabaseHydrated.current = true;
         return;
       }
+      adminSettingsRowExistsRef.current = Boolean(data);
+      adminSettingsRevisionRef.current = Number(data?.revision) || 0;
       if (data?.payload && typeof data.payload === 'object') {
         const merged = mergeAdminSettingsFromStorage(data.payload, DEFAULT_ADMIN_PRICES);
         skipNextSupabasePersist.current = true;
@@ -272,36 +352,29 @@ export default function App() {
         const seed = loadAdminSettingsFromStorage();
         skipNextSupabasePersist.current = true;
         setAdminPrices(seed);
-        const { error: upErr } = await supabase.from('admin_settings').upsert(
-          { id: 1, payload: seed, updated_at: new Date().toISOString() },
-          { onConflict: 'id' }
-        );
-        if (upErr) console.warn('Supabase admin_settings seed:', upErr.message);
       }
       supabaseHydrated.current = true;
     })();
     return () => { cancelled = true; };
-  }, [supabase]);
+  }, [supabase, supabaseCanWrite]);
 
   /** שמירה לענן (מושהית) — רק אחרי הידרציה; מדלגת אחרי טעינה משרת */
   useEffect(() => {
-    if (!supabase || !supabaseHydrated.current) return undefined;
+    if (!supabase || !supabaseHydrated.current || !supabaseCanWrite) return undefined;
     if (skipNextSupabasePersist.current) {
       skipNextSupabasePersist.current = false;
       return undefined;
     }
     clearTimeout(cloudPersistTimerRef.current);
     cloudPersistTimerRef.current = setTimeout(() => {
-      supabase
-        .from('admin_settings')
-        .upsert({ id: 1, payload: adminPrices, updated_at: new Date().toISOString() }, { onConflict: 'id' })
-        .then(({ error }) => {
-          if (error) console.warn('Supabase admin_settings save:', error.message);
+      persistAdminSettingsToSupabase(adminPrices)
+        .catch((error) => console.warn('Supabase admin_settings save:', error?.message || error))
+        .finally(() => {
           cloudPersistTimerRef.current = null;
         });
     }, 700);
     return () => clearTimeout(cloudPersistTimerRef.current);
-  }, [supabase, adminPrices]);
+  }, [supabase, adminPrices, supabaseCanWrite, persistAdminSettingsToSupabase]);
 
   const [quoteForm, setQuoteForm] = useState({
     systemType: 'residential', 
@@ -942,7 +1015,7 @@ export default function App() {
                 <p className="text-slate-500">הזן את מחירי העלות של הרכיבים. כל העלויות המוזנות צריכות להיות לפני מע"מ.</p>
                 <p className="text-slate-600 text-sm mt-2 max-w-2xl">
                   {supabase
-                    ? 'הגדרות המחירון והסוכנים נשמרות בענן (Supabase) ומתעדכנות בכל המכשירים. עדיין נשמר עותק מקומי בדפדפן לגיבוי ולמהירות.'
+                    ? 'סנכרון ענן (קריאה/כתיבה) זמין רק אחרי Supabase Auth. משתמש אנונימי נשאר במסך התחברות וללא גישה להגדרות ענן.'
                     : 'הגדרות נשמרות בדפדפן (localStorage) בלבד. להפעלת סנכרון בין מכשירים: הגדרו REACT_APP_SUPABASE_URL ו-REACT_APP_SUPABASE_ANON_KEY (ראו .env.example ו-supabase/schema.sql).'}
                 </p>
                 {supabase && (
@@ -950,7 +1023,7 @@ export default function App() {
                     <button
                       type="button"
                       onClick={handleSaveAdminToCloud}
-                      disabled={adminCloudSaving}
+                      disabled={adminCloudSaving || !supabaseCanWrite}
                       className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-white shadow-lg transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none disabled:hover:scale-100"
                       style={{ background: 'linear-gradient(135deg, #0d9488, #14b8a6)', boxShadow: '0 4px 15px rgba(20,184,166,0.35)' }}
                     >
@@ -961,6 +1034,11 @@ export default function App() {
                       )}
                       שמור לענן עכשיו
                     </button>
+                    {!supabaseCanWrite && (
+                      <span className="text-sm font-medium text-amber-300">
+                        מצב מוגן: כתיבה לענן כבויה עד התחברות Supabase Auth.
+                      </span>
+                    )}
                     {adminCloudSaveFeedback && (
                       <span
                         className={`text-sm font-medium ${adminCloudSaveFeedback.type === 'success' ? 'text-emerald-400' : 'text-red-400'}`}
