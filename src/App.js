@@ -923,7 +923,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen text-slate-200 font-sans p-4 md:p-8 relative" dir="rtl"
+    <div className="min-h-screen text-slate-200 font-sans p-4 md:p-8 relative overflow-x-hidden" dir="rtl"
          style={{ background: 'linear-gradient(160deg, #060d1c 0%, #091526 50%, #0b1a2e 100%)' }}>
       {/* Ambient glow top-right */}
       <div className="fixed top-0 right-0 w-[500px] h-[500px] rounded-full opacity-10 pointer-events-none"
@@ -954,7 +954,7 @@ export default function App() {
           </div>
           
           {/* Right: Navigation */}
-          <nav className="flex items-center gap-1 rounded-2xl p-1.5 border border-white/10 shadow-xl"
+          <nav className="flex items-center gap-1 rounded-2xl p-1.5 border border-white/10 shadow-xl max-w-full overflow-x-auto"
                style={{ background: 'rgba(255,255,255,0.05)', backdropFilter: 'blur(12px)' }}>
             <button onClick={() => setActiveTab('sales')}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 ${activeTab === 'sales' || activeTab === 'quote' ? 'text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
