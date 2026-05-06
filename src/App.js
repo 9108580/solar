@@ -128,6 +128,8 @@ const SignaturePad = ({ onSave }) => {
 
 /** מפתח localStorage — נשמר בדפדפן; עדכון באתר (Vercel) לא מוחק את הנתונים */
 const ADMIN_SETTINGS_STORAGE_KEY = 'solar-final-admin-settings-v1';
+const LOGIN_INPUT_STORAGE_KEY = 'solar-final-last-login-input';
+const REMEMBER_LOGIN_STORAGE_KEY = 'solar-final-remember-login';
 
 const DEFAULT_ADMIN_PRICES = {
   panelPricePerWattUsd: 0.11,
@@ -199,8 +201,25 @@ function loadAdminSettingsFromStorage() {
 export default function App() {
   // --- מערכת התחברות (Login) ---
   const [currentUser, setCurrentUser] = useState(null); // הופעל מחדש
-  const [loginInput, setLoginInput] = useState('');
+  const [loginInput, setLoginInput] = useState(() => {
+    if (typeof window === 'undefined') return '';
+    try {
+      return window.localStorage.getItem(LOGIN_INPUT_STORAGE_KEY) || '';
+    } catch {
+      return '';
+    }
+  });
   const [loginError, setLoginError] = useState('');
+  const [rememberLogin, setRememberLogin] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      const raw = window.localStorage.getItem(REMEMBER_LOGIN_STORAGE_KEY);
+      if (raw === null) return false;
+      return raw === '1';
+    } catch {
+      return false;
+    }
+  });
 
   const [activeTab, setActiveTab] = useState('sales'); 
   const [openAdminSection, setOpenAdminSection] = useState('panels'); 
@@ -211,69 +230,9 @@ export default function App() {
   const skipNextSupabasePersist = useRef(false);
   const supabaseHydrated = useRef(false);
   const cloudPersistTimerRef = useRef(null);
-  const adminSettingsRevisionRef = useRef(0);
-  const adminSettingsRowExistsRef = useRef(false);
 
   const [adminCloudSaving, setAdminCloudSaving] = useState(false);
   const [adminCloudSaveFeedback, setAdminCloudSaveFeedback] = useState(null);
-  const [supabaseCanWrite, setSupabaseCanWrite] = useState(false);
-
-  const persistAdminSettingsToSupabase = useCallback(async (payload) => {
-    if (!supabase || !supabaseCanWrite) return { ok: false, skipped: true };
-    const nowIso = new Date().toISOString();
-
-    if (!adminSettingsRowExistsRef.current) {
-      const { error: insertErr } = await supabase
-        .from('admin_settings')
-        .insert({ id: 1, payload, revision: 0, updated_at: nowIso });
-      if (insertErr) {
-        if (insertErr.code === '23505') {
-          adminSettingsRowExistsRef.current = true;
-        } else {
-          throw insertErr;
-        }
-      } else {
-        adminSettingsRowExistsRef.current = true;
-        adminSettingsRevisionRef.current = 0;
-        return { ok: true, revision: 0 };
-      }
-    }
-
-    const expectedRevision = adminSettingsRevisionRef.current;
-    const { data, error } = await supabase
-      .from('admin_settings')
-      .update({ payload, revision: expectedRevision + 1, updated_at: nowIso })
-      .eq('id', 1)
-      .eq('revision', expectedRevision)
-      .select('revision')
-      .maybeSingle();
-    if (error) throw error;
-
-    if (!data) {
-      const { data: latest } = await supabase
-        .from('admin_settings')
-        .select('payload, revision')
-        .eq('id', 1)
-        .maybeSingle();
-      if (latest?.payload && typeof latest.payload === 'object') {
-        const merged = mergeAdminSettingsFromStorage(latest.payload, DEFAULT_ADMIN_PRICES);
-        skipNextSupabasePersist.current = true;
-        setAdminPrices(merged);
-        try {
-          window.localStorage.setItem(ADMIN_SETTINGS_STORAGE_KEY, JSON.stringify(merged));
-        } catch (_) { /* ignore */ }
-      }
-      if (latest?.revision !== undefined && latest?.revision !== null) {
-        adminSettingsRevisionRef.current = Number(latest.revision) || 0;
-      }
-      adminSettingsRowExistsRef.current = Boolean(latest);
-      throw new Error('Конфликт сохранения: настройки были изменены на другом устройстве. Загружена последняя версия из облака.');
-    }
-
-    adminSettingsRevisionRef.current = Number(data.revision) || (expectedRevision + 1);
-    adminSettingsRowExistsRef.current = true;
-    return { ok: true, revision: adminSettingsRevisionRef.current };
-  }, [supabase, supabaseCanWrite]);
 
   const handleSaveAdminToCloud = useCallback(async () => {
     if (!supabase) {
@@ -284,16 +243,18 @@ export default function App() {
       setAdminCloudSaveFeedback({ type: 'error', text: 'עדיין טוען מהשרת — נסו שוב בעוד רגע.' });
       return;
     }
-    if (!supabaseCanWrite) {
-      setAdminCloudSaveFeedback({ type: 'error', text: 'שמירה לענן חסומה למשתמש אנונימי. יש להתחבר ל-Supabase Auth כדי לעדכן.' });
-      return;
-    }
     clearTimeout(cloudPersistTimerRef.current);
     cloudPersistTimerRef.current = null;
     setAdminCloudSaveFeedback(null);
     setAdminCloudSaving(true);
     try {
-      await persistAdminSettingsToSupabase(adminPrices);
+      const { error } = await supabase
+        .from('admin_settings')
+        .upsert(
+          { id: 1, payload: adminPrices, updated_at: new Date().toISOString() },
+          { onConflict: 'id' }
+        );
+      if (error) throw error;
       setAdminCloudSaveFeedback({ type: 'success', text: 'נשמר לענן בהצלחה.' });
       window.setTimeout(() => setAdminCloudSaveFeedback(null), 4000);
     } catch (err) {
@@ -302,45 +263,23 @@ export default function App() {
     } finally {
       setAdminCloudSaving(false);
     }
-  }, [supabase, adminPrices, supabaseCanWrite, persistAdminSettingsToSupabase]);
+  }, [supabase, adminPrices]);
 
-  /** כתיבה ל-Supabase מותרת רק למשתמש מאומת */
+  /** טעינה מ-Supabase פעם אחת; אם אין שורה — זריעה מ-localStorage/ברירת מחדל */
   useEffect(() => {
     if (!supabase) {
-      setSupabaseCanWrite(false);
-      return undefined;
-    }
-    let mounted = true;
-    supabase.auth.getSession().then(({ data }) => {
-      if (!mounted) return;
-      setSupabaseCanWrite(Boolean(data.session));
-    });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSupabaseCanWrite(Boolean(session));
-    });
-    return () => {
-      mounted = false;
-      sub.subscription.unsubscribe();
-    };
-  }, [supabase]);
-
-  /** טעינה מ-Supabase רק למשתמש מאומת; אנונימי לא ניגש לענן כלל */
-  useEffect(() => {
-    if (!supabase || !supabaseCanWrite) {
       supabaseHydrated.current = true;
       return undefined;
     }
     let cancelled = false;
     (async () => {
-      const { data, error } = await supabase.from('admin_settings').select('payload, revision').eq('id', 1).maybeSingle();
+      const { data, error } = await supabase.from('admin_settings').select('payload').eq('id', 1).maybeSingle();
       if (cancelled) return;
       if (error) {
         console.warn('Supabase admin_settings load:', error.message);
         supabaseHydrated.current = true;
         return;
       }
-      adminSettingsRowExistsRef.current = Boolean(data);
-      adminSettingsRevisionRef.current = Number(data?.revision) || 0;
       if (data?.payload && typeof data.payload === 'object') {
         const merged = mergeAdminSettingsFromStorage(data.payload, DEFAULT_ADMIN_PRICES);
         skipNextSupabasePersist.current = true;
@@ -352,29 +291,36 @@ export default function App() {
         const seed = loadAdminSettingsFromStorage();
         skipNextSupabasePersist.current = true;
         setAdminPrices(seed);
+        const { error: upErr } = await supabase.from('admin_settings').upsert(
+          { id: 1, payload: seed, updated_at: new Date().toISOString() },
+          { onConflict: 'id' }
+        );
+        if (upErr) console.warn('Supabase admin_settings seed:', upErr.message);
       }
       supabaseHydrated.current = true;
     })();
     return () => { cancelled = true; };
-  }, [supabase, supabaseCanWrite]);
+  }, [supabase]);
 
   /** שמירה לענן (מושהית) — רק אחרי הידרציה; מדלגת אחרי טעינה משרת */
   useEffect(() => {
-    if (!supabase || !supabaseHydrated.current || !supabaseCanWrite) return undefined;
+    if (!supabase || !supabaseHydrated.current) return undefined;
     if (skipNextSupabasePersist.current) {
       skipNextSupabasePersist.current = false;
       return undefined;
     }
     clearTimeout(cloudPersistTimerRef.current);
     cloudPersistTimerRef.current = setTimeout(() => {
-      persistAdminSettingsToSupabase(adminPrices)
-        .catch((error) => console.warn('Supabase admin_settings save:', error?.message || error))
-        .finally(() => {
+      supabase
+        .from('admin_settings')
+        .upsert({ id: 1, payload: adminPrices, updated_at: new Date().toISOString() }, { onConflict: 'id' })
+        .then(({ error }) => {
+          if (error) console.warn('Supabase admin_settings save:', error.message);
           cloudPersistTimerRef.current = null;
         });
     }, 700);
     return () => clearTimeout(cloudPersistTimerRef.current);
-  }, [supabase, adminPrices, supabaseCanWrite, persistAdminSettingsToSupabase]);
+  }, [supabase, adminPrices]);
 
   const [quoteForm, setQuoteForm] = useState({
     systemType: 'residential', 
@@ -425,6 +371,22 @@ export default function App() {
       /* מקום אחסון מלא או דפדפן פרטי */
     }
   }, [adminPrices]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      if (!rememberLogin) {
+        window.localStorage.removeItem(LOGIN_INPUT_STORAGE_KEY);
+        window.localStorage.setItem(REMEMBER_LOGIN_STORAGE_KEY, '0');
+        return;
+      }
+      window.localStorage.setItem(REMEMBER_LOGIN_STORAGE_KEY, '1');
+      const normalized = String(loginInput || '').trim();
+      if (normalized) window.localStorage.setItem(LOGIN_INPUT_STORAGE_KEY, normalized);
+    } catch (_) {
+      /* ignore storage failures */
+    }
+  }, [loginInput, rememberLogin]);
 
   // --- פונקציית התחברות ---
   const handleLogin = (e) => {
@@ -921,6 +883,8 @@ export default function App() {
                     <div>
                       <input 
                         type="text" 
+                        name="loginInput"
+                        autoComplete="username"
                         value={loginInput}
                         onChange={(e) => {setLoginInput(e.target.value); setLoginError('');}}
                         placeholder="מספר ת.ז. / סיסמת מנהל"
@@ -929,6 +893,15 @@ export default function App() {
                         onFocus={e => e.target.style.boxShadow = '0 0 0 3px rgba(59,130,246,0.25), 0 8px 30px rgba(0,0,0,0.4)'}
                         onBlur={e => e.target.style.boxShadow = 'none'}
                       />
+                      <label className="mt-3 mx-auto flex w-fit items-center justify-center gap-2 text-xs text-slate-300 cursor-pointer select-none" dir="ltr">
+                        <input
+                          type="checkbox"
+                          checked={rememberLogin}
+                          onChange={(e) => setRememberLogin(e.target.checked)}
+                          className="h-4 w-4 rounded border-white/25 bg-black/30 accent-blue-500"
+                        />
+                        <span className="leading-none">Запомнить логин</span>
+                      </label>
                       {loginError && (
                         <div className="flex items-center gap-2 mt-3 text-red-400 text-sm font-medium bg-red-900/20 border border-red-500/20 p-3 rounded-xl">
                           <AlertCircle className="w-4 h-4 shrink-0" />
@@ -950,7 +923,7 @@ export default function App() {
   }
 
   return (
-    <div className="relative min-h-screen w-full min-w-0 max-w-full text-slate-200 font-sans p-4 md:p-8" dir="rtl"
+    <div className="min-h-screen text-slate-200 font-sans p-4 md:p-8 relative" dir="rtl"
          style={{ background: 'linear-gradient(160deg, #060d1c 0%, #091526 50%, #0b1a2e 100%)' }}>
       {/* Ambient glow top-right */}
       <div className="fixed top-0 right-0 w-[500px] h-[500px] rounded-full opacity-10 pointer-events-none"
@@ -959,21 +932,21 @@ export default function App() {
       <div className="fixed bottom-0 left-0 w-[400px] h-[400px] rounded-full opacity-8 pointer-events-none"
            style={{ background: 'radial-gradient(circle, rgba(59,130,246,0.4) 0%, transparent 70%)' }}></div>
 
-      <div className="max-w-5xl mx-auto relative z-10 w-full min-w-0">
+      <div className="max-w-5xl mx-auto relative z-10">
         
         {/* Header (Top Nav) */}
-        <header className="flex flex-wrap items-center justify-between gap-4 mb-10 print:hidden min-w-0">
+        <header className="flex items-center justify-between mb-10 print:hidden">
           {/* Left: Logo + Company Name */}
-          <div className="flex min-w-0 flex-1 items-center gap-4 sm:flex-initial">
+          <div className="flex items-center gap-4">
             <div className="relative">
               <div className="absolute -inset-1 rounded-2xl opacity-40 blur-sm" style={{ background: 'linear-gradient(135deg, #f97316, #fbbf24)' }}></div>
               <div className="relative bg-white/10 backdrop-blur-sm rounded-xl p-2 border border-white/20 shadow-2xl">
                 <BrandLogo className="h-11 w-11 object-contain" />
               </div>
             </div>
-            <div className="min-w-0">
-              <h1 className="break-words text-lg font-black leading-tight tracking-wide text-white md:text-xl">מומחי אנרגיה סולארית</h1>
-              <p className="mt-0.5 flex flex-wrap items-center gap-1.5 break-words text-xs text-blue-400/80">
+            <div>
+              <h1 className="text-lg md:text-xl font-black text-white tracking-wide leading-tight">מומחי אנרגיה סולארית</h1>
+              <p className="text-blue-400/80 text-xs flex items-center gap-1.5 mt-0.5">
                 <span className="inline-block w-2 h-2 rounded-full bg-green-400 shadow-[0_0_6px_rgba(74,222,128,0.8)]"></span>
                 מחובר: {currentUser.role === 'admin' ? 'מנהל ראשי' : currentUser.data.name}
               </p>
@@ -981,7 +954,7 @@ export default function App() {
           </div>
           
           {/* Right: Navigation */}
-          <nav className="flex shrink-0 flex-wrap items-center gap-1 rounded-2xl p-1.5 border border-white/10 shadow-xl"
+          <nav className="flex items-center gap-1 rounded-2xl p-1.5 border border-white/10 shadow-xl"
                style={{ background: 'rgba(255,255,255,0.05)', backdropFilter: 'blur(12px)' }}>
             <button onClick={() => setActiveTab('sales')}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 ${activeTab === 'sales' || activeTab === 'quote' ? 'text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
@@ -1015,7 +988,7 @@ export default function App() {
                 <p className="text-slate-500">הזן את מחירי העלות של הרכיבים. כל העלויות המוזנות צריכות להיות לפני מע"מ.</p>
                 <p className="text-slate-600 text-sm mt-2 max-w-2xl">
                   {supabase
-                    ? 'סנכרון ענן (קריאה/כתיבה) זמין רק אחרי Supabase Auth. משתמש אנונימי נשאר במסך התחברות וללא גישה להגדרות ענן.'
+                    ? 'הגדרות המחירון והסוכנים נשמרות בענן (Supabase) ומתעדכנות בכל המכשירים. עדיין נשמר עותק מקומי בדפדפן לגיבוי ולמהירות.'
                     : 'הגדרות נשמרות בדפדפן (localStorage) בלבד. להפעלת סנכרון בין מכשירים: הגדרו REACT_APP_SUPABASE_URL ו-REACT_APP_SUPABASE_ANON_KEY (ראו .env.example ו-supabase/schema.sql).'}
                 </p>
                 {supabase && (
@@ -1023,7 +996,7 @@ export default function App() {
                     <button
                       type="button"
                       onClick={handleSaveAdminToCloud}
-                      disabled={adminCloudSaving || !supabaseCanWrite}
+                      disabled={adminCloudSaving}
                       className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-white shadow-lg transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none disabled:hover:scale-100"
                       style={{ background: 'linear-gradient(135deg, #0d9488, #14b8a6)', boxShadow: '0 4px 15px rgba(20,184,166,0.35)' }}
                     >
@@ -1034,11 +1007,6 @@ export default function App() {
                       )}
                       שמור לענן עכשיו
                     </button>
-                    {!supabaseCanWrite && (
-                      <span className="text-sm font-medium text-amber-300">
-                        מצב מוגן: כתיבה לענן כבויה עד התחברות Supabase Auth.
-                      </span>
-                    )}
                     {adminCloudSaveFeedback && (
                       <span
                         className={`text-sm font-medium ${adminCloudSaveFeedback.type === 'success' ? 'text-emerald-400' : 'text-red-400'}`}
@@ -1315,7 +1283,7 @@ export default function App() {
 
           {/* ================= SALES TAB ================= */}
           {activeTab === 'sales' && (
-            <form onSubmit={calculateQuote} className="animation-fade-in min-w-0 max-w-full space-y-6">
+            <form onSubmit={calculateQuote} className="space-y-6 animation-fade-in">
               <div className="mb-8 pb-6 border-b border-white/8">
                 <h2 className="text-2xl font-black text-white mb-2 flex items-center gap-3">
                   <span className="text-orange-400"><FileText className="w-6 h-6"/></span>
@@ -1325,16 +1293,16 @@ export default function App() {
               </div>
 
               {/* בחירת סוג מערכת */}
-              <div className="mb-6 flex min-w-0 gap-4">
-                <label className={`flex min-w-0 flex-1 cursor-pointer items-center justify-center gap-3 rounded-2xl border-2 p-5 transition-all duration-200 ${quoteForm.systemType === 'residential' ? 'border-blue-500/70 text-blue-200 shadow-[0_0_25px_rgba(59,130,246,0.25)]' : 'border-white/8 text-slate-400 hover:border-white/20 hover:text-slate-300'}`}
+              <div className="flex gap-4 mb-6">
+                <label className={`flex-1 flex items-center justify-center gap-3 p-5 rounded-2xl cursor-pointer border-2 transition-all duration-200 ${quoteForm.systemType === 'residential' ? 'border-blue-500/70 text-blue-200 shadow-[0_0_25px_rgba(59,130,246,0.25)]' : 'border-white/8 text-slate-400 hover:border-white/20 hover:text-slate-300'}`}
                       style={quoteForm.systemType === 'residential' ? { background: 'linear-gradient(135deg, rgba(29,78,216,0.25), rgba(37,99,235,0.12))' } : { background: 'rgba(255,255,255,0.035)' }}>
                   <input type="radio" name="systemType" value="residential" checked={quoteForm.systemType === 'residential'} onChange={handleFormChange} className="hidden" />
-                  <span className="shrink-0 text-2xl">🏠</span><span className="min-w-0 break-words text-center text-lg font-bold">מערכת ביתית (פרטית)</span>
+                  <span className="text-2xl">🏠</span><span className="font-bold text-lg">מערכת ביתית (פרטית)</span>
                 </label>
-                <label className={`flex min-w-0 flex-1 cursor-pointer items-center justify-center gap-3 rounded-2xl border-2 p-5 transition-all duration-200 ${quoteForm.systemType === 'commercial' ? 'border-blue-500/70 text-blue-200 shadow-[0_0_25px_rgba(59,130,246,0.25)]' : 'border-white/8 text-slate-400 hover:border-white/20 hover:text-slate-300'}`}
+                <label className={`flex-1 flex items-center justify-center gap-3 p-5 rounded-2xl cursor-pointer border-2 transition-all duration-200 ${quoteForm.systemType === 'commercial' ? 'border-blue-500/70 text-blue-200 shadow-[0_0_25px_rgba(59,130,246,0.25)]' : 'border-white/8 text-slate-400 hover:border-white/20 hover:text-slate-300'}`}
                       style={quoteForm.systemType === 'commercial' ? { background: 'linear-gradient(135deg, rgba(29,78,216,0.25), rgba(37,99,235,0.12))' } : { background: 'rgba(255,255,255,0.035)' }}>
                   <input type="radio" name="systemType" value="commercial" checked={quoteForm.systemType === 'commercial'} onChange={handleFormChange} className="hidden" />
-                  <span className="shrink-0 text-2xl">🏢</span><span className="min-w-0 break-words text-center text-lg font-bold">מערכת מסחרית</span>
+                  <span className="text-2xl">🏢</span><span className="font-bold text-lg">מערכת מסחרית</span>
                 </label>
               </div>
 
