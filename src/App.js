@@ -11,6 +11,45 @@ import {
 const URBAN_PREMIUM_AGOROT_PER_KWH = 6;
 const URBAN_PREMIUM_VALID_UNTIL_YEAR = 2042;
 
+/** תא ברשת כרטיסי ציוד — רוחב אחיד */
+const QUOTE_EQUIPMENT_CELL_CLASS =
+  'flex w-[11.5rem] shrink-0 flex-col items-center gap-2 sm:w-[13rem] md:w-[14rem]';
+
+/** כיתוב מתחת לכרטיס — ללא רקע; הדגשה עם צל כהה לקריאות על גרדיאנט */
+const QUOTE_EQUIP_BELOW_CAPTION_CLASS =
+  'block text-center text-sm font-bold leading-snug text-slate-50 md:text-base print:text-slate-900 px-1 [text-shadow:0_1px_3px_rgba(0,0,0,0.92),0_2px_10px_rgba(0,0,0,0.65)] print:[text-shadow:none]';
+
+const QUOTE_EQUIP_BELOW_HINT_CLASS =
+  'mt-1.5 block text-center text-xs font-bold leading-snug text-orange-100 md:text-sm print:text-blue-900 [text-shadow:0_1px_2px_rgba(0,0,0,0.9)] print:[text-shadow:none]';
+
+/** מעטפת זהה לכל קוביות הציוד */
+const QUOTE_CARD_SHELL =
+  'relative box-border flex h-[12rem] w-full shrink-0 flex-col items-center justify-center gap-1 overflow-hidden rounded-[1.75rem] px-3 py-3 shadow-[0_24px_60px_-20px_rgba(0,0,0,0.65),inset_0_1px_0_0_rgba(255,255,255,0.06)] backdrop-blur-md md:h-[13rem] md:gap-1.5 md:px-4 md:py-4 print:shadow-md print:backdrop-blur-none';
+
+const QUOTE_BRAND_CARD_CLASS =
+  `${QUOTE_CARD_SHELL} border border-white/[0.12] bg-white/[0.06] print:border-slate-200/90 print:bg-white`;
+
+const QUOTE_BRAND_CARD_EMERALD_CLASS =
+  `${QUOTE_CARD_SHELL} border border-emerald-400/25 bg-emerald-950/30 print:border-emerald-200 print:bg-white`;
+
+const QUOTE_BRAND_CARD_BLUE_CLASS =
+  `${QUOTE_CARD_SHELL} border border-blue-400/30 bg-blue-950/25 print:border-blue-200 print:bg-white`;
+
+const QUOTE_BRAND_CARD_CYAN_CLASS =
+  `${QUOTE_CARD_SHELL} border border-cyan-400/28 bg-cyan-950/28 print:border-cyan-200 print:bg-white`;
+
+const QUOTE_BRAND_CARD_AMBER_CLASS =
+  `${QUOTE_CARD_SHELL} border border-amber-400/30 bg-amber-950/22 print:border-amber-200 print:bg-white`;
+
+const QUOTE_PLAIN_EQUIP_CARD_CLASS =
+  `${QUOTE_CARD_SHELL} border border-slate-500/35 bg-slate-800/35 print:border-slate-200 print:bg-white`;
+
+const QUOTE_BRAND_LOGO_IMG_CLASS =
+  'max-h-[4.5rem] w-auto max-w-[90%] object-contain contrast-[1.05] saturate-[1.08] drop-shadow-[0_12px_28px_rgba(0,0,0,0.55)] brightness-[1.06] md:max-h-[5.25rem]';
+
+/** תמונת מערכת שטיפה בהצעה */
+const QUOTE_WASHING_SYSTEM_IMG = `${process.env.PUBLIC_URL}/equipment/panel-washing.png`;
+
 const BrandLogoSvg = ({ className }) => (
   <svg viewBox="0 0 100 100" className={className} fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
     <circle cx="50" cy="45" r="35" fill="url(#sun-grad)"/>
@@ -76,23 +115,6 @@ function joinHebrewEquipmentTitle(parts) {
   return `${p.slice(0, -1).join(', ')} ו${p[p.length - 1]} בהצעה`;
 }
 
-function aggregateInverterLogosForQuote(inverterDetailsList) {
-  const map = new Map();
-  (inverterDetailsList || []).forEach((row) => {
-    const slug = row.logoSlug;
-    if (!slug || !inverterLogoSrc(slug)) return;
-    const prev = map.get(slug);
-    const qty = Number(row.quantity) || 0;
-    if (prev) {
-      prev.quantity += qty;
-      if (!prev.datasheet && row.datasheet) prev.datasheet = row.datasheet;
-    } else {
-      map.set(slug, { slug, quantity: qty, displayName: row.name, datasheet: row.datasheet || null });
-    }
-  });
-  return [...map.values()];
-}
-
 /** דאטהשיט (PDF/תמונה) — נשמר ב-base64 בהגדרות האדמין */
 function normalizeDatasheet(raw) {
   if (!raw || typeof raw !== 'object') return null;
@@ -111,7 +133,146 @@ function datasheetToSrc(ds) {
   return `data:${n.mimeType};base64,${n.dataBase64}`;
 }
 
+function aggregateInverterLogosForQuote(inverterDetailsList) {
+  const map = new Map();
+  (inverterDetailsList || []).forEach((row) => {
+    const qty = Number(row.quantity) || 0;
+    if (qty <= 0) return;
+
+    const custom = normalizeDatasheet(row.customLogo);
+    const hasCustomImg = Boolean(custom?.mimeType?.startsWith('image/'));
+    let aggregateKey;
+    let imageSrc;
+
+    if (hasCustomImg) {
+      aggregateKey = `custom:${row.id}`;
+      imageSrc = datasheetToSrc(custom);
+      if (!imageSrc) return;
+    } else {
+      const slug = row.logoSlug;
+      if (!slug || !inverterLogoSrc(slug)) return;
+      aggregateKey = slug;
+      imageSrc = inverterLogoSrc(slug);
+    }
+
+    const prev = map.get(aggregateKey);
+    if (prev) {
+      prev.quantity += qty;
+      if (!prev.datasheet && row.datasheet) prev.datasheet = row.datasheet;
+    } else {
+      map.set(aggregateKey, {
+        aggregateKey,
+        imageSrc,
+        quantity: qty,
+        displayName: row.name,
+        datasheet: row.datasheet || null,
+      });
+    }
+  });
+  return [...map.values()];
+}
+
 const DATASHEET_MAX_BYTES = 8 * 1024 * 1024;
+const QUOTE_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+/** ריבוע אחיד ללוגואים בהצעת מחיר (contain בתוך הריבוע) */
+const QUOTE_LOGO_CANVAS_PX = 480;
+/** תמונת יועץ מכירות — ריבוע לפריסה עקבית */
+const QUOTE_AGENT_PHOTO_PX = 320;
+
+/**
+ * תמונות / לוגואים — נירמול אוטומטי לריבוע קבוע (JPEG) לצורך הצעת מחיר.
+ * @param {'logo'|'avatar'} variant
+ */
+function readFileAsNormalizedQuoteRaster(file, variant = 'logo') {
+  const box = variant === 'avatar' ? QUOTE_AGENT_PHOTO_PX : QUOTE_LOGO_CANVAS_PX;
+  return new Promise((resolve, reject) => {
+    if (!file || !file.size) {
+      reject(new Error('קובץ לא תקין'));
+      return;
+    }
+    if (file.size > QUOTE_IMAGE_MAX_BYTES) {
+      reject(new Error('התמונה גדולה מדי (מקסימום 5MB).'));
+      return;
+    }
+    if (!file.type || !file.type.startsWith('image/')) {
+      reject(new Error('יש להעלות קובץ תמונה בלבד (PNG, JPG, WEBP…).'));
+      return;
+    }
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = box;
+        canvas.height = box;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, box, box);
+        const iw = img.naturalWidth || img.width;
+        const ih = img.naturalHeight || img.height;
+        if (!iw || !ih) {
+          URL.revokeObjectURL(url);
+          reject(new Error('מימדי התמונה לא זוהו'));
+          return;
+        }
+        const scale = Math.min(box / iw, box / ih);
+        const dw = iw * scale;
+        const dh = ih * scale;
+        const dx = (box - dw) / 2;
+        const dy = (box - dh) / 2;
+        ctx.drawImage(img, dx, dy, dw, dh);
+        canvas.toBlob(
+          (blob) => {
+            URL.revokeObjectURL(url);
+            if (!blob) {
+              reject(new Error('יצוא התמונה נכשל'));
+              return;
+            }
+            const reader = new FileReader();
+            reader.onload = () => {
+              const res = reader.result;
+              if (typeof res !== 'string') {
+                reject(new Error('קריאת הקובץ נכשלה'));
+                return;
+              }
+              const m = res.match(/^data:([^;]+);base64,(.+)$/);
+              if (!m) {
+                reject(new Error('פורמט לא צפוי אחרי נירמול'));
+                return;
+              }
+              const stem = String(file.name || 'logo').replace(/\.[^.]+$/, '') || 'logo';
+              resolve({
+                fileName: `${stem}-quote.jpg`,
+                mimeType: 'image/jpeg',
+                dataBase64: m[2],
+              });
+            };
+            reader.onerror = () => reject(new Error('קריאת הקובץ נכשלה'));
+            reader.readAsDataURL(blob);
+          },
+          'image/jpeg',
+          0.88
+        );
+      } catch (e) {
+        URL.revokeObjectURL(url);
+        reject(e instanceof Error ? e : new Error(String(e)));
+      }
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('לא ניתן לטעון את התמונה'));
+    };
+    img.src = url;
+  });
+}
+
+/** דאטהשיט: PDF וכו׳ כמו שהם; תמונה — נירמול כמו לוגו להצעה */
+async function readAdminDatasheetFileSmart(file) {
+  if (file?.type?.startsWith('image/')) {
+    return readFileAsNormalizedQuoteRaster(file, 'logo');
+  }
+  return readFileAsDatasheet(file);
+}
 
 function readFileAsDatasheet(file) {
   return new Promise((resolve, reject) => {
@@ -249,6 +410,41 @@ function AdminDatasheetRow({ label, datasheet, onFile, onClear }) {
   );
 }
 
+/** העלאת לוגו / תמונה — נשמר כ-JPEG מותאם להצעת מחיר */
+function AdminLogoRow({ label, logo, onFile, onClear }) {
+  const preview = datasheetToSrc(normalizeDatasheet(logo));
+  return (
+    <div className="mt-2 rounded-xl border border-white/10 bg-black/25 p-3">
+      <label className="mb-1 block text-xs text-slate-400">{label}</label>
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/gif"
+          className="max-w-full cursor-pointer text-xs text-slate-300 file:mr-2 file:rounded-lg file:border-0 file:bg-violet-600 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-white hover:file:bg-violet-500"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) onFile(f);
+            e.target.value = '';
+          }}
+        />
+        {logo?.fileName && <span className="max-w-[220px] truncate text-xs text-violet-300">{logo.fileName}</span>}
+        {logo && (
+          <button type="button" onClick={onClear} className="text-xs font-semibold text-red-400 hover:text-red-300">
+            הסר לוגו
+          </button>
+        )}
+      </div>
+      {preview && (
+        <div className="mt-3 flex items-center gap-3">
+          <img src={preview} alt="" className="h-16 w-16 rounded-xl border border-white/15 bg-white object-contain p-1" />
+          <p className="text-[10px] leading-snug text-slate-500">מוצג כאן אחרי נירמול לגודל אחיד להצעה.</p>
+        </div>
+      )}
+      <p className="mt-1 text-[10px] text-slate-500">עד 5MB — גודל ויחס גובה־רוחב מותאמים אוטומטית.</p>
+    </div>
+  );
+}
+
 // --- רכיב חתימה דיגיטלית (Canvas) ---
 const SignaturePad = ({ onSave }) => {
   const canvasRef = React.useRef(null);
@@ -348,28 +544,33 @@ const DEFAULT_ADMIN_PRICES = {
   panelPowerWatts: 640,
   /** דאטהשיט לפאנל (סוג יחיד לפי מחירון) — אופציונלי */
   panelDatasheet: null,
+  /** לוגו פאנלים בהצעה — JPEG מנורמל מהעלאה */
+  panelLogo: null,
   usdExchangeRate: 3.75,
   constructionConcretePerKw: 350,
   constructionOtherPerKw: 200,
+  constructionLogo: null,
+  constructionDatasheet: null,
 
   inverters: [
-    { id: 'inv-se100', name: 'סולאראדג\' 100kW', cost: 15000, capacityKw: 100, isSolarEdge: true, inverterLogoKey: 'auto', datasheet: null },
-    { id: 'inv-se12', name: 'סולאראדג\' 12kW', cost: 4500, capacityKw: 12, isSolarEdge: true, inverterLogoKey: 'auto', datasheet: null },
-    { id: 'inv-sma110', name: 'SMA 110kW', cost: 14000, capacityKw: 110, isSolarEdge: false, inverterLogoKey: 'none', datasheet: null }
+    { id: 'inv-se100', name: 'סולאראדג\' 100kW', cost: 15000, capacityKw: 100, isSolarEdge: true, inverterLogoKey: 'auto', customLogo: null, datasheet: null },
+    { id: 'inv-se12', name: 'סולאראדג\' 12kW', cost: 4500, capacityKw: 12, isSolarEdge: true, inverterLogoKey: 'auto', customLogo: null, datasheet: null },
+    { id: 'inv-sma110', name: 'SMA 110kW', cost: 14000, capacityKw: 110, isSolarEdge: false, inverterLogoKey: 'none', customLogo: null, datasheet: null }
   ],
 
   invertersHybrid: [
-    { id: 'hinv-se10', name: 'סולאראדג\' Home Hub 10kW', cost: 8500, capacityKw: 10, isSolarEdge: true, inverterLogoKey: 'auto', datasheet: null },
-    { id: 'hinv-deye12', name: 'Deye 12kW', cost: 7000, capacityKw: 12, isSolarEdge: false, inverterLogoKey: 'none', datasheet: null }
+    { id: 'hinv-se10', name: 'סולאראדג\' Home Hub 10kW', cost: 8500, capacityKw: 10, isSolarEdge: true, inverterLogoKey: 'auto', customLogo: null, datasheet: null },
+    { id: 'hinv-deye12', name: 'Deye 12kW', cost: 7000, capacityKw: 12, isSolarEdge: false, inverterLogoKey: 'none', customLogo: null, datasheet: null }
   ],
 
   batteries: [
-    { id: 'bat-se10', name: 'סוללה SolarEdge 10kWh', cost: 18000, datasheet: null },
-    { id: 'bat-byd5', name: 'סוללה BYD 5kWh', cost: 9500, datasheet: null }
+    { id: 'bat-se10', name: 'סוללה SolarEdge 10kWh', cost: 18000, logo: null, datasheet: null },
+    { id: 'bat-byd5', name: 'סוללה BYD 5kWh', cost: 9500, logo: null, datasheet: null }
   ],
 
   optimizerPrices: { se1to1: 250, se1to2: 350, tigo: 200 },
   optimizerDatasheets: { se1to1: null, se1to2: null, tigo: null },
+  optimizerLogos: { se1to1: null, se1to2: null, tigo: null },
   logisticsCost: 3100, laborPerKw: 650, constructorEngineer: 500, hybridBatteryInstallCost: 5700,
   electricalBoxCommercialPerKw: 270, electricalBoxResidential: 870,
   washingSystemBase: 4500, feesCost: 3000, planningCost: 1400, profitResidentialFixed: 21000, profitCommercialPerKw: 630, vatRate: 18,
@@ -382,7 +583,7 @@ const DEFAULT_ADMIN_PRICES = {
 
   companyPhone: '04-611-61-33',
   agents: [
-    { id: 'ag-1', name: 'ישראל ישראלי', phone: '050-1234567', tz: '123456789' }
+    { id: 'ag-1', name: 'ישראל ישראלי', phone: '050-1234567', tz: '123456789', photo: null }
   ]
 };
 
@@ -399,7 +600,15 @@ function mergeAdminSettingsFromStorage(saved, defaults) {
       ...defaults.optimizerDatasheets,
       ...(saved.optimizerDatasheets && typeof saved.optimizerDatasheets === 'object' ? saved.optimizerDatasheets : {})
     },
+    optimizerLogos: {
+      ...defaults.optimizerLogos,
+      ...(saved.optimizerLogos && typeof saved.optimizerLogos === 'object' ? saved.optimizerLogos : {})
+    },
     panelDatasheet: saved.panelDatasheet != null ? saved.panelDatasheet : defaults.panelDatasheet,
+    panelLogo: saved.panelLogo != null ? saved.panelLogo : defaults.panelLogo,
+    constructionLogo: saved.constructionLogo != null ? saved.constructionLogo : defaults.constructionLogo,
+    constructionDatasheet:
+      saved.constructionDatasheet != null ? saved.constructionDatasheet : defaults.constructionDatasheet,
     inverters: Array.isArray(saved.inverters) ? saved.inverters : defaults.inverters,
     invertersHybrid: Array.isArray(saved.invertersHybrid) ? saved.invertersHybrid : defaults.invertersHybrid,
     batteries: Array.isArray(saved.batteries) ? saved.batteries : defaults.batteries,
@@ -416,6 +625,122 @@ function loadAdminSettingsFromStorage() {
   } catch {
     return DEFAULT_ADMIN_PRICES;
   }
+}
+
+/** סף קוט״ל להפרדת ממירים בין מערכת ביתית / מסחרית (כולל 30 בשני הצדדים לפי ההגדרה) */
+const INVERTER_CAPACITY_SPLIT_KW = 30;
+
+function normalizeInvName(s) {
+  return String(s || '').trim().toUpperCase().replace(/\s+/g, ' ');
+}
+
+/** קוטל למיון לפי סוג מערכת — קודם מהשדה, אחרת ניסיון מתוך השם (למשל «100kW», «15 קוטל») */
+function effectiveInverterKw(inv) {
+  const fromField = Number(inv?.capacityKw);
+  if (Number.isFinite(fromField)) return fromField;
+  const raw = String(inv?.name || '');
+  const mKw = raw.match(/(\d+(?:\.\d+)?)\s*kW\b/i);
+  if (mKw) return Number(mKw[1]);
+  const mHe = raw.match(/(\d+(?:\.\d+)?)\s*קוטל/i);
+  if (mHe) return Number(mHe[1]);
+  return NaN;
+}
+
+function inverterMatchesSystemCapacity(inv, systemType) {
+  const kw = effectiveInverterKw(inv);
+  if (!Number.isFinite(kw)) return false;
+  if (systemType === 'residential') return kw <= INVERTER_CAPACITY_SPLIT_KW;
+  return kw >= INVERTER_CAPACITY_SPLIT_KW;
+}
+
+function filterInvertersForQuote(adminList, systemType) {
+  return (adminList || []).filter((inv) => inverterMatchesSystemCapacity(inv, systemType));
+}
+
+function findDefaultInverterId(adminList, systemType) {
+  const pool = filterInvertersForQuote(adminList, systemType);
+  if (!pool.length) return '';
+
+  if (systemType === 'residential') {
+    const exact = pool.find((inv) => normalizeInvName(inv.name) === 'SOLIS 15');
+    if (exact) return exact.id;
+
+    const isSolisBrand = (inv) => /\bSOLIS\b/i.test(String(inv.name || ''));
+    const solisCandidates = pool.filter(isSolisBrand);
+    if (solisCandidates.length) {
+      const kw15 = solisCandidates.find((inv) => effectiveInverterKw(inv) === 15);
+      if (kw15) return kw15.id;
+      const nameHas15 = solisCandidates.find((inv) =>
+        /\b15\b/.test(normalizeInvName(inv.name).replace(/KW/g, ' KW'))
+      );
+      if (nameHas15) return nameHas15.id;
+      return solisCandidates[0].id;
+    }
+
+    /** אין SOLIS במחירון — דגם 15kW קרוב (לא סתם השורה הראשונה שיכולה להיות SolarEdge) */
+    const byNearest15 = [...pool].sort(
+      (a, b) =>
+        Math.abs(effectiveInverterKw(a) - 15) - Math.abs(effectiveInverterKw(b) - 15)
+    );
+    return byNearest15[0].id;
+  }
+
+  const compact = (inv) => normalizeInvName(inv.name).replace(/[^A-Z0-9]/g, '');
+
+  const exactMid = pool.find((inv) => normalizeInvName(inv.name) === 'MID30 HV GROWATT');
+  if (exactMid) return exactMid.id;
+
+  const midGrowatt = pool.find((inv) => {
+    const n = normalizeInvName(inv.name);
+    const c = compact(inv);
+    const hasMid =
+      c.includes('MID30') ||
+      /\bMID[\s._-]*30\b/i.test(String(inv.name || ''));
+    const hasGrowatt =
+      n.includes('GROWATT') ||
+      n.includes('GROWAT') ||
+      /גראו/.test(String(inv.name || ''));
+    return hasMid && hasGrowatt;
+  });
+  if (midGrowatt) return midGrowatt.id;
+
+  const midHv = pool.find((inv) => {
+    const n = normalizeInvName(inv.name);
+    const c = compact(inv);
+    return (c.includes('MID30') || /\bMID[\s._-]*30\b/i.test(String(inv.name || ''))) && n.includes('HV');
+  });
+  if (midHv) return midHv.id;
+
+  const midOnly = pool.find((inv) => {
+    const c = compact(inv);
+    return c.includes('MID30') || /\bMID[\s._-]*30\b/i.test(String(inv.name || ''));
+  });
+  if (midOnly) return midOnly.id;
+
+  /** קרוב לברירת המחדל המסחרית: העדפת הקוטל הנמוך ביותר שעדיין בטווח המסחרי */
+  const sorted = [...pool].sort(
+    (a, b) => effectiveInverterKw(a) - effectiveInverterKw(b)
+  );
+  return sorted[0].id;
+}
+
+function sanitizeQuoteInverterRows(selections, adminList, systemType) {
+  const filtered = filterInvertersForQuote(adminList, systemType);
+  if (!filtered.length) return selections || [];
+  const allowedIds = new Set(filtered.map((i) => i.id));
+  const defaultId = findDefaultInverterId(adminList, systemType) || filtered[0].id;
+  return (selections || []).map((row) =>
+    allowedIds.has(row.id) ? row : { ...row, id: defaultId }
+  );
+}
+
+/** ברירת מחדל לשורות הצעה לפי סוג מערכת — SOLIS / MID או אחרת ראשון בטווח */
+function resolveSegmentDefaultInverterId(adminList, systemType) {
+  return (
+    findDefaultInverterId(adminList, systemType) ||
+    filterInvertersForQuote(adminList, systemType)[0]?.id ||
+    ''
+  );
 }
 
 export default function App() {
@@ -449,6 +774,8 @@ export default function App() {
   const supabase = useMemo(() => getSupabase(), []);
   const skipNextSupabasePersist = useRef(false);
   const supabaseHydrated = useRef(false);
+  /** למעקב אחרי מעבר ראשון ל-hydrated — אז מיישמים ברירות SOLIS/MID בלי לדרוס אחרי כל עדכון קטלוג */
+  const prevAdminHydratedForQuoteRef = useRef(false);
   const cloudPersistTimerRef = useRef(null);
 
   const [adminCloudSaving, setAdminCloudSaving] = useState(false);
@@ -549,9 +876,25 @@ export default function App() {
     systemSizeKw: 22.5,
     systemSizeAcKw: 15, 
     roofType: 'concrete', 
-    inverterSystemType: 'ongrid', 
-    selectedInverters: [{ id: 'inv-se100', quantity: 1 }], 
-    selectedHybridInverters: [{ id: 'hinv-se10', quantity: 1 }],
+    inverterSystemType: 'ongrid',
+    selectedInverters: [
+      {
+        id:
+          findDefaultInverterId(DEFAULT_ADMIN_PRICES.inverters, 'residential') ||
+          DEFAULT_ADMIN_PRICES.inverters[0]?.id ||
+          '',
+        quantity: 1,
+      },
+    ],
+    selectedHybridInverters: [
+      {
+        id:
+          findDefaultInverterId(DEFAULT_ADMIN_PRICES.invertersHybrid, 'residential') ||
+          DEFAULT_ADMIN_PRICES.invertersHybrid[0]?.id ||
+          '',
+        quantity: 1,
+      },
+    ],
     includesBatteries: false,
     selectedBatteries: [{ id: 'bat-se10', quantity: 1 }],
     includesOptimizers: false,
@@ -617,6 +960,53 @@ export default function App() {
       /* ignore storage failures */
     }
   }, [loginInput, rememberLogin]);
+
+  useEffect(() => {
+    const hydrated = supabaseHydrated.current;
+    const justBecameHydrated = hydrated && !prevAdminHydratedForQuoteRef.current;
+    prevAdminHydratedForQuoteRef.current = hydrated;
+
+    setQuoteForm((prev) => {
+      const cleanedInverters = sanitizeQuoteInverterRows(
+        prev.selectedInverters,
+        adminPrices.inverters,
+        prev.systemType
+      );
+      const cleanedHybrid = sanitizeQuoteInverterRows(
+        prev.selectedHybridInverters,
+        adminPrices.invertersHybrid,
+        prev.systemType
+      );
+
+      if (!hydrated) {
+        return {
+          ...prev,
+          selectedInverters: cleanedInverters,
+          selectedHybridInverters: cleanedHybrid,
+        };
+      }
+
+      if (justBecameHydrated) {
+        const idealInv = resolveSegmentDefaultInverterId(adminPrices.inverters, prev.systemType);
+        const idealHyb = resolveSegmentDefaultInverterId(adminPrices.invertersHybrid, prev.systemType);
+        return {
+          ...prev,
+          selectedInverters: idealInv
+            ? prev.selectedInverters.map((r) => ({ ...r, id: idealInv }))
+            : cleanedInverters,
+          selectedHybridInverters: idealHyb
+            ? prev.selectedHybridInverters.map((r) => ({ ...r, id: idealHyb }))
+            : cleanedHybrid,
+        };
+      }
+
+      return {
+        ...prev,
+        selectedInverters: cleanedInverters,
+        selectedHybridInverters: cleanedHybrid,
+      };
+    });
+  }, [adminPrices.inverters, adminPrices.invertersHybrid]);
 
   // --- פונקציית התחברות ---
   const handleLogin = (e) => {
@@ -719,7 +1109,7 @@ export default function App() {
 
   const attachDatasheetToListItem = async (listName, id, file) => {
     try {
-      const ds = await readFileAsDatasheet(file);
+      const ds = await readAdminDatasheetFileSmart(file);
       setAdminPrices(prev => ({
         ...prev,
         [listName]: prev[listName].map(item => (item.id === id ? { ...item, datasheet: ds } : item))
@@ -731,7 +1121,7 @@ export default function App() {
 
   const attachPanelDatasheetFile = async (file) => {
     try {
-      const ds = await readFileAsDatasheet(file);
+      const ds = await readAdminDatasheetFileSmart(file);
       setAdminPrices(prev => ({ ...prev, panelDatasheet: ds }));
     } catch (err) {
       alert(err.message || 'שגיאה בהעלאת הקובץ');
@@ -740,13 +1130,73 @@ export default function App() {
 
   const attachOptimizerDatasheetFile = async (key, file) => {
     try {
-      const ds = await readFileAsDatasheet(file);
+      const ds = await readAdminDatasheetFileSmart(file);
       setAdminPrices(prev => ({
         ...prev,
         optimizerDatasheets: { ...(prev.optimizerDatasheets || {}), [key]: ds }
       }));
     } catch (err) {
       alert(err.message || 'שגיאה בהעלאת הקובץ');
+    }
+  };
+
+  const attachOptimizerLogoFile = async (key, file) => {
+    try {
+      const raster = await readFileAsNormalizedQuoteRaster(file, 'logo');
+      setAdminPrices((prev) => ({
+        ...prev,
+        optimizerLogos: { ...(prev.optimizerLogos || {}), [key]: raster },
+      }));
+    } catch (err) {
+      alert(err.message || 'שגיאה בהעלאת הלוגו');
+    }
+  };
+
+  const attachPanelLogoFile = async (file) => {
+    try {
+      const raster = await readFileAsNormalizedQuoteRaster(file, 'logo');
+      setAdminPrices((prev) => ({ ...prev, panelLogo: raster }));
+    } catch (err) {
+      alert(err.message || 'שגיאה בהעלאת הלוגו');
+    }
+  };
+
+  const attachConstructionLogoFile = async (file) => {
+    try {
+      const raster = await readFileAsNormalizedQuoteRaster(file, 'logo');
+      setAdminPrices((prev) => ({ ...prev, constructionLogo: raster }));
+    } catch (err) {
+      alert(err.message || 'שגיאה בהעלאת הלוגו');
+    }
+  };
+
+  const attachConstructionDatasheetFile = async (file) => {
+    try {
+      const ds = await readAdminDatasheetFileSmart(file);
+      setAdminPrices((prev) => ({ ...prev, constructionDatasheet: ds }));
+    } catch (err) {
+      alert(err.message || 'שגיאה בהעלאת הקובץ');
+    }
+  };
+
+  const attachRasterToAdminListItem = async (listName, id, field, file) => {
+    try {
+      const raster = await readFileAsNormalizedQuoteRaster(file, 'logo');
+      setAdminPrices((prev) => ({
+        ...prev,
+        [listName]: prev[listName].map((item) => (item.id === id ? { ...item, [field]: raster } : item)),
+      }));
+    } catch (err) {
+      alert(err.message || 'שגיאה בהעלאת הלוגו');
+    }
+  };
+
+  const attachAgentPhotoFile = async (agentId, file) => {
+    try {
+      const raster = await readFileAsNormalizedQuoteRaster(file, 'avatar');
+      updateAdminListItem('agents', agentId, 'photo', raster);
+    } catch (err) {
+      alert(err.message || 'שגיאה בהעלאת התמונה');
     }
   };
 
@@ -758,6 +1208,16 @@ export default function App() {
       const newState = { ...prev, [name]: val };
       if (['panelsSouth', 'panelsEastWest', 'panelsNorth'].includes(name)) {
         newState.optimizerAcknowledge = false;
+      }
+      if (name === 'systemType') {
+        const idealInv = resolveSegmentDefaultInverterId(adminPrices.inverters, val);
+        const idealHyb = resolveSegmentDefaultInverterId(adminPrices.invertersHybrid, val);
+        newState.selectedInverters = idealInv
+          ? prev.selectedInverters.map((r) => ({ ...r, id: idealInv }))
+          : sanitizeQuoteInverterRows(prev.selectedInverters, adminPrices.inverters, val);
+        newState.selectedHybridInverters = idealHyb
+          ? prev.selectedHybridInverters.map((r) => ({ ...r, id: idealHyb }))
+          : sanitizeQuoteInverterRows(prev.selectedHybridInverters, adminPrices.invertersHybrid, val);
       }
       return newState;
     });
@@ -784,8 +1244,18 @@ export default function App() {
   };
 
   const addQuoteListItem = (formListName, adminListName) => {
-    if (adminPrices[adminListName].length === 0) return;
-    setQuoteForm(prev => ({ ...prev, [formListName]: [...prev[formListName], { id: adminPrices[adminListName][0].id, quantity: 1 }] }));
+    const full = adminPrices[adminListName];
+    if (!full || full.length === 0) return;
+    let newId = full[0].id;
+    if (adminListName === 'inverters' || adminListName === 'invertersHybrid') {
+      const filtered = filterInvertersForQuote(full, quoteForm.systemType);
+      if (!filtered.length) return;
+      newId = resolveSegmentDefaultInverterId(full, quoteForm.systemType) || filtered[0].id;
+    }
+    setQuoteForm((prev) => ({
+      ...prev,
+      [formListName]: [...prev[formListName], { id: newId, quantity: 1 }],
+    }));
   };
 
   const removeQuoteListItem = (formListName, index) => {
@@ -876,7 +1346,8 @@ export default function App() {
           isHybrid: isHybridSystem,
           isSolarEdge: invData.isSolarEdge,
           logoSlug: resolveInverterLogoSlug(invData),
-          datasheet: normalizeDatasheet(invData.datasheet)
+          customLogo: normalizeDatasheet(invData.customLogo),
+          datasheet: normalizeDatasheet(invData.datasheet),
         });
       }
     });
@@ -894,7 +1365,8 @@ export default function App() {
             id: batData.id,
             name: batData.name,
             quantity: sel.quantity,
-            datasheet: normalizeDatasheet(batData.datasheet)
+            logo: normalizeDatasheet(batData.logo),
+            datasheet: normalizeDatasheet(batData.datasheet),
           });
         }
       });
@@ -1080,7 +1552,11 @@ export default function App() {
       optimizerDetails,
       optimizerKind,
       optimizerDatasheet: optimizerKind ? normalizeDatasheet(adminPrices.optimizerDatasheets?.[optimizerKind]) : null,
+      optimizerLogoUpload: optimizerKind ? normalizeDatasheet(adminPrices.optimizerLogos?.[optimizerKind]) : null,
       panelDatasheet: normalizeDatasheet(adminPrices.panelDatasheet),
+      panelLogo: normalizeDatasheet(adminPrices.panelLogo),
+      constructionLogo: normalizeDatasheet(adminPrices.constructionLogo),
+      constructionDatasheet: normalizeDatasheet(adminPrices.constructionDatasheet),
       hasBatteries,
       baseCalculatedTariff,
       calculatedTariff,
@@ -1104,8 +1580,16 @@ export default function App() {
       },
       hasSolarEdgeQuote: inverterDetailsList.some(inv => inv.isSolarEdge),
       offerExpiresAt: offerExpiresAt,
-      // שמירת פרטי הסוכן שהפיק את ההצעה
-      agentDetails: currentUser?.role === 'agent' ? currentUser.data : null
+      // שמירת פרטי הסוכן שהפיק את ההצעה (כולל תמונה עדכנית מהמחירון)
+      agentDetails:
+        currentUser?.role === 'agent' && currentUser.data
+          ? (() => {
+              const tz = String(currentUser.data.tz || '').trim();
+              const fresh = adminPrices.agents.find((a) => String(a.tz || '').trim() === tz);
+              const base = fresh || currentUser.data;
+              return { ...base, photo: normalizeDatasheet(base.photo) };
+            })()
+          : null,
     });
 
     setActiveTab('quote');
@@ -1122,7 +1606,12 @@ export default function App() {
   /** ממירים ללא קובץ לוגו ב־public — עדיין מוצגים כרטיס טקסט */
   const quoteInvertersWithoutLogoAsset = useMemo(() => {
     const list = generatedQuote?.inverterDetailsList || [];
-    return list.filter((inv) => !inv.logoSlug || !inverterLogoSrc(inv.logoSlug));
+    return list.filter((inv) => {
+      const custom = normalizeDatasheet(inv.customLogo);
+      if (custom?.mimeType?.startsWith('image/')) return false;
+      const slug = inv.logoSlug;
+      return !slug || !inverterLogoSrc(slug);
+    });
   }, [generatedQuote?.inverterDetailsList]);
 
   /** כרטיס אופטימייזרים בהצעה (טייגו / סולאראדג' / כללי) */
@@ -1132,23 +1621,27 @@ export default function App() {
     if (qty <= 0) return null;
     const typeLabel = String(generatedQuote.optimizerDetails?.type || '').trim();
     const ds = generatedQuote.optimizerDatasheet;
+    const uploadSrc = datasheetToSrc(normalizeDatasheet(generatedQuote.optimizerLogoUpload));
     const lower = typeLabel.toLowerCase();
     if (/tigo|טייגו/.test(lower)) {
       if (!generatedQuote.showTigoLogoOnQuote) return null;
+      const fallback = `${process.env.PUBLIC_URL}/optimizers/tigo.png`;
       return {
         variant: 'tigo',
         quantity: qty,
         datasheet: ds,
         captionHe: `אופטימייזרים Tigo (${qty} יח')`,
+        logoSrc: uploadSrc || fallback,
       };
     }
     if (/solaredge|סולאראדג/.test(lower)) {
+      const fallback = `${process.env.PUBLIC_URL}/inverters/solaredge.png`;
       return {
         variant: 'solaredge',
         quantity: qty,
         datasheet: ds,
         captionHe: `אופטימייזרים ${typeLabel} (${qty} יח')`,
-        logoSrc: `${process.env.PUBLIC_URL}/inverters/solaredge.png`,
+        logoSrc: uploadSrc || fallback,
       };
     }
     return {
@@ -1162,14 +1655,23 @@ export default function App() {
     generatedQuote?.optimizerDetails?.quantity,
     generatedQuote?.optimizerDetails?.type,
     generatedQuote?.optimizerDatasheet,
+    generatedQuote?.optimizerLogoUpload,
     generatedQuote?.showTigoLogoOnQuote,
   ]);
+
+  const quoteShowConstructionEquipment =
+    !!generatedQuote &&
+    (Boolean(datasheetToSrc(normalizeDatasheet(generatedQuote.constructionLogo))) ||
+      Boolean(normalizeDatasheet(generatedQuote.constructionDatasheet)));
 
   const quoteShowEquipmentBrandsSection =
     !!generatedQuote &&
     ((generatedQuote.calculatedNumPanels || 0) > 0 ||
       (generatedQuote.inverterDetailsList || []).length > 0 ||
-      quoteOptimizerQuoteCard != null);
+      quoteOptimizerQuoteCard != null ||
+      quoteShowConstructionEquipment ||
+      generatedQuote.includesWashing ||
+      generatedQuote.feesPayer === 'company');
 
   const quoteEquipmentBrandsTitle = useMemo(() => {
     if (!generatedQuote) return joinHebrewEquipmentTitle([]);
@@ -1177,8 +1679,18 @@ export default function App() {
     if ((generatedQuote.calculatedNumPanels || 0) > 0) parts.push('פאנלים');
     if ((generatedQuote.inverterDetailsList || []).length > 0) parts.push('ממירים');
     if (quoteOptimizerQuoteCard) parts.push('אופטימייזרים');
+    if (generatedQuote.includesWashing) parts.push('שטיפה');
+    if (generatedQuote.feesPayer === 'company') parts.push('אגרות חח״י ורשויות');
+    const cl = normalizeDatasheet(generatedQuote.constructionLogo);
+    const cd = normalizeDatasheet(generatedQuote.constructionDatasheet);
+    if ((cl?.mimeType?.startsWith('image/')) || cd) parts.push('קונסטרוקציה');
     return joinHebrewEquipmentTitle(parts);
   }, [generatedQuote, quoteOptimizerQuoteCard]);
+
+  const quotePanelBrandLogoSrc = useMemo(() => {
+    const up = datasheetToSrc(normalizeDatasheet(generatedQuote?.panelLogo));
+    return up || `${process.env.PUBLIC_URL}/panels/solarspace.png`;
+  }, [generatedQuote?.panelLogo]);
 
   // חישוב זמן נותר להטבה (לתצוגת הטיימר)
   let timeLeft = { days: 0, hours: 0, minutes: 0, seconds: 0, expired: true };
@@ -1394,14 +1906,22 @@ export default function App() {
                     <p className="text-sm text-slate-400 mb-4">הוסף את היועצים של החברה. תעודת הזהות תשמש כסיסמת ההתחברות שלהם. בהצעת המחיר מוצגים כ«יועץ אישי» — השם והטלפון יופיעו אוטומטית ובלחצן הווטסאפ.</p>
                     <div className="space-y-3">
                       {adminPrices.agents.map(agent => (
-                        <div key={agent.id} className="grid grid-cols-1 md:grid-cols-4 gap-3 p-4 bg-black/20 border border-white/8 rounded-xl items-end relative pr-10 md:pr-4">
+                        <div key={agent.id} className="grid grid-cols-1 gap-3 p-4 bg-black/20 border border-white/8 rounded-xl relative pr-10 md:pr-4">
                           <button onClick={() => removeAdminListItem('agents', agent.id)} className="absolute top-4 right-4 text-slate-500 hover:text-red-400 transition-colors"><Trash2 className="w-5 h-5" /></button>
-                          <div><label className="text-slate-500 text-xs block mb-1">שם מלא</label><input type="text" value={agent.name} onChange={(e) => updateAdminListItem('agents', agent.id, 'name', e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-white outline-none focus:border-blue-500/60 transition-all" placeholder="שם היועץ" /></div>
-                          <div><label className="text-slate-500 text-xs block mb-1">טלפון (לווטסאפ)</label><input type="text" value={agent.phone} onChange={(e) => updateAdminListItem('agents', agent.id, 'phone', e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-white outline-none focus:border-blue-500/60 transition-all" placeholder="050-0000000" dir="ltr" /></div>
-                          <div><label className="text-slate-500 text-xs block mb-1">מספר ת"ז (להתחברות)</label><input type="text" value={agent.tz} onChange={(e) => updateAdminListItem('agents', agent.id, 'tz', e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-white outline-none focus:border-blue-500/60 transition-all font-mono tracking-widest text-center" /></div>
+                          <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+                            <div><label className="text-slate-500 text-xs block mb-1">שם מלא</label><input type="text" value={agent.name} onChange={(e) => updateAdminListItem('agents', agent.id, 'name', e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-white outline-none focus:border-blue-500/60 transition-all" placeholder="שם היועץ" /></div>
+                            <div><label className="text-slate-500 text-xs block mb-1">טלפון (לווטסאפ)</label><input type="text" value={agent.phone} onChange={(e) => updateAdminListItem('agents', agent.id, 'phone', e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-white outline-none focus:border-blue-500/60 transition-all" placeholder="050-0000000" dir="ltr" /></div>
+                            <div><label className="text-slate-500 text-xs block mb-1">מספר ת"ז (להתחברות)</label><input type="text" value={agent.tz} onChange={(e) => updateAdminListItem('agents', agent.id, 'tz', e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-white outline-none focus:border-blue-500/60 transition-all font-mono tracking-widest text-center" /></div>
+                          </div>
+                          <AdminLogoRow
+                            label="תמונת יועץ להצעת מחיר (עיגול / ריבוע אחיד אוטומטית)"
+                            logo={agent.photo}
+                            onFile={(f) => attachAgentPhotoFile(agent.id, f)}
+                            onClear={() => updateAdminListItem('agents', agent.id, 'photo', null)}
+                          />
                         </div>
                       ))}
-                      <button onClick={() => addAdminListItem('agents', { name: 'יועץ חדש', phone: '050-', tz: '' })} className="w-full mt-2 flex items-center justify-center gap-2 bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/20 text-orange-400 p-3 rounded-xl font-medium transition-all">
+                      <button onClick={() => addAdminListItem('agents', { name: 'יועץ חדש', phone: '050-', tz: '', photo: null })} className="w-full mt-2 flex items-center justify-center gap-2 bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/20 text-orange-400 p-3 rounded-xl font-medium transition-all">
                         <Plus className="w-5 h-5" /> הוסף יועץ למערכת
                       </button>
                     </div>
@@ -1438,6 +1958,12 @@ export default function App() {
                         <input type="number" step="0.01" name="usdExchangeRate" value={adminPrices.usdExchangeRate} onChange={handleAdminChange} className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-blue-500/60 transition-all" />
                       </div>
                     </div>
+                    <AdminLogoRow
+                      label="לוגו פאנלים להצעת מחיר (מותאם אוטומטית למלבן אחיד)"
+                      logo={adminPrices.panelLogo}
+                      onFile={attachPanelLogoFile}
+                      onClear={() => setAdminPrices((prev) => ({ ...prev, panelLogo: null }))}
+                    />
                     <AdminDatasheetRow
                       label="דאטהשיט / מפרט טכני לפאנל (PDF או תמונה)"
                       datasheet={adminPrices.panelDatasheet}
@@ -1459,6 +1985,18 @@ export default function App() {
                   <div className="p-6 pt-2 border-t border-white/8 space-y-3">
                     <div className="flex items-center gap-3"><span className="text-sm text-slate-300 w-1/2">גג בטון (₪ ל-kWp)</span><input type="number" name="constructionConcretePerKw" value={adminPrices.constructionConcretePerKw} onChange={handleAdminChange} className="w-1/2 bg-white/5 border border-white/10 rounded-xl p-2 text-white outline-none focus:border-blue-500/60 transition-all" /></div>
                     <div className="flex items-center gap-3"><span className="text-sm text-slate-300 w-1/2">גג אחר (₪ ל-kWp)</span><input type="number" name="constructionOtherPerKw" value={adminPrices.constructionOtherPerKw} onChange={handleAdminChange} className="w-1/2 bg-white/5 border border-white/10 rounded-xl p-2 text-white outline-none focus:border-blue-500/60 transition-all" /></div>
+                    <AdminLogoRow
+                      label="לוגו קונסטרוקציה להצעת מחיר"
+                      logo={adminPrices.constructionLogo}
+                      onFile={attachConstructionLogoFile}
+                      onClear={() => setAdminPrices((prev) => ({ ...prev, constructionLogo: null }))}
+                    />
+                    <AdminDatasheetRow
+                      label="דאטהשיט / מסמך קונסטרוקציה"
+                      datasheet={adminPrices.constructionDatasheet}
+                      onFile={attachConstructionDatasheetFile}
+                      onClear={() => setAdminPrices((prev) => ({ ...prev, constructionDatasheet: null }))}
+                    />
                   </div>
                 )}
               </div>
@@ -1473,6 +2011,17 @@ export default function App() {
                 {openAdminSection === 'optimizers' && (
                   <div className="p-6 pt-2 border-t border-white/8 space-y-4">
                     <div className="flex flex-wrap items-center gap-3"><span className="text-sm text-slate-300 w-full shrink-0 sm:w-[42%]">SolarEdge 1:1 (₪)</span><input type="number" name="se1to1" value={adminPrices.optimizerPrices.se1to1} onChange={handleOptimizerPriceChange} className="min-w-[8rem] flex-1 bg-white/5 border border-white/10 rounded-xl p-2 text-white outline-none focus:border-blue-500/60 transition-all" /></div>
+                    <AdminLogoRow
+                      label="לוגו SolarEdge 1:1 להצעה (אופציונלי — דורס את ברירת המחדל)"
+                      logo={adminPrices.optimizerLogos?.se1to1}
+                      onFile={(f) => attachOptimizerLogoFile('se1to1', f)}
+                      onClear={() =>
+                        setAdminPrices((prev) => ({
+                          ...prev,
+                          optimizerLogos: { ...(prev.optimizerLogos || {}), se1to1: null },
+                        }))
+                      }
+                    />
                     <AdminDatasheetRow
                       label="דאטהשיט לאופטימייזר SolarEdge 1:1"
                       datasheet={adminPrices.optimizerDatasheets?.se1to1}
@@ -1480,6 +2029,17 @@ export default function App() {
                       onClear={() => setAdminPrices(prev => ({ ...prev, optimizerDatasheets: { ...prev.optimizerDatasheets, se1to1: null } }))}
                     />
                     <div className="flex flex-wrap items-center gap-3"><span className="text-sm text-slate-300 w-full shrink-0 sm:w-[42%]">SolarEdge 1:2 (₪)</span><input type="number" name="se1to2" value={adminPrices.optimizerPrices.se1to2} onChange={handleOptimizerPriceChange} className="min-w-[8rem] flex-1 bg-white/5 border border-white/10 rounded-xl p-2 text-white outline-none focus:border-blue-500/60 transition-all" /></div>
+                    <AdminLogoRow
+                      label="לוגו SolarEdge 1:2 להצעה"
+                      logo={adminPrices.optimizerLogos?.se1to2}
+                      onFile={(f) => attachOptimizerLogoFile('se1to2', f)}
+                      onClear={() =>
+                        setAdminPrices((prev) => ({
+                          ...prev,
+                          optimizerLogos: { ...(prev.optimizerLogos || {}), se1to2: null },
+                        }))
+                      }
+                    />
                     <AdminDatasheetRow
                       label="דאטהשיט לאופטימייזר SolarEdge 1:2"
                       datasheet={adminPrices.optimizerDatasheets?.se1to2}
@@ -1487,6 +2047,17 @@ export default function App() {
                       onClear={() => setAdminPrices(prev => ({ ...prev, optimizerDatasheets: { ...prev.optimizerDatasheets, se1to2: null } }))}
                     />
                     <div className="flex flex-wrap items-center gap-3"><span className="text-sm text-slate-300 w-full shrink-0 sm:w-[42%]">טייגו (Tigo) (₪)</span><input type="number" name="tigo" value={adminPrices.optimizerPrices.tigo} onChange={handleOptimizerPriceChange} className="min-w-[8rem] flex-1 bg-white/5 border border-white/10 rounded-xl p-2 text-white outline-none focus:border-blue-500/60 transition-all" /></div>
+                    <AdminLogoRow
+                      label="לוגו Tigo להצעה"
+                      logo={adminPrices.optimizerLogos?.tigo}
+                      onFile={(f) => attachOptimizerLogoFile('tigo', f)}
+                      onClear={() =>
+                        setAdminPrices((prev) => ({
+                          ...prev,
+                          optimizerLogos: { ...(prev.optimizerLogos || {}), tigo: null },
+                        }))
+                      }
+                    />
                     <AdminDatasheetRow
                       label="דאטהשיט לאופטימייזר Tigo"
                       datasheet={adminPrices.optimizerDatasheets?.tigo}
@@ -1538,6 +2109,12 @@ export default function App() {
                                 <option value="none">ללא לוגו</option>
                               </select>
                             </div>
+                            <AdminLogoRow
+                              label="לוגו מותאם לממיר (דורס לוגו מהרשימה — מותאם אוטומטית להצעה)"
+                              logo={inv.customLogo}
+                              onFile={(f) => attachRasterToAdminListItem('inverters', inv.id, 'customLogo', f)}
+                              onClear={() => updateAdminListItem('inverters', inv.id, 'customLogo', null)}
+                            />
                             <AdminDatasheetRow
                               label="דאטהשיט / מפרט טכני לממיר"
                               datasheet={inv.datasheet}
@@ -1546,7 +2123,7 @@ export default function App() {
                             />
                           </div>
                         ))}
-                        <button onClick={() => addAdminListItem('inverters', { name: 'ממיר חדש', cost: 0, capacityKw: 10, isSolarEdge: false, inverterLogoKey: 'auto', datasheet: null })} className="w-full mt-2 flex items-center justify-center gap-2 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 text-blue-400 p-2 rounded-xl text-sm transition-all">
+                        <button onClick={() => addAdminListItem('inverters', { name: 'ממיר חדש', cost: 0, capacityKw: 10, isSolarEdge: false, inverterLogoKey: 'auto', customLogo: null, datasheet: null })} className="w-full mt-2 flex items-center justify-center gap-2 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 text-blue-400 p-2 rounded-xl text-sm transition-all">
                           <Plus className="w-4 h-4" /> הוסף ממיר אונגריד
                         </button>
                       </div>
@@ -1583,6 +2160,12 @@ export default function App() {
                                 <option value="none">ללא לוגו</option>
                               </select>
                             </div>
+                            <AdminLogoRow
+                              label="לוגו מותאם לממיר (דורס לוגו מהרשימה)"
+                              logo={inv.customLogo}
+                              onFile={(f) => attachRasterToAdminListItem('invertersHybrid', inv.id, 'customLogo', f)}
+                              onClear={() => updateAdminListItem('invertersHybrid', inv.id, 'customLogo', null)}
+                            />
                             <AdminDatasheetRow
                               label="דאטהשיט / מפרט טכני לממיר"
                               datasheet={inv.datasheet}
@@ -1591,7 +2174,7 @@ export default function App() {
                             />
                           </div>
                         ))}
-                        <button onClick={() => addAdminListItem('invertersHybrid', { name: 'ממיר היברידי חדש', cost: 0, capacityKw: 10, isSolarEdge: false, inverterLogoKey: 'auto', datasheet: null })} className="w-full mt-2 flex items-center justify-center gap-2 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 text-blue-400 p-2 rounded-xl text-sm transition-all">
+                        <button onClick={() => addAdminListItem('invertersHybrid', { name: 'ממיר היברידי חדש', cost: 0, capacityKw: 10, isSolarEdge: false, inverterLogoKey: 'auto', customLogo: null, datasheet: null })} className="w-full mt-2 flex items-center justify-center gap-2 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 text-blue-400 p-2 rounded-xl text-sm transition-all">
                           <Plus className="w-4 h-4" /> הוסף ממיר היברידי
                         </button>
                       </div>
@@ -1619,6 +2202,12 @@ export default function App() {
                             </div>
                             <button onClick={() => removeAdminListItem('batteries', bat.id)} className="p-2 text-slate-500 hover:text-red-400 transition-colors"><Trash2 className="w-4 h-4" /></button>
                           </div>
+                          <AdminLogoRow
+                            label="לוגו סוללה להצעת מחיר"
+                            logo={bat.logo}
+                            onFile={(f) => attachRasterToAdminListItem('batteries', bat.id, 'logo', f)}
+                            onClear={() => updateAdminListItem('batteries', bat.id, 'logo', null)}
+                          />
                           <AdminDatasheetRow
                             label="דאטהשיט לסוללה"
                             datasheet={bat.datasheet}
@@ -1627,7 +2216,7 @@ export default function App() {
                           />
                         </div>
                      ))}
-                     <button onClick={() => addAdminListItem('batteries', { name: 'סוללה חדשה', cost: 0, datasheet: null })} className="mt-3 flex items-center gap-1 text-sm text-blue-400 hover:text-blue-300 transition-colors">
+                     <button onClick={() => addAdminListItem('batteries', { name: 'סוללה חדשה', cost: 0, logo: null, datasheet: null })} className="mt-3 flex items-center gap-1 text-sm text-blue-400 hover:text-blue-300 transition-colors">
                         <Plus className="w-4 h-4" /> הוסף סוללה למחירון
                      </button>
                   </div>
@@ -1843,14 +2432,22 @@ export default function App() {
                         const adminList = isHybrid ? adminPrices.invertersHybrid : adminPrices.inverters;
                         const formListName = isHybrid ? 'selectedHybridInverters' : 'selectedInverters';
                         const currentSelections = quoteForm[formListName];
+                        const inverterOptions = filterInvertersForQuote(adminList, quoteForm.systemType);
                         if (adminList.length === 0) return <p className="text-sm text-red-400">לא קיימים דגמים במערכת.</p>;
+                        if (inverterOptions.length === 0) {
+                          return (
+                            <p className="text-sm text-amber-400">
+                              אין ממירים המתאימים לסוג המערכת הנבחר (עד {INVERTER_CAPACITY_SPLIT_KW} קוטל לעומת החל מ-{INVERTER_CAPACITY_SPLIT_KW} קוטל). עדכן את רשימת הממירים בהגדרות אדמין.
+                            </p>
+                          );
+                        }
                         return (
                           <>
                             <div className="space-y-3">
                               {currentSelections.map((item, index) => (
                                 <div key={index} className="flex min-w-0 flex-wrap items-center gap-3">
                                   <select value={item.id} onChange={(e) => handleQuoteListChange(formListName, index, 'id', e.target.value)} className="min-w-0 flex-1 basis-[12rem] bg-slate-950 border border-white/15 rounded-xl p-2.5 text-slate-100 outline-none focus:border-blue-500/60 transition-all [color-scheme:dark]">
-                                    {adminList.map(inv => (<option key={inv.id} value={inv.id} className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f1f5f9' }}>{inv.name}</option>))}
+                                    {inverterOptions.map(inv => (<option key={inv.id} value={inv.id} className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f1f5f9' }}>{inv.name}</option>))}
                                   </select>
                                   <div className="w-28 flex items-center bg-white/5 border border-white/10 rounded-xl">
                                      <span className="pl-2 text-slate-500 text-sm">כמות:</span>
@@ -2203,13 +2800,13 @@ export default function App() {
                       </p>
                       <div className="mx-auto mt-5 h-px w-24 rounded-full bg-gradient-to-l from-transparent via-orange-400/80 to-transparent print:via-blue-400/60" aria-hidden />
                     </div>
-                    <div className="flex flex-wrap justify-center items-stretch gap-8 md:gap-12 lg:gap-16">
+                    <div className="flex flex-wrap items-start justify-center gap-x-6 gap-y-8 md:gap-x-8 md:gap-y-10 lg:gap-x-10">
                       {(generatedQuote.calculatedNumPanels || 0) > 0 && (
-                        <div className="flex flex-col items-center gap-3 w-[min(100%,280px)] md:w-[min(100%,300px)]">
+                        <div className={QUOTE_EQUIPMENT_CELL_CLASS}>
                           {generatedQuote.panelDatasheet ? (
                             <button
                               type="button"
-                              className="relative w-full flex flex-col items-center justify-center gap-4 rounded-[1.75rem] px-7 py-9 md:px-10 md:py-11 min-h-[148px] md:min-h-[180px] bg-amber-950/25 backdrop-blur-md border border-amber-400/30 shadow-[0_24px_60px_-20px_rgba(0,0,0,0.65)] print:bg-white print:border print:border-amber-200 print:shadow-md print:backdrop-blur-none min-[480px]:min-h-[168px] cursor-pointer transition-transform hover:scale-[1.02] hover:border-amber-300/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/70"
+                              className={`${QUOTE_BRAND_CARD_CLASS} cursor-pointer transition-transform hover:scale-[1.02] hover:border-orange-400/35 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400/70`}
                               onClick={() =>
                                 openQuoteDatasheet(
                                   `מפרט טכני — פאנלים ${generatedQuote.panelPowerWatts}W`,
@@ -2217,50 +2814,54 @@ export default function App() {
                                 )
                               }
                             >
-                              <Sun className="h-16 w-16 md:h-20 md:w-20 text-amber-300 print:text-amber-600 drop-shadow-lg" aria-hidden />
-                              <span className="text-center text-sm font-bold text-amber-100/95 print:text-amber-900">
+                              <div className="rounded-xl bg-white px-2 py-2 shadow-inner ring-1 ring-black/10 print:ring-slate-200 md:px-3 md:py-2.5">
+                                <img src={quotePanelBrandLogoSrc} alt="" className={QUOTE_BRAND_LOGO_IMG_CLASS} />
+                              </div>
+                              <span className="text-center text-xs font-bold leading-tight text-white/95 print:text-slate-900 md:text-sm">
                                 פאנלים {generatedQuote.panelPowerWatts}W
+                              </span>
+                              <span className="line-clamp-2 px-0.5 text-center text-xs font-semibold leading-snug text-slate-100 md:text-sm print:text-slate-600">
+                                דוצדדיים • מרשימת Tier 1
                               </span>
                             </button>
                           ) : (
-                            <div className="relative w-full flex flex-col items-center justify-center gap-4 rounded-[1.75rem] px-7 py-9 md:px-10 md:py-11 min-h-[148px] md:min-h-[180px] bg-amber-950/25 backdrop-blur-md border border-amber-400/25 shadow-[0_24px_60px_-20px_rgba(0,0,0,0.65)] print:bg-white print:border print:border-amber-200 print:shadow-md print:backdrop-blur-none min-[480px]:min-h-[168px]">
-                              <Sun className="h-16 w-16 md:h-20 md:w-20 text-amber-300 print:text-amber-600 drop-shadow-lg" aria-hidden />
-                              <span className="text-center text-sm font-bold text-amber-100/95 print:text-amber-900">
+                            <div className={QUOTE_BRAND_CARD_CLASS}>
+                              <div className="rounded-xl bg-white px-2 py-2 shadow-inner ring-1 ring-black/10 print:ring-slate-200 md:px-3 md:py-2.5">
+                                <img src={quotePanelBrandLogoSrc} alt="" className={QUOTE_BRAND_LOGO_IMG_CLASS} />
+                              </div>
+                              <span className="text-center text-xs font-bold leading-tight text-white/95 print:text-slate-900 md:text-sm">
                                 פאנלים {generatedQuote.panelPowerWatts}W
+                              </span>
+                              <span className="line-clamp-2 px-0.5 text-center text-xs font-semibold leading-snug text-slate-100 md:text-sm print:text-slate-600">
+                                דוצדדיים • מרשימת Tier 1
                               </span>
                             </div>
                           )}
-                          <span className="text-amber-200/95 print:text-amber-900 text-xs text-center leading-snug font-semibold px-1">
-                            פאנלים בסט תפוקה מלאה • {generatedQuote.calculatedNumPanels} יח&apos;
+                          <span className={QUOTE_EQUIP_BELOW_CAPTION_CLASS}>
+                            פאנלים דוצדדיים מרשימת Tier 1 • בסט תפוקה מלאה • {generatedQuote.calculatedNumPanels} יח&apos;
                             {generatedQuote.panelDatasheet && (
-                              <span className="block text-[10px] text-amber-300/90 print:text-amber-700 mt-1 font-medium">
-                                לחץ לצפייה במפרט
-                              </span>
+                              <span className={QUOTE_EQUIP_BELOW_HINT_CLASS}>לחץ לצפייה במפרט</span>
                             )}
                           </span>
                         </div>
                       )}
                       {aggregatedQuoteInverterLogos.map((row) => {
-                        const logoCardClass =
-                          'relative w-full flex items-center justify-center rounded-[1.75rem] px-7 py-9 md:px-10 md:py-11 min-h-[148px] md:min-h-[180px] bg-white/[0.06] backdrop-blur-md border border-white/[0.12] shadow-[0_24px_60px_-20px_rgba(0,0,0,0.65),inset_0_1px_0_0_rgba(255,255,255,0.06)] print:bg-white print:border print:border-slate-200/90 print:shadow-md print:backdrop-blur-none min-[480px]:min-h-[168px]';
-                        const logoImgClass =
-                          'max-h-[7.5rem] sm:max-h-[9rem] md:max-h-[11rem] w-auto max-w-[92%] object-contain contrast-[1.05] saturate-[1.08] drop-shadow-[0_12px_28px_rgba(0,0,0,0.55)] brightness-[1.06]';
                         return (
                         <div
-                          key={row.slug}
-                          className="flex flex-col items-center gap-3 w-[min(100%,280px)] md:w-[min(100%,300px)]"
+                          key={row.aggregateKey}
+                          className={QUOTE_EQUIPMENT_CELL_CLASS}
                         >
                           {row.datasheet ? (
                             <button
                               type="button"
-                              className={`${logoCardClass} cursor-pointer transition-transform hover:scale-[1.02] hover:border-orange-400/35 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400/70`}
+                              className={`${QUOTE_BRAND_CARD_CLASS} cursor-pointer transition-transform hover:scale-[1.02] hover:border-orange-400/35 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400/70`}
                               onClick={() => openQuoteDatasheet(`מפרט טכני — ${row.displayName}`, row.datasheet)}
                             >
-                              <img src={inverterLogoSrc(row.slug)} alt="" className={logoImgClass} />
+                              <img src={row.imageSrc} alt="" className={QUOTE_BRAND_LOGO_IMG_CLASS} />
                             </button>
                           ) : (
-                          <div className={logoCardClass}>
-                            <img src={inverterLogoSrc(row.slug)} alt="" className={logoImgClass} />
+                          <div className={QUOTE_BRAND_CARD_CLASS}>
+                            <img src={row.imageSrc} alt="" className={QUOTE_BRAND_LOGO_IMG_CLASS} />
                           </div>
                           )}
                           {row.quantity > 1 && (
@@ -2268,89 +2869,83 @@ export default function App() {
                               ×{row.quantity}
                             </span>
                           )}
-                          <span className="text-slate-400/95 print:text-slate-500 text-xs text-center leading-snug font-medium px-1">
+                          <span className={QUOTE_EQUIP_BELOW_CAPTION_CLASS}>
                             {row.displayName}
-                            {row.datasheet && <span className="block text-[10px] text-orange-300/90 print:text-blue-600 mt-1">לחץ לצפייה במפרט</span>}
+                            {row.datasheet && <span className={QUOTE_EQUIP_BELOW_HINT_CLASS}>לחץ לצפייה במפרט</span>}
                           </span>
                         </div>
                         );
                       })}
                       {quoteInvertersWithoutLogoAsset.map((inv) => {
-                        const plainCardClass =
-                          'relative w-full flex flex-col items-center justify-center gap-3 rounded-[1.75rem] px-6 py-8 md:px-8 md:py-10 min-h-[148px] md:min-h-[180px] bg-slate-800/35 backdrop-blur-md border border-slate-500/35 shadow-[0_24px_60px_-20px_rgba(0,0,0,0.55)] print:bg-white print:border print:border-slate-200 print:shadow-md print:backdrop-blur-none min-[480px]:min-h-[168px]';
                         const inner = (
                           <>
-                            <HardHat className="h-14 w-14 text-slate-300 print:text-slate-600 shrink-0" aria-hidden />
-                            <span className="text-center text-sm font-bold text-white print:text-slate-900 leading-snug px-2">{inv.name}</span>
+                            <HardHat className="h-10 w-10 shrink-0 text-slate-300 print:text-slate-600 md:h-12 md:w-12" aria-hidden />
+                            <span className="line-clamp-3 px-1 text-center text-xs font-bold leading-snug text-white print:text-slate-900 md:text-sm">
+                              {inv.name}
+                            </span>
                           </>
                         );
                         return (
                           <div
                             key={`inv-plain-${inv.id}`}
-                            className="flex flex-col items-center gap-3 w-[min(100%,280px)] md:w-[min(100%,300px)]"
+                            className={QUOTE_EQUIPMENT_CELL_CLASS}
                           >
                             {inv.datasheet ? (
                               <button
                                 type="button"
-                                className={`${plainCardClass} cursor-pointer transition-transform hover:scale-[1.02] hover:border-orange-400/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400/60`}
+                                className={`${QUOTE_PLAIN_EQUIP_CARD_CLASS} cursor-pointer transition-transform hover:scale-[1.02] hover:border-orange-400/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400/60`}
                                 onClick={() => openQuoteDatasheet(`מפרט טכני — ${inv.name}`, inv.datasheet)}
                               >
                                 {inner}
                               </button>
                             ) : (
-                              <div className={plainCardClass}>{inner}</div>
+                              <div className={QUOTE_PLAIN_EQUIP_CARD_CLASS}>{inner}</div>
                             )}
                             {inv.quantity > 1 && (
-                              <span className="rounded-full bg-white/10 text-white font-black text-sm md:text-base px-3.5 py-1 border border-white/20 backdrop-blur-sm print:bg-slate-100 print:text-slate-900 print:border-slate-300">
+                              <span className="rounded-full border border-white/20 bg-white/10 px-3 py-0.5 text-xs font-black text-white backdrop-blur-sm print:border-slate-300 print:bg-slate-100 print:text-slate-900 md:text-sm">
                                 ×{inv.quantity}
                               </span>
                             )}
-                            <span className="text-slate-400/95 print:text-slate-600 text-xs text-center leading-snug font-medium px-1">
+                            <span className={QUOTE_EQUIP_BELOW_CAPTION_CLASS}>
                               ממיר • {inv.quantity} יח&apos;
                               {inv.datasheet && (
-                                <span className="block text-[10px] text-orange-300/90 print:text-blue-600 mt-1">לחץ לצפייה במפרט</span>
+                                <span className={QUOTE_EQUIP_BELOW_HINT_CLASS}>לחץ לצפייה במפרט</span>
                               )}
                             </span>
                           </div>
                         );
                       })}
                       {quoteOptimizerQuoteCard && (
-                        <div className="flex flex-col items-center gap-3 w-[min(100%,280px)] md:w-[min(100%,300px)]">
+                        <div className={QUOTE_EQUIPMENT_CELL_CLASS}>
                           {quoteOptimizerQuoteCard.variant === 'tigo' && (
                             <>
                               {quoteOptimizerQuoteCard.datasheet ? (
                                 <button
                                   type="button"
-                                  className="relative w-full flex items-center justify-center rounded-[1.75rem] px-7 py-9 md:px-10 md:py-11 min-h-[148px] md:min-h-[180px] bg-emerald-950/30 backdrop-blur-md border border-emerald-400/25 shadow-[0_24px_60px_-20px_rgba(0,0,0,0.65),inset_0_1px_0_0_rgba(255,255,255,0.06)] print:bg-white print:border print:border-emerald-200 print:shadow-md min-[480px]:min-h-[168px] cursor-pointer transition-transform hover:scale-[1.02] hover:border-emerald-300/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70"
+                                  className={`${QUOTE_BRAND_CARD_EMERALD_CLASS} cursor-pointer transition-transform hover:scale-[1.02] hover:border-emerald-300/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70`}
                                   onClick={() =>
                                     openQuoteDatasheet('מפרט טכני — אופטימייזרים Tigo', quoteOptimizerQuoteCard.datasheet)
                                   }
                                 >
                                   <img
-                                    src={`${process.env.PUBLIC_URL}/optimizers/tigo.png`}
+                                    src={quoteOptimizerQuoteCard.logoSrc}
                                     alt="Tigo"
-                                    className="max-h-[7rem] sm:max-h-[8.5rem] md:max-h-[10rem] w-auto max-w-[90%] object-contain drop-shadow-[0_12px_28px_rgba(0,0,0,0.45)]"
+                                    className={QUOTE_BRAND_LOGO_IMG_CLASS}
                                   />
                                 </button>
                               ) : (
-                                <div
-                                  className="relative w-full flex items-center justify-center rounded-[1.75rem] px-7 py-9 md:px-10 md:py-11 min-h-[148px] md:min-h-[180px]
-                                  bg-emerald-950/30 backdrop-blur-md border border-emerald-400/25 shadow-[0_24px_60px_-20px_rgba(0,0,0,0.65),inset_0_1px_0_0_rgba(255,255,255,0.06)]
-                                  print:bg-white print:border print:border-emerald-200 print:shadow-md min-[480px]:min-h-[168px]"
-                                >
+                                <div className={QUOTE_BRAND_CARD_EMERALD_CLASS}>
                                   <img
-                                    src={`${process.env.PUBLIC_URL}/optimizers/tigo.png`}
+                                    src={quoteOptimizerQuoteCard.logoSrc}
                                     alt="Tigo"
-                                    className="max-h-[7rem] sm:max-h-[8.5rem] md:max-h-[10rem] w-auto max-w-[90%] object-contain drop-shadow-[0_12px_28px_rgba(0,0,0,0.45)]"
+                                    className={QUOTE_BRAND_LOGO_IMG_CLASS}
                                   />
                                 </div>
                               )}
-                              <span className="text-emerald-200/95 print:text-emerald-800 text-xs text-center leading-snug font-semibold px-1">
+                              <span className={QUOTE_EQUIP_BELOW_CAPTION_CLASS}>
                                 {quoteOptimizerQuoteCard.captionHe}
                                 {quoteOptimizerQuoteCard.datasheet && (
-                                  <span className="block text-[10px] text-emerald-300/90 print:text-emerald-700 mt-1 font-medium">
-                                    לחץ לצפייה במפרט
-                                  </span>
+                                  <span className={QUOTE_EQUIP_BELOW_HINT_CLASS}>לחץ לצפייה במפרט</span>
                                 )}
                               </span>
                             </>
@@ -2360,7 +2955,7 @@ export default function App() {
                               {quoteOptimizerQuoteCard.datasheet ? (
                                 <button
                                   type="button"
-                                  className="relative w-full flex items-center justify-center rounded-[1.75rem] px-7 py-9 md:px-10 md:py-11 min-h-[148px] md:min-h-[180px] bg-blue-950/25 backdrop-blur-md border border-blue-400/30 shadow-[0_24px_60px_-20px_rgba(0,0,0,0.65)] print:bg-white print:border print:border-blue-200 print:shadow-md min-[480px]:min-h-[168px] cursor-pointer transition-transform hover:scale-[1.02] hover:border-blue-400/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/70"
+                                  className={`${QUOTE_BRAND_CARD_BLUE_CLASS} cursor-pointer transition-transform hover:scale-[1.02] hover:border-blue-400/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/70`}
                                   onClick={() =>
                                     openQuoteDatasheet(
                                       `מפרט טכני — אופטימייזרים (${generatedQuote.optimizerDetails.type})`,
@@ -2371,24 +2966,22 @@ export default function App() {
                                   <img
                                     src={quoteOptimizerQuoteCard.logoSrc}
                                     alt="SolarEdge"
-                                    className="max-h-[7rem] sm:max-h-[8.5rem] md:max-h-[10rem] w-auto max-w-[90%] object-contain drop-shadow-[0_12px_28px_rgba(0,0,0,0.45)]"
+                                    className={QUOTE_BRAND_LOGO_IMG_CLASS}
                                   />
                                 </button>
                               ) : (
-                                <div className="relative w-full flex items-center justify-center rounded-[1.75rem] px-7 py-9 md:px-10 md:py-11 min-h-[148px] md:min-h-[180px] bg-blue-950/25 backdrop-blur-md border border-blue-400/25 shadow-[0_24px_60px_-20px_rgba(0,0,0,0.65)] print:bg-white print:border print:border-blue-200 print:shadow-md min-[480px]:min-h-[168px]">
+                                <div className={QUOTE_BRAND_CARD_BLUE_CLASS}>
                                   <img
                                     src={quoteOptimizerQuoteCard.logoSrc}
                                     alt="SolarEdge"
-                                    className="max-h-[7rem] sm:max-h-[8.5rem] md:max-h-[10rem] w-auto max-w-[90%] object-contain drop-shadow-[0_12px_28px_rgba(0,0,0,0.45)]"
+                                    className={QUOTE_BRAND_LOGO_IMG_CLASS}
                                   />
                                 </div>
                               )}
-                              <span className="text-blue-200/95 print:text-blue-900 text-xs text-center leading-snug font-semibold px-1">
+                              <span className={QUOTE_EQUIP_BELOW_CAPTION_CLASS}>
                                 {quoteOptimizerQuoteCard.captionHe}
                                 {quoteOptimizerQuoteCard.datasheet && (
-                                  <span className="block text-[10px] text-blue-300/90 print:text-blue-700 mt-1 font-medium">
-                                    לחץ לצפייה במפרט
-                                  </span>
+                                  <span className={QUOTE_EQUIP_BELOW_HINT_CLASS}>לחץ לצפייה במפרט</span>
                                 )}
                               </span>
                             </>
@@ -2398,7 +2991,7 @@ export default function App() {
                               {quoteOptimizerQuoteCard.datasheet ? (
                                 <button
                                   type="button"
-                                  className="relative w-full flex flex-col items-center justify-center gap-3 rounded-[1.75rem] px-6 py-8 md:px-8 md:py-10 min-h-[148px] md:min-h-[180px] bg-slate-800/35 backdrop-blur-md border border-slate-500/35 shadow-[0_24px_60px_-20px_rgba(0,0,0,0.55)] print:bg-white print:border print:border-slate-200 print:shadow-md print:backdrop-blur-none min-[480px]:min-h-[168px] cursor-pointer transition-transform hover:scale-[1.02] hover:border-orange-400/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400/60"
+                                  className={`${QUOTE_PLAIN_EQUIP_CARD_CLASS} cursor-pointer transition-transform hover:scale-[1.02] hover:border-orange-400/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400/60`}
                                   onClick={() =>
                                     openQuoteDatasheet(
                                       `מפרט טכני — אופטימייזרים (${generatedQuote.optimizerDetails.type})`,
@@ -2406,29 +2999,104 @@ export default function App() {
                                     )
                                   }
                                 >
-                                  <Activity className="h-14 w-14 text-blue-400 print:text-blue-600 shrink-0" aria-hidden />
-                                  <span className="text-center text-xs font-bold text-white print:text-slate-900 px-2">
+                                  <Activity className="h-10 w-10 shrink-0 text-blue-400 print:text-blue-600 md:h-11 md:w-11" aria-hidden />
+                                  <span className="line-clamp-3 px-1 text-center text-[11px] font-bold leading-snug text-white print:text-slate-900 md:text-xs">
                                     {generatedQuote.optimizerDetails.type}
                                   </span>
                                 </button>
                               ) : (
-                                <div className="relative w-full flex flex-col items-center justify-center gap-3 rounded-[1.75rem] px-6 py-8 md:px-8 md:py-10 min-h-[148px] md:min-h-[180px] bg-slate-800/35 backdrop-blur-md border border-slate-500/35 shadow-[0_24px_60px_-20px_rgba(0,0,0,0.55)] print:bg-white print:border print:border-slate-200 print:shadow-md print:backdrop-blur-none min-[480px]:min-h-[168px]">
-                                  <Activity className="h-14 w-14 text-blue-400 print:text-blue-600 shrink-0" aria-hidden />
-                                  <span className="text-center text-xs font-bold text-white print:text-slate-900 px-2">
+                                <div className={QUOTE_PLAIN_EQUIP_CARD_CLASS}>
+                                  <Activity className="h-10 w-10 shrink-0 text-blue-400 print:text-blue-600 md:h-11 md:w-11" aria-hidden />
+                                  <span className="line-clamp-3 px-1 text-center text-[11px] font-bold leading-snug text-white print:text-slate-900 md:text-xs">
                                     {generatedQuote.optimizerDetails.type}
                                   </span>
                                 </div>
                               )}
-                              <span className="text-slate-400/95 print:text-slate-600 text-xs text-center leading-snug font-medium px-1">
+                              <span className={QUOTE_EQUIP_BELOW_CAPTION_CLASS}>
                                 {quoteOptimizerQuoteCard.captionHe}
                                 {quoteOptimizerQuoteCard.datasheet && (
-                                  <span className="block text-[10px] text-orange-300/90 print:text-blue-600 mt-1">
-                                    לחץ לצפייה במפרט
-                                  </span>
+                                  <span className={QUOTE_EQUIP_BELOW_HINT_CLASS}>לחץ לצפייה במפרט</span>
                                 )}
                               </span>
                             </>
                           )}
+                        </div>
+                      )}
+                      {generatedQuote.includesWashing && (
+                        <div className={QUOTE_EQUIPMENT_CELL_CLASS}>
+                          <div className={`${QUOTE_BRAND_CARD_CYAN_CLASS} !gap-0 !p-1 md:!p-1.5`}>
+                            <img
+                              src={QUOTE_WASHING_SYSTEM_IMG}
+                              alt=""
+                              className="h-[10.25rem] w-full rounded-lg object-cover object-center md:h-[11.25rem]"
+                            />
+                          </div>
+                          <span className={QUOTE_EQUIP_BELOW_CAPTION_CLASS}>מערכת שטיפה אוטומטית לפאנלים</span>
+                        </div>
+                      )}
+                      {generatedQuote.feesPayer === 'company' && (
+                        <div className={QUOTE_EQUIPMENT_CELL_CLASS}>
+                          <div className={`${QUOTE_BRAND_CARD_AMBER_CLASS} gap-1.5 md:gap-2`}>
+                            <ShieldCheck
+                              className="h-12 w-12 shrink-0 text-amber-300 drop-shadow-md print:text-amber-700 md:h-14 md:w-14"
+                              aria-hidden
+                            />
+                            <span className="px-1 text-center text-sm font-extrabold leading-tight text-white print:text-slate-900 md:text-base">
+                              אגרות חח״י ורשויות
+                            </span>
+                            <span className="line-clamp-3 px-1 text-center text-xs font-semibold leading-snug text-amber-50 md:text-sm print:text-amber-950">
+                              החברה נושאת בעלות — הכל כלול במחיר ההצעה
+                            </span>
+                          </div>
+                          <span className={QUOTE_EQUIP_BELOW_CAPTION_CLASS}>
+                            ללא חיוב נפרד לאגרות רישוי וחח״י
+                          </span>
+                        </div>
+                      )}
+                      {quoteShowConstructionEquipment && (
+                        <div className={QUOTE_EQUIPMENT_CELL_CLASS}>
+                          {(() => {
+                            const cLogo = normalizeDatasheet(generatedQuote.constructionLogo);
+                            const cDs = normalizeDatasheet(generatedQuote.constructionDatasheet);
+                            const logoSrc =
+                              cLogo?.mimeType?.startsWith('image/') ? datasheetToSrc(cLogo) : null;
+                            const inner = (
+                              <>
+                                {logoSrc ? (
+                                  <div className="rounded-xl bg-white px-2 py-2 shadow-inner ring-1 ring-black/10 print:ring-slate-200 md:px-3 md:py-2.5">
+                                    <img src={logoSrc} alt="" className={QUOTE_BRAND_LOGO_IMG_CLASS} />
+                                  </div>
+                                ) : (
+                                  <HardHat
+                                    className="h-10 w-10 shrink-0 text-sky-300 print:text-sky-700 md:h-12 md:w-12"
+                                    aria-hidden
+                                  />
+                                )}
+                                <span className="text-center text-xs font-bold leading-tight text-white/95 print:text-slate-900 md:text-sm">
+                                  קונסטרוקציה
+                                </span>
+                              </>
+                            );
+                            return (
+                              <>
+                                {cDs ? (
+                                  <button
+                                    type="button"
+                                    className={`${QUOTE_BRAND_CARD_CLASS} cursor-pointer transition-transform hover:scale-[1.02] hover:border-sky-400/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/65`}
+                                    onClick={() => openQuoteDatasheet('מפרט טכני — קונסטרוקציה', cDs)}
+                                  >
+                                    {inner}
+                                  </button>
+                                ) : (
+                                  <div className={QUOTE_BRAND_CARD_CLASS}>{inner}</div>
+                                )}
+                                <span className={QUOTE_EQUIP_BELOW_CAPTION_CLASS}>
+                                  תשתית וקונסטרוקציה
+                                  {cDs && <span className={QUOTE_EQUIP_BELOW_HINT_CLASS}>לחץ לצפייה במפרט</span>}
+                                </span>
+                              </>
+                            );
+                          })()}
                         </div>
                       )}
                     </div>
@@ -2441,17 +3109,40 @@ export default function App() {
                   <div className="mx-auto max-w-5xl">
                     <h3 className="mb-8 text-center text-xl font-black text-blue-900 md:text-2xl">סוללות אגירה בהצעה</h3>
                     <div className="flex flex-wrap items-stretch justify-center gap-6 md:gap-10">
-                      {generatedQuote.batteryDetailsList.map((bat) => (
-                        bat.datasheet ? (
+                      {generatedQuote.batteryDetailsList.map((bat) => {
+                        const batLogoSrc = datasheetToSrc(normalizeDatasheet(bat.logo));
+                        const batThumb = batLogoSrc ? (
+                          <img
+                            src={batLogoSrc}
+                            alt=""
+                            className="h-14 w-14 rounded-2xl border border-blue-100 bg-white object-contain p-1 shadow-inner"
+                          />
+                        ) : (
+                          <BatteryCharging className="h-14 w-14 text-blue-600" />
+                        );
+                        const batThumbMuted = batLogoSrc ? (
+                          <img
+                            src={batLogoSrc}
+                            alt=""
+                            className="h-14 w-14 rounded-2xl border border-slate-200 bg-white object-contain p-1 shadow-inner opacity-95"
+                          />
+                        ) : (
+                          <BatteryCharging className="h-14 w-14 text-slate-400" />
+                        );
+                        return bat.datasheet ? (
                           <button
                             key={bat.id}
                             type="button"
                             onClick={() => openQuoteDatasheet(`מפרט טכני — ${bat.name}`, bat.datasheet)}
                             className="flex w-[min(100%,260px)] flex-col items-center gap-3 rounded-3xl border border-blue-200 bg-white p-6 shadow-md transition-transform hover:scale-[1.02] hover:border-orange-400/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400"
                           >
-                            <BatteryCharging className="h-14 w-14 text-blue-600" />
+                            {batThumb}
                             <span className="text-center text-sm font-bold text-slate-800">{bat.name}</span>
-                            {bat.quantity > 1 && <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-black text-blue-900">×{bat.quantity}</span>}
+                            {bat.quantity > 1 && (
+                              <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-black text-blue-900">
+                                ×{bat.quantity}
+                              </span>
+                            )}
                             <span className="text-[11px] font-semibold text-orange-600">לחץ לצפייה במפרט</span>
                           </button>
                         ) : (
@@ -2459,12 +3150,16 @@ export default function App() {
                             key={bat.id}
                             className="flex w-[min(100%,260px)] flex-col items-center gap-3 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm opacity-90"
                           >
-                            <BatteryCharging className="h-14 w-14 text-slate-400" />
+                            {batThumbMuted}
                             <span className="text-center text-sm font-bold text-slate-700">{bat.name}</span>
-                            {bat.quantity > 1 && <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-700">×{bat.quantity}</span>}
+                            {bat.quantity > 1 && (
+                              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-700">
+                                ×{bat.quantity}
+                              </span>
+                            )}
                           </div>
-                        )
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 </section>
@@ -3192,7 +3887,18 @@ export default function App() {
                     {/* הצגת פרטי היועץ בהצעה */}
                     {generatedQuote?.agentDetails ? (
                       <>
-                        <span className="flex items-center gap-2 bg-blue-100/50 px-3 py-1.5 rounded-lg border border-blue-200"><User className="w-5 h-5 text-blue-600"/> יועץ אישי: {generatedQuote.agentDetails.name}</span>
+                        <span className="flex items-center gap-2 bg-blue-100/50 px-3 py-1.5 rounded-lg border border-blue-200">
+                          {datasheetToSrc(normalizeDatasheet(generatedQuote.agentDetails.photo)) ? (
+                            <img
+                              src={datasheetToSrc(normalizeDatasheet(generatedQuote.agentDetails.photo))}
+                              alt=""
+                              className="h-10 w-10 shrink-0 rounded-full border-2 border-blue-200 object-cover shadow-sm"
+                            />
+                          ) : (
+                            <User className="w-5 h-5 shrink-0 text-blue-600" />
+                          )}
+                          יועץ אישי: {generatedQuote.agentDetails.name}
+                        </span>
                         <span className="flex items-center gap-2"><Phone className="w-5 h-5 text-blue-600"/> {generatedQuote.agentDetails.phone}</span>
                       </>
                     ) : (
