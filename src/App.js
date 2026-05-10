@@ -1178,11 +1178,7 @@ export default function App() {
     if ((generatedQuote.inverterDetailsList || []).length > 0) parts.push('ממירים');
     if (quoteOptimizerQuoteCard) parts.push('אופטימייזרים');
     return joinHebrewEquipmentTitle(parts);
-  }, [
-    generatedQuote?.calculatedNumPanels,
-    generatedQuote?.inverterDetailsList,
-    quoteOptimizerQuoteCard,
-  ]);
+  }, [generatedQuote, quoteOptimizerQuoteCard]);
 
   // חישוב זמן נותר להטבה (לתצוגת הטיימר)
   let timeLeft = { days: 0, hours: 0, minutes: 0, seconds: 0, expired: true };
