@@ -2,12 +2,149 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
+html, body {
   margin: 0;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 #root {
+  width: 100%;
   min-width: 0;
   max-width: 100%;
+  overflow-x: hidden;
+}
+
+/* Chrome/Safari: overflow על גוף המסמך ועל #root גורם לעיתים לדפים ריקים או חיתוך בתצוגת הדפסה / שמירה כ-PDF */
+@media print {
+  @page {
+    size: A4;
+    margin: 11mm 12mm;
+  }
+
+  html,
+  body,
+  #root {
+    overflow: visible !important;
+    overflow-x: visible !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* --- הצעת מחיר ל-PDF: צפיפות, פחות דפים, פחות «ריקים» בין קטעים --- */
+  #quote-presentation {
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    max-width: 100% !important;
+    margin: 0 auto !important;
+    font-size: 10.25pt !important;
+    line-height: 1.38 !important;
+    orphans: 3;
+    widows: 3;
+  }
+
+  #quote-presentation h1 {
+    font-size: 22pt !important;
+    line-height: 1.12 !important;
+    margin: 0 0 0.25em !important;
+  }
+  #quote-presentation h2 {
+    font-size: 14pt !important;
+    line-height: 1.2 !important;
+    margin: 0.35em 0 0.25em !important;
+  }
+  #quote-presentation h3 {
+    font-size: 11.5pt !important;
+    margin: 0.35em 0 0.2em !important;
+  }
+  #quote-presentation h4 {
+    font-size: 10.5pt !important;
+  }
+
+  /* Tailwind spacing זוחל בתוך המצגת — מצמצמים ל-PDF */
+  #quote-presentation .mb-16 {
+    margin-bottom: 0.55rem !important;
+  }
+  #quote-presentation .mb-12 {
+    margin-bottom: 0.45rem !important;
+  }
+  #quote-presentation .mb-11 {
+    margin-bottom: 0.4rem !important;
+  }
+  #quote-presentation .mb-10 {
+    margin-bottom: 0.35rem !important;
+  }
+  #quote-presentation .mb-8 {
+    margin-bottom: 0.35rem !important;
+  }
+  #quote-presentation .py-24 {
+    padding-top: 0.6rem !important;
+    padding-bottom: 0.6rem !important;
+  }
+  #quote-presentation .py-20 {
+    padding-top: 0.55rem !important;
+    padding-bottom: 0.55rem !important;
+  }
+  #quote-presentation .py-16 {
+    padding-top: 0.5rem !important;
+    padding-bottom: 0.5rem !important;
+  }
+  #quote-presentation .py-14 {
+    padding-top: 0.45rem !important;
+    padding-bottom: 0.45rem !important;
+  }
+  #quote-presentation .py-12 {
+    padding-top: 0.45rem !important;
+    padding-bottom: 0.45rem !important;
+  }
+  #quote-presentation .pt-14 {
+    padding-top: 0.45rem !important;
+  }
+  #quote-presentation .pb-16 {
+    padding-bottom: 0.45rem !important;
+  }
+  #quote-presentation .gap-8 {
+    gap: 0.5rem !important;
+  }
+  #quote-presentation .gap-12 {
+    gap: 0.55rem !important;
+  }
+
+  /* גרף תזרים — גובה מוגבל כדי לא לדחוף דף חצי ריק */
+  #quote-presentation .quote-print-cashflow-chart {
+    height: 10rem !important;
+    margin-top: 0.5rem !important;
+    margin-bottom: 0.25rem !important;
+  }
+
+  /* טבלת הלוואה — שורות צפופות יותר */
+  #quote-presentation table {
+    font-size: 8pt !important;
+  }
+  #quote-presentation table th,
+  #quote-presentation table td {
+    padding: 0.12rem 0.2rem !important;
+    line-height: 1.25 !important;
+  }
+
+  /* מחיר גדול בדף */
+  #quote-presentation .text-6xl {
+    font-size: 22pt !important;
+    line-height: 1.1 !important;
+  }
+
+  /* תמונת צוות — לא לגלגל דף שלם */
+  #quote-presentation .quote-print-team-photo {
+    max-height: 78mm !important;
+    width: auto !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    object-fit: contain !important;
+  }
 }
 
 /* === ANIMATION: Fade In === */
@@ -15,8 +152,17 @@ body {
   from { opacity: 0; transform: translateY(12px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+/* ללא fill-mode backwards/blitz שניים — אחרת opacity מתחילה ב־0 וניתן להישאר "דף ריק" אם האנימציה לא רצה */
 .animation-fade-in {
-  animation: fadeIn 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: fadeIn 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animation-fade-in {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
 }
 
 /* === PREMIUM SCROLLBAR === */

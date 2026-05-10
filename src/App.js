@@ -4,8 +4,12 @@ import {
   Calculator, Settings, Sun, User, FileText, CheckCircle, Zap, DollarSign, 
   Trash2, Plus, ChevronDown, ChevronUp, HardHat, BatteryCharging, 
   ShieldCheck, Activity, MapPin, Phone, TrendingUp, Award, Clock, Wrench, AlertCircle,
-  Home, LineChart, Map, Gift, Users, LogOut, PenTool, Loader2, CloudUpload
+  Home, LineChart, Map as MapIcon, Gift, Users, LogOut, PenTool, Loader2, CloudUpload
 } from 'lucide-react';
+
+/** פרמיה אורבנית (חח"י) — תוספת לתעריף המשוקלל בתחשיב ההצעה */
+const URBAN_PREMIUM_AGOROT_PER_KWH = 6;
+const URBAN_PREMIUM_VALID_UNTIL_YEAR = 2042;
 
 const BrandLogoSvg = ({ className }) => (
   <svg viewBox="0 0 100 100" className={className} fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
@@ -36,6 +40,214 @@ const BrandLogo = ({ className }) => {
     />
   );
 };
+
+/** לוגואי יצרני ממירים ב־`public/inverters` (מקור: לוגואים ממירים.docx) */
+const INVERTER_LOGO_KEYS = ['sungrow', 'solaredge', 'growatt', 'solis'];
+
+function inverterLogoSrc(slug) {
+  if (!slug || !INVERTER_LOGO_KEYS.includes(slug)) return null;
+  return `${process.env.PUBLIC_URL}/inverters/${slug}.png`;
+}
+
+function inferInverterLogoSlug(name, isSolarEdge) {
+  const raw = String(name || '');
+  const lower = raw.toLowerCase();
+  if (isSolarEdge || /solaredge|סולאראדג/.test(raw)) return 'solaredge';
+  if (/sungrow/.test(lower) || /סנגרואו|סאנגר/.test(raw)) return 'sungrow';
+  if (/growatt/.test(lower) || /גרואט|גרוואט/.test(raw)) return 'growatt';
+  if (/solis/.test(lower) || /סוליס/.test(raw)) return 'solis';
+  return null;
+}
+
+function resolveInverterLogoSlug(inv) {
+  const manual = inv.inverterLogoKey || 'auto';
+  if (manual === 'none') return null;
+  if (manual !== 'auto') return INVERTER_LOGO_KEYS.includes(manual) ? manual : null;
+  return inferInverterLogoSlug(inv.name, inv.isSolarEdge);
+}
+
+/** סטטיסטיקת לוגואים להצגה בהצעת מחיר (ממוזג לפי סוג לוגו + סכום כמויות) */
+/** כותרת סקשן ציוד: «פאנלים, ממירים ואופטימייזרים בהצעה» */
+function joinHebrewEquipmentTitle(parts) {
+  const p = (parts || []).filter(Boolean);
+  if (!p.length) return 'רכיבים בהצעה';
+  if (p.length === 1) return `${p[0]} בהצעה`;
+  if (p.length === 2) return `${p[0]} ו${p[1]} בהצעה`;
+  return `${p.slice(0, -1).join(', ')} ו${p[p.length - 1]} בהצעה`;
+}
+
+function aggregateInverterLogosForQuote(inverterDetailsList) {
+  const map = new Map();
+  (inverterDetailsList || []).forEach((row) => {
+    const slug = row.logoSlug;
+    if (!slug || !inverterLogoSrc(slug)) return;
+    const prev = map.get(slug);
+    const qty = Number(row.quantity) || 0;
+    if (prev) {
+      prev.quantity += qty;
+      if (!prev.datasheet && row.datasheet) prev.datasheet = row.datasheet;
+    } else {
+      map.set(slug, { slug, quantity: qty, displayName: row.name, datasheet: row.datasheet || null });
+    }
+  });
+  return [...map.values()];
+}
+
+/** דאטהשיט (PDF/תמונה) — נשמר ב-base64 בהגדרות האדמין */
+function normalizeDatasheet(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const { fileName, mimeType, dataBase64 } = raw;
+  if (!dataBase64 || typeof dataBase64 !== 'string' || !mimeType || typeof mimeType !== 'string') return null;
+  return {
+    fileName: typeof fileName === 'string' ? fileName : 'datasheet',
+    mimeType,
+    dataBase64
+  };
+}
+
+function datasheetToSrc(ds) {
+  const n = normalizeDatasheet(ds);
+  if (!n) return null;
+  return `data:${n.mimeType};base64,${n.dataBase64}`;
+}
+
+const DATASHEET_MAX_BYTES = 8 * 1024 * 1024;
+
+function readFileAsDatasheet(file) {
+  return new Promise((resolve, reject) => {
+    if (!file || !file.size) {
+      reject(new Error('קובץ לא תקין'));
+      return;
+    }
+    if (file.size > DATASHEET_MAX_BYTES) {
+      reject(new Error('הקובץ גדול מדי (מקסימום 8MB). נסה PDF דחוס או קובץ קטן יותר.'));
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const res = reader.result;
+      if (typeof res !== 'string') {
+        reject(new Error('קריאת הקובץ נכשלה'));
+        return;
+      }
+      const m = res.match(/^data:([^;]+);base64,(.+)$/);
+      if (!m) {
+        reject(new Error('פורמט קובץ לא נתמך'));
+        return;
+      }
+      resolve({
+        fileName: file.name || 'datasheet',
+        mimeType: m[1] || file.type || 'application/octet-stream',
+        dataBase64: m[2]
+      });
+    };
+    reader.onerror = () => reject(new Error('קריאת הקובץ נכשלה'));
+    reader.readAsDataURL(file);
+  });
+}
+
+/** מסמך PDF סטטי מתיקיית public (למשל הצהרות משרד הבנייה) */
+const ENV_QUALITY_DECLARATIONS_PDF = `${process.env.PUBLIC_URL}/documents/hatsara-misrad-habriyot.pdf`;
+
+/** צפייה ב-PDF מקומי — מסך מלא + חזרה + הורדה */
+function StaticPdfViewer({ open, title, url, downloadFileName, onClose }) {
+  if (!open || !url) return null;
+  return (
+    <div
+      className="fixed inset-0 z-[221] flex flex-col bg-slate-950 text-white print:hidden"
+      dir="rtl"
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+    >
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 bg-slate-900 px-4 py-3 shadow-lg">
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-xl border border-white/20 bg-white/10 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-white/20"
+        >
+          חזרה
+        </button>
+        <span className="min-w-0 flex-1 truncate text-center text-sm font-bold text-slate-100">{title}</span>
+        <a
+          href={url}
+          download={downloadFileName || 'document.pdf'}
+          className="shrink-0 rounded-xl border border-emerald-500/40 bg-emerald-600/20 px-3 py-2 text-xs font-bold text-emerald-200 hover:bg-emerald-600/30"
+        >
+          הורדה
+        </a>
+      </div>
+      <div className="min-h-0 flex-1 bg-slate-900 p-2">
+        <iframe title={title} src={url} className="h-full w-full rounded-lg border-0 bg-white" />
+      </div>
+    </div>
+  );
+}
+
+/** צפייה במפרט טכני בהצעת מחיר (מסך מלא + חזרה) */
+function QuoteDatasheetViewer({ open, title, datasheet, onClose }) {
+  const src = datasheet ? datasheetToSrc(datasheet) : null;
+  const isPdf = datasheet?.mimeType?.includes('pdf');
+  if (!open || !src) return null;
+  return (
+    <div className="fixed inset-0 z-[220] flex flex-col bg-slate-950 text-white print:hidden" dir="rtl" role="dialog" aria-modal="true" aria-label="מפרט טכני">
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 bg-slate-900 px-4 py-3 shadow-lg">
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-xl border border-white/20 bg-white/10 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-white/20"
+        >
+          חזרה
+        </button>
+        <span className="min-w-0 flex-1 truncate text-center text-sm font-bold text-slate-100">{title}</span>
+        <a
+          href={src}
+          download={datasheet.fileName || 'datasheet'}
+          className="shrink-0 rounded-xl border border-emerald-500/40 bg-emerald-600/20 px-3 py-2 text-xs font-bold text-emerald-200 hover:bg-emerald-600/30"
+        >
+          הורדה
+        </a>
+      </div>
+      <div className="min-h-0 flex-1 bg-slate-900 p-2">
+        {isPdf ? (
+          <iframe title={title} src={src} className="h-full w-full rounded-lg border-0 bg-white" />
+        ) : (
+          <div className="flex h-full items-center justify-center overflow-auto rounded-lg bg-black/40 p-4">
+            <img src={src} alt="" className="max-h-full max-w-full object-contain" />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** שורת העלאת דאטהשיט באדמין */
+function AdminDatasheetRow({ label, datasheet, onFile, onClear }) {
+  return (
+    <div className="mt-2 rounded-xl border border-white/10 bg-black/25 p-3">
+      <label className="mb-1 block text-xs text-slate-400">{label}</label>
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          type="file"
+          accept=".pdf,.png,.jpg,.jpeg,.webp,application/pdf,image/png,image/jpeg,image/webp"
+          className="max-w-full cursor-pointer text-xs text-slate-300 file:mr-2 file:rounded-lg file:border-0 file:bg-blue-600 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-white hover:file:bg-blue-500"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) onFile(f);
+            e.target.value = '';
+          }}
+        />
+        {datasheet?.fileName && <span className="max-w-[220px] truncate text-xs text-emerald-400">{datasheet.fileName}</span>}
+        {datasheet && (
+          <button type="button" onClick={onClear} className="text-xs font-semibold text-red-400 hover:text-red-300">
+            הסר קובץ
+          </button>
+        )}
+      </div>
+      <p className="mt-1 text-[10px] text-slate-500">PDF או תמונה עד 8MB — ללא קובץ, לחיצה על התמונה בהצעה לא תעשה כלום.</p>
+    </div>
+  );
+}
 
 // --- רכיב חתימה דיגיטלית (Canvas) ---
 const SignaturePad = ({ onSave }) => {
@@ -134,27 +346,30 @@ const REMEMBER_LOGIN_STORAGE_KEY = 'solar-final-remember-login';
 const DEFAULT_ADMIN_PRICES = {
   panelPricePerWattUsd: 0.11,
   panelPowerWatts: 640,
+  /** דאטהשיט לפאנל (סוג יחיד לפי מחירון) — אופציונלי */
+  panelDatasheet: null,
   usdExchangeRate: 3.75,
   constructionConcretePerKw: 350,
   constructionOtherPerKw: 200,
 
   inverters: [
-    { id: 'inv-se100', name: 'סולאראדג\' 100kW', cost: 15000, capacityKw: 100, isSolarEdge: true },
-    { id: 'inv-se12', name: 'סולאראדג\' 12kW', cost: 4500, capacityKw: 12, isSolarEdge: true },
-    { id: 'inv-sma110', name: 'SMA 110kW', cost: 14000, capacityKw: 110, isSolarEdge: false }
+    { id: 'inv-se100', name: 'סולאראדג\' 100kW', cost: 15000, capacityKw: 100, isSolarEdge: true, inverterLogoKey: 'auto', datasheet: null },
+    { id: 'inv-se12', name: 'סולאראדג\' 12kW', cost: 4500, capacityKw: 12, isSolarEdge: true, inverterLogoKey: 'auto', datasheet: null },
+    { id: 'inv-sma110', name: 'SMA 110kW', cost: 14000, capacityKw: 110, isSolarEdge: false, inverterLogoKey: 'none', datasheet: null }
   ],
 
   invertersHybrid: [
-    { id: 'hinv-se10', name: 'סולאראדג\' Home Hub 10kW', cost: 8500, capacityKw: 10, isSolarEdge: true },
-    { id: 'hinv-deye12', name: 'Deye 12kW', cost: 7000, capacityKw: 12, isSolarEdge: false }
+    { id: 'hinv-se10', name: 'סולאראדג\' Home Hub 10kW', cost: 8500, capacityKw: 10, isSolarEdge: true, inverterLogoKey: 'auto', datasheet: null },
+    { id: 'hinv-deye12', name: 'Deye 12kW', cost: 7000, capacityKw: 12, isSolarEdge: false, inverterLogoKey: 'none', datasheet: null }
   ],
 
   batteries: [
-    { id: 'bat-se10', name: 'סוללה SolarEdge 10kWh', cost: 18000 },
-    { id: 'bat-byd5', name: 'סוללה BYD 5kWh', cost: 9500 }
+    { id: 'bat-se10', name: 'סוללה SolarEdge 10kWh', cost: 18000, datasheet: null },
+    { id: 'bat-byd5', name: 'סוללה BYD 5kWh', cost: 9500, datasheet: null }
   ],
 
   optimizerPrices: { se1to1: 250, se1to2: 350, tigo: 200 },
+  optimizerDatasheets: { se1to1: null, se1to2: null, tigo: null },
   logisticsCost: 3100, laborPerKw: 650, constructorEngineer: 500, hybridBatteryInstallCost: 5700,
   electricalBoxCommercialPerKw: 270, electricalBoxResidential: 870,
   washingSystemBase: 4500, feesCost: 3000, planningCost: 1400, profitResidentialFixed: 21000, profitCommercialPerKw: 630, vatRate: 18,
@@ -180,6 +395,11 @@ function mergeAdminSettingsFromStorage(saved, defaults) {
       ...defaults.optimizerPrices,
       ...(saved.optimizerPrices && typeof saved.optimizerPrices === 'object' ? saved.optimizerPrices : {})
     },
+    optimizerDatasheets: {
+      ...defaults.optimizerDatasheets,
+      ...(saved.optimizerDatasheets && typeof saved.optimizerDatasheets === 'object' ? saved.optimizerDatasheets : {})
+    },
+    panelDatasheet: saved.panelDatasheet != null ? saved.panelDatasheet : defaults.panelDatasheet,
     inverters: Array.isArray(saved.inverters) ? saved.inverters : defaults.inverters,
     invertersHybrid: Array.isArray(saved.invertersHybrid) ? saved.invertersHybrid : defaults.invertersHybrid,
     batteries: Array.isArray(saved.batteries) ? saved.batteries : defaults.batteries,
@@ -346,12 +566,18 @@ export default function App() {
     panelsNorth: 0,
     optimizerAcknowledge: false,
     additionalNotes: '',
+    /** לוגו Tigo בהצעה — רלוונטי כשמסומנים אופטימייזרים מסוג Tigo (לא SolarEdge) */
+    showTigoLogoOnQuote: true,
+    /** פרמיה אורבנית חח"י — בתחשיב מתווספות 6 אגורות לתעריף המשוקלל עד 2042 */
+    hasUrbanPremium: false,
   });
 
   const [generatedQuote, setGeneratedQuote] = useState(null);
   const [errorMsg, setErrorMsg] = useState(''); 
   const [currentTime, setCurrentTime] = useState(Date.now()); 
   const [clientSignature, setClientSignature] = useState(null); // סטייט לשמירת החתימה הדיגיטלית
+  const [quoteDatasheetViewer, setQuoteDatasheetViewer] = useState(null); // { title, datasheet } — צפייה במפרט טכני בהצעה
+  const [envDeclarationsPdfOpen, setEnvDeclarationsPdfOpen] = useState(false);
 
   useEffect(() => {
     let interval = null;
@@ -362,6 +588,10 @@ export default function App() {
     }
     return () => clearInterval(interval);
   }, [activeTab, generatedQuote]);
+
+  useEffect(() => {
+    if (activeTab !== 'quote') setQuoteDatasheetViewer(null);
+  }, [activeTab]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -479,6 +709,45 @@ export default function App() {
 
   const addAdminListItem = (listName, newItemTemplate) => {
     setAdminPrices(prev => ({ ...prev, [listName]: [...prev[listName], { ...newItemTemplate, id: `${listName}-${Date.now()}` }] }));
+  };
+
+  const openQuoteDatasheet = (title, ds) => {
+    const n = normalizeDatasheet(ds);
+    if (!n) return;
+    setQuoteDatasheetViewer({ title, datasheet: n });
+  };
+
+  const attachDatasheetToListItem = async (listName, id, file) => {
+    try {
+      const ds = await readFileAsDatasheet(file);
+      setAdminPrices(prev => ({
+        ...prev,
+        [listName]: prev[listName].map(item => (item.id === id ? { ...item, datasheet: ds } : item))
+      }));
+    } catch (err) {
+      alert(err.message || 'שגיאה בהעלאת הקובץ');
+    }
+  };
+
+  const attachPanelDatasheetFile = async (file) => {
+    try {
+      const ds = await readFileAsDatasheet(file);
+      setAdminPrices(prev => ({ ...prev, panelDatasheet: ds }));
+    } catch (err) {
+      alert(err.message || 'שגיאה בהעלאת הקובץ');
+    }
+  };
+
+  const attachOptimizerDatasheetFile = async (key, file) => {
+    try {
+      const ds = await readFileAsDatasheet(file);
+      setAdminPrices(prev => ({
+        ...prev,
+        optimizerDatasheets: { ...(prev.optimizerDatasheets || {}), [key]: ds }
+      }));
+    } catch (err) {
+      alert(err.message || 'שגיאה בהעלאת הקובץ');
+    }
   };
 
   const handleFormChange = (e) => {
@@ -600,7 +869,15 @@ export default function App() {
       const invData = activeInvertersAdmin.find(i => i.id === sel.id);
       if (invData && sel.quantity > 0) {
         totalInvertersCost += (Number(invData.cost) || 0) * sel.quantity;
-        inverterDetailsList.push({ name: invData.name, quantity: sel.quantity, isHybrid: isHybridSystem, isSolarEdge: invData.isSolarEdge });
+        inverterDetailsList.push({
+          id: invData.id,
+          name: invData.name,
+          quantity: sel.quantity,
+          isHybrid: isHybridSystem,
+          isSolarEdge: invData.isSolarEdge,
+          logoSlug: resolveInverterLogoSlug(invData),
+          datasheet: normalizeDatasheet(invData.datasheet)
+        });
       }
     });
 
@@ -613,13 +890,20 @@ export default function App() {
         const batData = adminPrices.batteries.find(b => b.id === sel.id);
         if (batData && sel.quantity > 0) {
           totalBatteriesCost += (Number(batData.cost) || 0) * sel.quantity;
-          batteryDetailsList.push({ name: batData.name, quantity: sel.quantity });
+          batteryDetailsList.push({
+            id: batData.id,
+            name: batData.name,
+            quantity: sel.quantity,
+            datasheet: normalizeDatasheet(batData.datasheet)
+          });
         }
       });
     }
     
     let optimizersCost = 0;
     let optimizerDetails = { type: 'ללא', quantity: 0 };
+    /** מפתח דאטהשיט באופטימייזרים: se1to1 | se1to2 | tigo */
+    let optimizerKind = null;
     if (quoteForm.includesOptimizers) {
       const seStatus = getSolarEdgeStatus();
       if (seStatus.hasSolarEdge) {
@@ -627,15 +911,18 @@ export default function App() {
           const optQty = Math.ceil(numPanels / 2);
           optimizersCost = optQty * (Number(adminPrices.optimizerPrices?.se1to2) || 350);
           optimizerDetails = { type: 'SolarEdge 1:2', quantity: optQty };
+          optimizerKind = 'se1to2';
         } else {
           const optQty = numPanels;
           optimizersCost = optQty * (Number(adminPrices.optimizerPrices?.se1to1) || 250);
           optimizerDetails = { type: 'SolarEdge 1:1', quantity: optQty };
+          optimizerKind = 'se1to1';
         }
       } else {
         const optQty = parseInt(quoteForm.tigoQuantity) || 0;
         optimizersCost = optQty * (Number(adminPrices.optimizerPrices?.tigo) || 200);
         optimizerDetails = { type: 'Tigo (טייגו)', quantity: optQty };
+        optimizerKind = 'tigo';
       }
     }
 
@@ -670,7 +957,11 @@ export default function App() {
     
     const finalPrice = (totalBaseCost + profitValue) || 0;
 
-    const calculatedTariff = calculateTariff(acKw);
+    const baseCalculatedTariff = calculateTariff(acKw);
+    const hasUrbanPremium = Boolean(quoteForm.hasUrbanPremium);
+    const calculatedTariff = hasUrbanPremium
+      ? baseCalculatedTariff + URBAN_PREMIUM_AGOROT_PER_KWH / 100
+      : baseCalculatedTariff;
     const baseProductionHours = Number(adminPrices.productionHours) > 0 ? Number(adminPrices.productionHours) : 1700;
     let productionHoursValid = baseProductionHours;
     let orientationDetails = null;
@@ -787,8 +1078,14 @@ export default function App() {
       inverterDetailsList,
       batteryDetailsList,
       optimizerDetails,
+      optimizerKind,
+      optimizerDatasheet: optimizerKind ? normalizeDatasheet(adminPrices.optimizerDatasheets?.[optimizerKind]) : null,
+      panelDatasheet: normalizeDatasheet(adminPrices.panelDatasheet),
       hasBatteries,
+      baseCalculatedTariff,
       calculatedTariff,
+      urbanPremiumAgorotPerKwh: hasUrbanPremium ? URBAN_PREMIUM_AGOROT_PER_KWH : 0,
+      urbanPremiumValidUntilYear: hasUrbanPremium ? URBAN_PREMIUM_VALID_UNTIL_YEAR : null,
       requiredConnectionAmps,
       estimatedYearlyProductionKwh: estimatedYearlyProductionKwhYear1,
       estimatedYearlySavings: estimatedYearlySavingsYear1,
@@ -816,6 +1113,76 @@ export default function App() {
   };
 
   const seStatusDisplay = getSolarEdgeStatus();
+
+  const aggregatedQuoteInverterLogos = useMemo(
+    () => aggregateInverterLogosForQuote(generatedQuote?.inverterDetailsList),
+    [generatedQuote?.inverterDetailsList]
+  );
+
+  /** ממירים ללא קובץ לוגו ב־public — עדיין מוצגים כרטיס טקסט */
+  const quoteInvertersWithoutLogoAsset = useMemo(() => {
+    const list = generatedQuote?.inverterDetailsList || [];
+    return list.filter((inv) => !inv.logoSlug || !inverterLogoSrc(inv.logoSlug));
+  }, [generatedQuote?.inverterDetailsList]);
+
+  /** כרטיס אופטימייזרים בהצעה (טייגו / סולאראדג' / כללי) */
+  const quoteOptimizerQuoteCard = useMemo(() => {
+    if (!generatedQuote?.includesOptimizers) return null;
+    const qty = Number(generatedQuote.optimizerDetails?.quantity) || 0;
+    if (qty <= 0) return null;
+    const typeLabel = String(generatedQuote.optimizerDetails?.type || '').trim();
+    const ds = generatedQuote.optimizerDatasheet;
+    const lower = typeLabel.toLowerCase();
+    if (/tigo|טייגו/.test(lower)) {
+      if (!generatedQuote.showTigoLogoOnQuote) return null;
+      return {
+        variant: 'tigo',
+        quantity: qty,
+        datasheet: ds,
+        captionHe: `אופטימייזרים Tigo (${qty} יח')`,
+      };
+    }
+    if (/solaredge|סולאראדג/.test(lower)) {
+      return {
+        variant: 'solaredge',
+        quantity: qty,
+        datasheet: ds,
+        captionHe: `אופטימייזרים ${typeLabel} (${qty} יח')`,
+        logoSrc: `${process.env.PUBLIC_URL}/inverters/solaredge.png`,
+      };
+    }
+    return {
+      variant: 'generic',
+      quantity: qty,
+      datasheet: ds,
+      captionHe: `אופטימייזרים (${typeLabel}) (${qty} יח')`,
+    };
+  }, [
+    generatedQuote?.includesOptimizers,
+    generatedQuote?.optimizerDetails?.quantity,
+    generatedQuote?.optimizerDetails?.type,
+    generatedQuote?.optimizerDatasheet,
+    generatedQuote?.showTigoLogoOnQuote,
+  ]);
+
+  const quoteShowEquipmentBrandsSection =
+    !!generatedQuote &&
+    ((generatedQuote.calculatedNumPanels || 0) > 0 ||
+      (generatedQuote.inverterDetailsList || []).length > 0 ||
+      quoteOptimizerQuoteCard != null);
+
+  const quoteEquipmentBrandsTitle = useMemo(() => {
+    if (!generatedQuote) return joinHebrewEquipmentTitle([]);
+    const parts = [];
+    if ((generatedQuote.calculatedNumPanels || 0) > 0) parts.push('פאנלים');
+    if ((generatedQuote.inverterDetailsList || []).length > 0) parts.push('ממירים');
+    if (quoteOptimizerQuoteCard) parts.push('אופטימייזרים');
+    return joinHebrewEquipmentTitle(parts);
+  }, [
+    generatedQuote?.calculatedNumPanels,
+    generatedQuote?.inverterDetailsList,
+    quoteOptimizerQuoteCard,
+  ]);
 
   // חישוב זמן נותר להטבה (לתצוגת הטיימר)
   let timeLeft = { days: 0, hours: 0, minutes: 0, seconds: 0, expired: true };
@@ -923,16 +1290,16 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen text-slate-200 font-sans p-4 md:p-8 relative overflow-x-hidden" dir="rtl"
+    <div className="min-h-screen text-slate-200 font-sans p-4 md:p-8 relative overflow-x-hidden print:!bg-white print:min-h-0 print:h-auto print:p-0 print:overflow-visible" dir="rtl"
          style={{ background: 'linear-gradient(160deg, #060d1c 0%, #091526 50%, #0b1a2e 100%)' }}>
       {/* Ambient glow top-right */}
-      <div className="fixed top-0 right-0 w-[500px] h-[500px] rounded-full opacity-10 pointer-events-none"
+      <div className="fixed top-0 right-0 w-[500px] h-[500px] rounded-full opacity-10 pointer-events-none print:hidden"
            style={{ background: 'radial-gradient(circle, rgba(249,115,22,0.5) 0%, transparent 70%)' }}></div>
       {/* Ambient glow bottom-left */}
-      <div className="fixed bottom-0 left-0 w-[400px] h-[400px] rounded-full opacity-8 pointer-events-none"
+      <div className="fixed bottom-0 left-0 w-[400px] h-[400px] rounded-full opacity-8 pointer-events-none print:hidden"
            style={{ background: 'radial-gradient(circle, rgba(59,130,246,0.4) 0%, transparent 70%)' }}></div>
 
-      <div className="max-w-5xl mx-auto relative z-10">
+      <div className="max-w-5xl mx-auto relative z-10 print:max-w-none">
         
         {/* Header (Top Nav) */}
         <header className="flex items-center justify-between mb-10 print:hidden">
@@ -976,7 +1343,7 @@ export default function App() {
           </nav>
         </header>
 
-        <main className="min-w-0 max-w-full">
+        <main className="min-w-0 max-w-full print:overflow-visible">
           {/* ================= ADMIN TAB ================= */}
           {activeTab === 'admin' && currentUser.role === 'admin' && (
             <div className="space-y-4 animation-fade-in">
@@ -988,7 +1355,7 @@ export default function App() {
                 <p className="text-slate-500">הזן את מחירי העלות של הרכיבים. כל העלויות המוזנות צריכות להיות לפני מע"מ.</p>
                 <p className="text-slate-600 text-sm mt-2 max-w-2xl">
                   {supabase
-                    ? 'הגדרות המחירון והסוכנים נשמרות בענן (Supabase) ומתעדכנות בכל המכשירים. עדיין נשמר עותק מקומי בדפדפן לגיבוי ולמהירות.'
+                    ? 'הגדרות המחירון והיועצים נשמרות בענן (Supabase) ומתעדכנות בכל המכשירים. עדיין נשמר עותק מקומי בדפדפן לגיבוי ולמהירות.'
                     : 'הגדרות נשמרות בדפדפן (localStorage) בלבד. להפעלת סנכרון בין מכשירים: הגדרו REACT_APP_SUPABASE_URL ו-REACT_APP_SUPABASE_ANON_KEY (ראו .env.example ו-supabase/schema.sql).'}
                 </p>
                 {supabase && (
@@ -1023,23 +1390,23 @@ export default function App() {
               <div className="rounded-2xl overflow-hidden shadow-xl transition-all border border-white/8"
                    style={{ background: 'linear-gradient(160deg, rgba(255,255,255,0.055) 0%, rgba(255,255,255,0.025) 100%)' }}>
                 <button onClick={() => setOpenAdminSection(prev => prev === 'agents' ? null : 'agents')} className="w-full flex items-center justify-between p-5 hover:bg-white/5 transition-colors">
-                  <div className="flex items-center gap-3"><Users className="w-5 h-5 text-orange-400" /><h3 className="text-lg font-semibold text-white">ניהול סוכני מכירות</h3></div>
+                  <div className="flex items-center gap-3"><Users className="w-5 h-5 text-orange-400" /><h3 className="text-lg font-semibold text-white">ניהול יועצי מכירות</h3></div>
                   {openAdminSection === 'agents' ? <ChevronUp className="w-5 h-5 text-slate-400" /> : <ChevronDown className="w-5 h-5 text-slate-400" />}
                 </button>
                 {openAdminSection === 'agents' && (
                   <div className="p-6 pt-2 border-t border-white/8 space-y-4">
-                    <p className="text-sm text-slate-400 mb-4">הוסף את הסוכנים של החברה. תעודת הזהות תשמש כסיסמת ההתחברות שלהם. בעת הפקת הצעת מחיר, פרטי הסוכן והטלפון שלו יופיעו אוטומטית בהצעה ובלחצן הווטסאפ.</p>
+                    <p className="text-sm text-slate-400 mb-4">הוסף את היועצים של החברה. תעודת הזהות תשמש כסיסמת ההתחברות שלהם. בהצעת המחיר מוצגים כ«יועץ אישי» — השם והטלפון יופיעו אוטומטית ובלחצן הווטסאפ.</p>
                     <div className="space-y-3">
                       {adminPrices.agents.map(agent => (
                         <div key={agent.id} className="grid grid-cols-1 md:grid-cols-4 gap-3 p-4 bg-black/20 border border-white/8 rounded-xl items-end relative pr-10 md:pr-4">
                           <button onClick={() => removeAdminListItem('agents', agent.id)} className="absolute top-4 right-4 text-slate-500 hover:text-red-400 transition-colors"><Trash2 className="w-5 h-5" /></button>
-                          <div><label className="text-slate-500 text-xs block mb-1">שם מלא</label><input type="text" value={agent.name} onChange={(e) => updateAdminListItem('agents', agent.id, 'name', e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-white outline-none focus:border-blue-500/60 transition-all" placeholder="שם הסוכן" /></div>
+                          <div><label className="text-slate-500 text-xs block mb-1">שם מלא</label><input type="text" value={agent.name} onChange={(e) => updateAdminListItem('agents', agent.id, 'name', e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-white outline-none focus:border-blue-500/60 transition-all" placeholder="שם היועץ" /></div>
                           <div><label className="text-slate-500 text-xs block mb-1">טלפון (לווטסאפ)</label><input type="text" value={agent.phone} onChange={(e) => updateAdminListItem('agents', agent.id, 'phone', e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-white outline-none focus:border-blue-500/60 transition-all" placeholder="050-0000000" dir="ltr" /></div>
                           <div><label className="text-slate-500 text-xs block mb-1">מספר ת"ז (להתחברות)</label><input type="text" value={agent.tz} onChange={(e) => updateAdminListItem('agents', agent.id, 'tz', e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-white outline-none focus:border-blue-500/60 transition-all font-mono tracking-widest text-center" /></div>
                         </div>
                       ))}
-                      <button onClick={() => addAdminListItem('agents', { name: 'סוכן חדש', phone: '050-', tz: '' })} className="w-full mt-2 flex items-center justify-center gap-2 bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/20 text-orange-400 p-3 rounded-xl font-medium transition-all">
-                        <Plus className="w-5 h-5" /> הוסף סוכן למערכת
+                      <button onClick={() => addAdminListItem('agents', { name: 'יועץ חדש', phone: '050-', tz: '' })} className="w-full mt-2 flex items-center justify-center gap-2 bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/20 text-orange-400 p-3 rounded-xl font-medium transition-all">
+                        <Plus className="w-5 h-5" /> הוסף יועץ למערכת
                       </button>
                     </div>
                   </div>
@@ -1075,6 +1442,12 @@ export default function App() {
                         <input type="number" step="0.01" name="usdExchangeRate" value={adminPrices.usdExchangeRate} onChange={handleAdminChange} className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-blue-500/60 transition-all" />
                       </div>
                     </div>
+                    <AdminDatasheetRow
+                      label="דאטהשיט / מפרט טכני לפאנל (PDF או תמונה)"
+                      datasheet={adminPrices.panelDatasheet}
+                      onFile={attachPanelDatasheetFile}
+                      onClear={() => setAdminPrices(prev => ({ ...prev, panelDatasheet: null }))}
+                    />
                   </div>
                 )}
               </div>
@@ -1102,10 +1475,28 @@ export default function App() {
                   {openAdminSection === 'optimizers' ? <ChevronUp className="w-5 h-5 text-slate-400" /> : <ChevronDown className="w-5 h-5 text-slate-400" />}
                 </button>
                 {openAdminSection === 'optimizers' && (
-                  <div className="p-6 pt-2 border-t border-white/8 space-y-3">
-                    <div className="flex items-center gap-3"><span className="text-sm text-slate-300 w-1/2">SolarEdge 1:1 (₪)</span><input type="number" name="se1to1" value={adminPrices.optimizerPrices.se1to1} onChange={handleOptimizerPriceChange} className="w-1/2 bg-white/5 border border-white/10 rounded-xl p-2 text-white outline-none focus:border-blue-500/60 transition-all" /></div>
-                    <div className="flex items-center gap-3"><span className="text-sm text-slate-300 w-1/2">SolarEdge 1:2 (₪)</span><input type="number" name="se1to2" value={adminPrices.optimizerPrices.se1to2} onChange={handleOptimizerPriceChange} className="w-1/2 bg-white/5 border border-white/10 rounded-xl p-2 text-white outline-none focus:border-blue-500/60 transition-all" /></div>
-                    <div className="flex items-center gap-3"><span className="text-sm text-slate-300 w-1/2">טייגו (Tigo) (₪)</span><input type="number" name="tigo" value={adminPrices.optimizerPrices.tigo} onChange={handleOptimizerPriceChange} className="w-1/2 bg-white/5 border border-white/10 rounded-xl p-2 text-white outline-none focus:border-blue-500/60 transition-all" /></div>
+                  <div className="p-6 pt-2 border-t border-white/8 space-y-4">
+                    <div className="flex flex-wrap items-center gap-3"><span className="text-sm text-slate-300 w-full shrink-0 sm:w-[42%]">SolarEdge 1:1 (₪)</span><input type="number" name="se1to1" value={adminPrices.optimizerPrices.se1to1} onChange={handleOptimizerPriceChange} className="min-w-[8rem] flex-1 bg-white/5 border border-white/10 rounded-xl p-2 text-white outline-none focus:border-blue-500/60 transition-all" /></div>
+                    <AdminDatasheetRow
+                      label="דאטהשיט לאופטימייזר SolarEdge 1:1"
+                      datasheet={adminPrices.optimizerDatasheets?.se1to1}
+                      onFile={(f) => attachOptimizerDatasheetFile('se1to1', f)}
+                      onClear={() => setAdminPrices(prev => ({ ...prev, optimizerDatasheets: { ...prev.optimizerDatasheets, se1to1: null } }))}
+                    />
+                    <div className="flex flex-wrap items-center gap-3"><span className="text-sm text-slate-300 w-full shrink-0 sm:w-[42%]">SolarEdge 1:2 (₪)</span><input type="number" name="se1to2" value={adminPrices.optimizerPrices.se1to2} onChange={handleOptimizerPriceChange} className="min-w-[8rem] flex-1 bg-white/5 border border-white/10 rounded-xl p-2 text-white outline-none focus:border-blue-500/60 transition-all" /></div>
+                    <AdminDatasheetRow
+                      label="דאטהשיט לאופטימייזר SolarEdge 1:2"
+                      datasheet={adminPrices.optimizerDatasheets?.se1to2}
+                      onFile={(f) => attachOptimizerDatasheetFile('se1to2', f)}
+                      onClear={() => setAdminPrices(prev => ({ ...prev, optimizerDatasheets: { ...prev.optimizerDatasheets, se1to2: null } }))}
+                    />
+                    <div className="flex flex-wrap items-center gap-3"><span className="text-sm text-slate-300 w-full shrink-0 sm:w-[42%]">טייגו (Tigo) (₪)</span><input type="number" name="tigo" value={adminPrices.optimizerPrices.tigo} onChange={handleOptimizerPriceChange} className="min-w-[8rem] flex-1 bg-white/5 border border-white/10 rounded-xl p-2 text-white outline-none focus:border-blue-500/60 transition-all" /></div>
+                    <AdminDatasheetRow
+                      label="דאטהשיט לאופטימייזר Tigo"
+                      datasheet={adminPrices.optimizerDatasheets?.tigo}
+                      onFile={(f) => attachOptimizerDatasheetFile('tigo', f)}
+                      onClear={() => setAdminPrices(prev => ({ ...prev, optimizerDatasheets: { ...prev.optimizerDatasheets, tigo: null } }))}
+                    />
                   </div>
                 )}
               </div>
@@ -1136,9 +1527,30 @@ export default function App() {
                               <input type="checkbox" checked={inv.isSolarEdge} onChange={(e) => updateAdminListItem('inverters', inv.id, 'isSolarEdge', e.target.checked)} className="w-4 h-4 accent-blue-500" />
                               <span className="text-xs text-blue-300">הגדר כממיר סולאראדג'</span>
                             </label>
+                            <div className="w-full mt-2">
+                              <label className="text-slate-500 text-xs block mb-1">לוגו בהצעת מחיר</label>
+                              <select
+                                value={inv.inverterLogoKey || 'auto'}
+                                onChange={(e) => updateAdminListItem('inverters', inv.id, 'inverterLogoKey', e.target.value)}
+                                className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-white text-sm outline-none focus:border-blue-500/60"
+                              >
+                                <option value="auto">אוטומטי לפי שם</option>
+                                <option value="solaredge">SolarEdge</option>
+                                <option value="sungrow">Sungrow</option>
+                                <option value="growatt">Growatt</option>
+                                <option value="solis">Solis</option>
+                                <option value="none">ללא לוגו</option>
+                              </select>
+                            </div>
+                            <AdminDatasheetRow
+                              label="דאטהשיט / מפרט טכני לממיר"
+                              datasheet={inv.datasheet}
+                              onFile={(f) => attachDatasheetToListItem('inverters', inv.id, f)}
+                              onClear={() => updateAdminListItem('inverters', inv.id, 'datasheet', null)}
+                            />
                           </div>
                         ))}
-                        <button onClick={() => addAdminListItem('inverters', { name: 'ממיר חדש', cost: 0, capacityKw: 10, isSolarEdge: false })} className="w-full mt-2 flex items-center justify-center gap-2 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 text-blue-400 p-2 rounded-xl text-sm transition-all">
+                        <button onClick={() => addAdminListItem('inverters', { name: 'ממיר חדש', cost: 0, capacityKw: 10, isSolarEdge: false, inverterLogoKey: 'auto', datasheet: null })} className="w-full mt-2 flex items-center justify-center gap-2 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 text-blue-400 p-2 rounded-xl text-sm transition-all">
                           <Plus className="w-4 h-4" /> הוסף ממיר אונגריד
                         </button>
                       </div>
@@ -1160,9 +1572,30 @@ export default function App() {
                               <input type="checkbox" checked={inv.isSolarEdge} onChange={(e) => updateAdminListItem('invertersHybrid', inv.id, 'isSolarEdge', e.target.checked)} className="w-4 h-4 accent-blue-500" />
                               <span className="text-xs text-blue-300">הגדר כממיר סולאראדג'</span>
                             </label>
+                            <div className="w-full mt-2">
+                              <label className="text-slate-500 text-xs block mb-1">לוגו בהצעת מחיר</label>
+                              <select
+                                value={inv.inverterLogoKey || 'auto'}
+                                onChange={(e) => updateAdminListItem('invertersHybrid', inv.id, 'inverterLogoKey', e.target.value)}
+                                className="w-full bg-white/5 border border-white/10 rounded-lg p-2 text-white text-sm outline-none focus:border-blue-500/60"
+                              >
+                                <option value="auto">אוטומטי לפי שם</option>
+                                <option value="solaredge">SolarEdge</option>
+                                <option value="sungrow">Sungrow</option>
+                                <option value="growatt">Growatt</option>
+                                <option value="solis">Solis</option>
+                                <option value="none">ללא לוגו</option>
+                              </select>
+                            </div>
+                            <AdminDatasheetRow
+                              label="דאטהשיט / מפרט טכני לממיר"
+                              datasheet={inv.datasheet}
+                              onFile={(f) => attachDatasheetToListItem('invertersHybrid', inv.id, f)}
+                              onClear={() => updateAdminListItem('invertersHybrid', inv.id, 'datasheet', null)}
+                            />
                           </div>
                         ))}
-                        <button onClick={() => addAdminListItem('invertersHybrid', { name: 'ממיר היברידי חדש', cost: 0, capacityKw: 10, isSolarEdge: false })} className="w-full mt-2 flex items-center justify-center gap-2 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 text-blue-400 p-2 rounded-xl text-sm transition-all">
+                        <button onClick={() => addAdminListItem('invertersHybrid', { name: 'ממיר היברידי חדש', cost: 0, capacityKw: 10, isSolarEdge: false, inverterLogoKey: 'auto', datasheet: null })} className="w-full mt-2 flex items-center justify-center gap-2 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 text-blue-400 p-2 rounded-xl text-sm transition-all">
                           <Plus className="w-4 h-4" /> הוסף ממיר היברידי
                         </button>
                       </div>
@@ -1181,16 +1614,24 @@ export default function App() {
                 {openAdminSection === 'batteries' && (
                   <div className="p-6 pt-2 border-t border-white/8 space-y-3">
                      {adminPrices.batteries.map(bat => (
-                        <div key={bat.id} className="flex items-center gap-2 p-3 bg-black/20 border border-white/8 rounded-xl">
-                          <input type="text" value={bat.name} onChange={(e) => updateAdminListItem('batteries', bat.id, 'name', e.target.value)} className="flex-1 bg-transparent text-white outline-none focus:border-blue-400 transition-all" />
-                          <div className="flex items-center gap-1 border-r border-white/10 pr-2">
-                             <span className="text-slate-400 text-sm">₪</span>
-                             <input type="number" value={bat.cost} onChange={(e) => updateAdminListItem('batteries', bat.id, 'cost', parseFloat(e.target.value)||0)} className="w-24 bg-transparent text-white outline-none focus:border-blue-400 transition-all" />
+                        <div key={bat.id} className="space-y-2 p-3 bg-black/20 border border-white/8 rounded-xl">
+                          <div className="flex items-center gap-2">
+                            <input type="text" value={bat.name} onChange={(e) => updateAdminListItem('batteries', bat.id, 'name', e.target.value)} className="flex-1 bg-transparent text-white outline-none focus:border-blue-400 transition-all" />
+                            <div className="flex items-center gap-1 border-r border-white/10 pr-2">
+                               <span className="text-slate-400 text-sm">₪</span>
+                               <input type="number" value={bat.cost} onChange={(e) => updateAdminListItem('batteries', bat.id, 'cost', parseFloat(e.target.value)||0)} className="w-24 bg-transparent text-white outline-none focus:border-blue-400 transition-all" />
+                            </div>
+                            <button onClick={() => removeAdminListItem('batteries', bat.id)} className="p-2 text-slate-500 hover:text-red-400 transition-colors"><Trash2 className="w-4 h-4" /></button>
                           </div>
-                          <button onClick={() => removeAdminListItem('batteries', bat.id)} className="p-2 text-slate-500 hover:text-red-400 transition-colors"><Trash2 className="w-4 h-4" /></button>
+                          <AdminDatasheetRow
+                            label="דאטהשיט לסוללה"
+                            datasheet={bat.datasheet}
+                            onFile={(f) => attachDatasheetToListItem('batteries', bat.id, f)}
+                            onClear={() => updateAdminListItem('batteries', bat.id, 'datasheet', null)}
+                          />
                         </div>
                      ))}
-                     <button onClick={() => addAdminListItem('batteries', { name: 'סוללה חדשה', cost: 0 })} className="mt-3 flex items-center gap-1 text-sm text-blue-400 hover:text-blue-300 transition-colors">
+                     <button onClick={() => addAdminListItem('batteries', { name: 'סוללה חדשה', cost: 0, datasheet: null })} className="mt-3 flex items-center gap-1 text-sm text-blue-400 hover:text-blue-300 transition-colors">
                         <Plus className="w-4 h-4" /> הוסף סוללה למחירון
                      </button>
                   </div>
@@ -1329,6 +1770,21 @@ export default function App() {
                           className="w-full min-w-0 max-w-full bg-white/5 border border-white/10 rounded-xl p-3.5 text-white outline-none transition-all duration-200 focus:border-blue-500/60 focus:bg-white/8"
                           onFocus={e => e.target.style.boxShadow='0 0 0 3px rgba(59,130,246,0.18)'} onBlur={e => e.target.style.boxShadow='none'} />
                       </div>
+                      <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-3 transition-colors hover:border-emerald-500/35 hover:bg-white/[0.07]">
+                        <input
+                          type="checkbox"
+                          name="hasUrbanPremium"
+                          checked={quoteForm.hasUrbanPremium}
+                          onChange={handleFormChange}
+                          className="mt-1 h-4 w-4 shrink-0 rounded border-white/20 bg-slate-900 accent-emerald-500"
+                        />
+                        <span className="min-w-0 text-sm leading-snug text-slate-200">
+                          <span className="font-bold text-white">פרמיה אורבנית (חח&quot;י)</span>
+                          <span className="mt-1 block text-xs text-slate-400">
+                            סמן כשהאתר זכאי לפרמיה אורבנית — בתחשיב יתווספו {URBAN_PREMIUM_AGOROT_PER_KWH} אגורות לתעריף המשוקלל עד שנת {URBAN_PREMIUM_VALID_UNTIL_YEAR}.
+                          </span>
+                        </span>
+                      </label>
                     </div>
                   </div>
                 </div>
@@ -1454,11 +1910,17 @@ export default function App() {
                           <span className="block text-white font-semibold">כולל אופטימייזרים (Optimizers)</span>
                         </label>
                         {quoteForm.includesOptimizers && (
-                          <div className="px-4 pb-4 pt-2 border-t border-white/8 bg-black/15 ml-12">
+                          <div className="px-4 pb-4 pt-2 border-t border-white/8 bg-black/15 ml-12 space-y-3">
                             {seStatusDisplay.hasSolarEdge ? (
                                <p className="text-sm text-blue-300">זוהה ממיר SolarEdge במערכת ({seStatusDisplay.maxSECapacity > 15 ? 'מסוג 1:2' : 'מסוג 1:1'}).</p>
                             ) : (
-                               <div className="flex items-center gap-3 mt-1"><label className="text-sm text-slate-400">כמות Tigo:</label><input type="number" min="1" name="tigoQuantity" value={quoteForm.tigoQuantity} onChange={handleFormChange} className="w-24 bg-white/5 border border-white/10 rounded-xl p-2 text-white focus:border-blue-500/60 transition-all" /></div>
+                               <>
+                                 <div className="flex flex-wrap items-center gap-3 mt-1"><label className="text-sm text-slate-400">כמות Tigo:</label><input type="number" min="1" name="tigoQuantity" value={quoteForm.tigoQuantity} onChange={handleFormChange} className="w-24 bg-white/5 border border-white/10 rounded-xl p-2 text-white focus:border-blue-500/60 transition-all" /></div>
+                                 <label className="flex items-center gap-3 cursor-pointer rounded-xl bg-black/20 border border-white/10 p-3 hover:bg-white/5 transition-colors">
+                                   <input type="checkbox" name="showTigoLogoOnQuote" checked={quoteForm.showTigoLogoOnQuote} onChange={handleFormChange} className="w-5 h-5 accent-emerald-600 rounded shrink-0" />
+                                   <span className="text-sm text-slate-200 font-medium">הצג לוגו Tigo בהצעת המחיר (מערכת עם אופטימייזרים)</span>
+                                 </label>
+                               </>
                             )}
                           </div>
                         )}
@@ -1598,7 +2060,20 @@ export default function App() {
 
           {/* ================= QUOTE PRESENTATION TAB ================= */}
           {activeTab === 'quote' && generatedQuote && (
-            <div className="animation-fade-in pb-20">
+            <div className="animation-fade-in pb-20 print:pb-0 print:overflow-visible">
+              <QuoteDatasheetViewer
+                open={Boolean(quoteDatasheetViewer)}
+                title={quoteDatasheetViewer?.title || ''}
+                datasheet={quoteDatasheetViewer?.datasheet}
+                onClose={() => setQuoteDatasheetViewer(null)}
+              />
+              <StaticPdfViewer
+                open={envDeclarationsPdfOpen}
+                title="הצהרות איכות הסביבה — משרד הבינוי והשיכון"
+                url={ENV_QUALITY_DECLARATIONS_PDF}
+                downloadFileName="hatsara-misrad-habriyot.pdf"
+                onClose={() => setEnvDeclarationsPdfOpen(false)}
+              />
               {/* Toolbar */}
               <div className="max-w-6xl mx-auto flex justify-between items-center mb-8 px-4 print:hidden">
                  <button onClick={() => setActiveTab('sales')}
@@ -1611,17 +2086,42 @@ export default function App() {
                    <FileText className="w-4 h-4"/> הדפס לקובץ PDF
                  </button>
               </div>
+
+              <div className="max-w-6xl mx-auto mb-8 px-4 print:hidden">
+                <button
+                  type="button"
+                  onClick={() => setEnvDeclarationsPdfOpen(true)}
+                  className="flex w-full items-center justify-center gap-3 rounded-full bg-gradient-to-r from-orange-500 via-orange-500 to-orange-600 py-4 px-6 text-base font-black text-white shadow-xl ring-1 ring-orange-400/30 transition-all hover:from-orange-600 hover:to-orange-700 hover:shadow-2xl hover:ring-orange-300/40 active:scale-[0.99]"
+                  style={{ boxShadow: '0 18px 40px -12px rgba(249,115,22,0.55)' }}
+                >
+                  <span className="tracking-tight">הצהרות של איכות הסביבה</span>
+                  <FileText className="h-6 w-6 shrink-0 opacity-95" aria-hidden />
+                </button>
+                <p className="mt-2 text-center text-[11px] text-slate-500">
+                  המסמך נטען מהמערכת — לחיצה פותחת תצוגה; אין צורך להוריד קובץ נפרד לצפייה.
+                </p>
+              </div>
               
               <div id="quote-presentation" className="bg-white text-slate-900 shadow-2xl max-w-6xl mx-auto font-sans relative">
                 
                 {/* --- PAGE 1: HERO COVER --- */}
-                <section className="relative h-[80vh] min-h-[640px] flex flex-col justify-center px-8 md:px-16 lg:px-20 print:h-[100vh] overflow-hidden isolate">
-                   {/* תמונת רקע מלאה — הפאנלים בולטים משמאל, גרדיאנט כהה מאחורי הטקסט (ימין בעברית) */}
-                   <div className="absolute inset-0 z-0">
+                <section className="relative h-[80vh] min-h-[640px] flex flex-col justify-center px-8 md:px-16 lg:px-20 print:h-auto print:min-h-0 print:flex-col print:justify-start print:gap-4 print:overflow-hidden print:py-8 md:print:py-10 overflow-hidden print:overflow-hidden isolate print:isolation-auto">
+                   {/* תמונת רקע מלאה — הפאנלים בולטים משמאל, גרדיאנט כהה מאחורי הטקסט (ימין בעברית); ב-PDF פס קומפקטי כדי לא לבזבז דף */}
+                   <div className="absolute inset-0 z-0 print:relative print:inset-auto print:h-[56mm] print:max-h-[56mm] print:w-full print:flex-shrink-0 print:overflow-hidden">
                      <img
                        src={`${process.env.PUBLIC_URL}/hero-solar-rooftop.png`}
                        alt=""
-                       className="h-full w-full object-cover object-[50%_65%] md:object-[50%_60%] scale-105 print:scale-100 print:object-[50%_55%]"
+                       className={`h-full w-full object-cover object-[50%_65%] md:object-[50%_60%] scale-105 print:scale-100 print:max-h-[56mm] print:object-[50%_55%] ${generatedQuote.panelDatasheet ? 'cursor-pointer' : ''}`}
+                       onClick={() => generatedQuote.panelDatasheet && openQuoteDatasheet(`מפרט טכני — פאנלים ${generatedQuote.panelPowerWatts}W`, generatedQuote.panelDatasheet)}
+                       onKeyDown={(e) => {
+                         if (!generatedQuote.panelDatasheet) return;
+                         if (e.key === 'Enter' || e.key === ' ') {
+                           e.preventDefault();
+                           openQuoteDatasheet(`מפרט טכני — פאנלים ${generatedQuote.panelPowerWatts}W`, generatedQuote.panelDatasheet);
+                         }
+                       }}
+                       role={generatedQuote.panelDatasheet ? 'button' : undefined}
+                       tabIndex={generatedQuote.panelDatasheet ? 0 : undefined}
                      />
                      <div
                        className="absolute inset-0"
@@ -1633,36 +2133,37 @@ export default function App() {
                    </div>
 
                    {/* כרטיס תמונה ממוסגר — דקורציה במסכים רחבים בלבד */}
-                   <div className="hidden xl:block absolute z-[2] bottom-[18%] left-8 lg:left-14 w-[min(340px,28vw)] rounded-3xl overflow-hidden border border-white/25 shadow-2xl ring-1 ring-white/10 pointer-events-none print:hidden">
+                   <div className={`hidden xl:block absolute z-[2] bottom-[18%] left-8 lg:left-14 w-[min(340px,28vw)] rounded-3xl overflow-hidden border border-white/25 shadow-2xl ring-1 ring-white/10 print:hidden ${generatedQuote.panelDatasheet ? '' : 'pointer-events-none'}`}>
                      <img
                        src={`${process.env.PUBLIC_URL}/hero-solar-rooftop.png`}
                        alt=""
-                       className="w-full h-44 object-cover object-[50%_75%]"
+                       className={`w-full h-44 object-cover object-[50%_75%] ${generatedQuote.panelDatasheet ? 'cursor-pointer' : ''}`}
+                       onClick={() => generatedQuote.panelDatasheet && openQuoteDatasheet(`מפרט טכני — פאנלים ${generatedQuote.panelPowerWatts}W`, generatedQuote.panelDatasheet)}
                      />
                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/90 to-transparent h-16" />
                      <p className="absolute bottom-3 right-4 left-4 text-white text-xs font-bold drop-shadow-md text-center">פאנלים על הגג — אנרגיה נקייה</p>
                    </div>
                    
-                   <div className="absolute top-10 right-6 md:right-10 z-[5] flex items-center gap-3 text-white bg-white/12 p-3 rounded-2xl backdrop-blur-md border border-white/25 shadow-xl">
+                   <div className="absolute top-10 right-6 md:right-10 z-[5] flex items-center gap-3 text-white bg-white/12 p-3 rounded-2xl backdrop-blur-md border border-white/25 shadow-xl print:relative print:top-auto print:right-auto print:self-start print:bg-slate-100 print:text-slate-900 print:border-slate-200 print:backdrop-blur-none print:shadow-sm">
                       <BrandLogo className="h-16 w-16 md:h-20 md:w-20 object-contain bg-white rounded-xl p-2 shadow-inner" />
-                      <div className="hidden md:flex flex-col justify-center">
-                        <span className="font-black text-2xl md:text-3xl tracking-tight text-white drop-shadow-md">מומחי אנרגיה סולארית</span>
+                      <div className="hidden md:flex print:flex flex-col justify-center">
+                        <span className="font-black text-2xl md:text-3xl tracking-tight text-white drop-shadow-md print:text-slate-900 print:drop-shadow-none">מומחי אנרגיה סולארית</span>
                       </div>
                    </div>
                    
-                   <div className="text-white relative z-[5] w-full max-w-4xl mr-0 md:mr-auto mt-12 md:mt-8">
-                     <div className="inline-flex py-1.5 px-4 rounded-full bg-blue-500/25 text-blue-100 font-bold text-sm mb-6 border border-blue-400/35 backdrop-blur-sm shadow-lg">
+                   <div className="text-white relative z-[5] w-full max-w-4xl mr-0 md:mr-auto mt-12 md:mt-8 print:mt-0 print:text-slate-900">
+                     <div className="inline-flex py-1.5 px-4 rounded-full bg-blue-500/25 text-blue-100 font-bold text-sm mb-6 border border-blue-400/35 backdrop-blur-sm shadow-lg print:bg-blue-50 print:text-blue-900 print:border-blue-200 print:backdrop-blur-none print:shadow-sm">
                        מערכת אנרגיה סולארית {generatedQuote.systemType === 'commercial' ? 'מסחרית' : 'ביתית'} • {generatedQuote.inverterSystemType === 'hybrid' ? 'היברידית (Hybrid)' : 'אונגריד (On-Grid)'}
                      </div>
-                     <h1 className="text-5xl md:text-6xl lg:text-7xl font-black mb-2 leading-[1.1] drop-shadow-[0_4px_24px_rgba(0,0,0,0.45)]">
+                     <h1 className="text-5xl md:text-6xl lg:text-7xl font-black mb-2 leading-[1.1] drop-shadow-[0_4px_24px_rgba(0,0,0,0.45)] print:text-slate-900 print:drop-shadow-none">
                        עצמאות אנרגטית.
                        <br />
-                       <span className="text-transparent bg-clip-text bg-gradient-to-l from-amber-300 via-orange-400 to-orange-500">השקעה חכמה.</span>
+                       <span className="text-transparent bg-clip-text bg-gradient-to-l from-amber-300 via-orange-400 to-orange-500 print:bg-none print:bg-clip-border print:text-orange-600">השקעה חכמה.</span>
                      </h1>
-                     <div className="h-1 w-24 md:w-32 rounded-full bg-gradient-to-l from-orange-500 to-amber-400 mt-5 mb-8 opacity-90" aria-hidden />
+                     <div className="h-1 w-24 md:w-32 rounded-full bg-gradient-to-l from-orange-500 to-amber-400 mt-5 mb-8 opacity-90 print:via-orange-500" aria-hidden />
                      
-                     <div className="bg-slate-950/55 backdrop-blur-lg border border-white/15 px-4 py-3 md:px-5 md:py-3.5 rounded-2xl w-fit max-w-full mt-4 shadow-xl ring-1 ring-white/10">
-                        <p className="text-slate-200 mb-2 text-xs font-medium tracking-wide">הוכנה במיוחד עבור:</p>
+                     <div className="bg-slate-950/55 backdrop-blur-lg border border-white/15 px-4 py-3 md:px-5 md:py-3.5 rounded-2xl w-fit max-w-full mt-4 shadow-xl ring-1 ring-white/10 print:bg-slate-100 print:border-slate-200 print:shadow-sm print:ring-slate-200 print:backdrop-blur-none">
+                        <p className="text-slate-200 mb-2 text-xs font-medium tracking-wide print:text-slate-600">הוכנה במיוחד עבור:</p>
                         <div className="flex flex-col sm:flex-row sm:items-center sm:flex-wrap gap-2 sm:gap-x-5 sm:gap-y-1">
                           {generatedQuote.clientName && <div className="flex items-center gap-2 shrink-0"><User className="w-5 h-5 text-blue-400 shrink-0"/><span className="font-bold text-lg leading-tight">{generatedQuote.clientName}</span></div>}
                           {generatedQuote.clientCity && <div className="flex items-center gap-2 shrink-0"><MapPin className="w-5 h-5 text-blue-400 shrink-0"/><span className="font-bold text-lg leading-tight">{generatedQuote.clientCity}</span></div>}
@@ -1670,16 +2171,324 @@ export default function App() {
                      </div>
                    </div>
                    
-                   <div className="absolute bottom-10 left-10 z-[5] text-slate-300 text-sm font-medium drop-shadow-md">
+                   <div className="absolute bottom-10 left-10 z-[5] text-slate-300 text-sm font-medium drop-shadow-md print:relative print:bottom-auto print:left-auto print:mt-2 print:text-slate-600">
                       תאריך הפקה: {new Date().toLocaleDateString('he-IL')}
                    </div>
                 </section>
 
+                {quoteShowEquipmentBrandsSection && (
+                <section
+                  className="relative overflow-hidden border-y border-white/5 print:border-slate-200 print:break-inside-auto"
+                  aria-labelledby="quote-equipment-brands-heading"
+                >
+                  {/* מעבר חזותי משער כהה לעמוד בהיר — הרקע הכהה «מבטל» את מלבן השחור בקבצי PNG ונותן תחושת שקיפות */}
+                  <div
+                    className="absolute inset-0 bg-gradient-to-b from-slate-950 via-[#121c31] to-slate-50 pointer-events-none print:hidden"
+                    aria-hidden
+                  />
+                  <div
+                    className="absolute inset-0 opacity-[0.22] pointer-events-none mix-blend-overlay print:hidden"
+                    style={{
+                      background:
+                        'radial-gradient(ellipse 90% 55% at 50% -10%, rgba(251,146,60,0.5), transparent 55%), radial-gradient(ellipse 70% 45% at 80% 60%, rgba(59,130,246,0.2), transparent)'
+                    }}
+                    aria-hidden
+                  />
+                  <div className="relative z-[1] max-w-6xl mx-auto px-5 sm:px-8 pt-14 pb-16 md:pt-20 md:pb-24 print:py-10 print:bg-slate-50">
+                    <div className="text-center mb-11 md:mb-14 print:mb-10">
+                      <h2
+                        id="quote-equipment-brands-heading"
+                        className="text-2xl md:text-3xl font-black tracking-tight text-white drop-shadow-sm print:text-blue-900"
+                      >
+                        {quoteEquipmentBrandsTitle}
+                      </h2>
+                      <p className="mt-2 text-sm md:text-base text-slate-300/95 print:text-slate-600 font-medium">
+                        מותגים שנבחרו עבור פרויקט זה
+                      </p>
+                      <div className="mx-auto mt-5 h-px w-24 rounded-full bg-gradient-to-l from-transparent via-orange-400/80 to-transparent print:via-blue-400/60" aria-hidden />
+                    </div>
+                    <div className="flex flex-wrap justify-center items-stretch gap-8 md:gap-12 lg:gap-16">
+                      {(generatedQuote.calculatedNumPanels || 0) > 0 && (
+                        <div className="flex flex-col items-center gap-3 w-[min(100%,280px)] md:w-[min(100%,300px)]">
+                          {generatedQuote.panelDatasheet ? (
+                            <button
+                              type="button"
+                              className="relative w-full flex flex-col items-center justify-center gap-4 rounded-[1.75rem] px-7 py-9 md:px-10 md:py-11 min-h-[148px] md:min-h-[180px] bg-amber-950/25 backdrop-blur-md border border-amber-400/30 shadow-[0_24px_60px_-20px_rgba(0,0,0,0.65)] print:bg-white print:border print:border-amber-200 print:shadow-md print:backdrop-blur-none min-[480px]:min-h-[168px] cursor-pointer transition-transform hover:scale-[1.02] hover:border-amber-300/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/70"
+                              onClick={() =>
+                                openQuoteDatasheet(
+                                  `מפרט טכני — פאנלים ${generatedQuote.panelPowerWatts}W`,
+                                  generatedQuote.panelDatasheet
+                                )
+                              }
+                            >
+                              <Sun className="h-16 w-16 md:h-20 md:w-20 text-amber-300 print:text-amber-600 drop-shadow-lg" aria-hidden />
+                              <span className="text-center text-sm font-bold text-amber-100/95 print:text-amber-900">
+                                פאנלים {generatedQuote.panelPowerWatts}W
+                              </span>
+                            </button>
+                          ) : (
+                            <div className="relative w-full flex flex-col items-center justify-center gap-4 rounded-[1.75rem] px-7 py-9 md:px-10 md:py-11 min-h-[148px] md:min-h-[180px] bg-amber-950/25 backdrop-blur-md border border-amber-400/25 shadow-[0_24px_60px_-20px_rgba(0,0,0,0.65)] print:bg-white print:border print:border-amber-200 print:shadow-md print:backdrop-blur-none min-[480px]:min-h-[168px]">
+                              <Sun className="h-16 w-16 md:h-20 md:w-20 text-amber-300 print:text-amber-600 drop-shadow-lg" aria-hidden />
+                              <span className="text-center text-sm font-bold text-amber-100/95 print:text-amber-900">
+                                פאנלים {generatedQuote.panelPowerWatts}W
+                              </span>
+                            </div>
+                          )}
+                          <span className="text-amber-200/95 print:text-amber-900 text-xs text-center leading-snug font-semibold px-1">
+                            פאנלים בסט תפוקה מלאה • {generatedQuote.calculatedNumPanels} יח&apos;
+                            {generatedQuote.panelDatasheet && (
+                              <span className="block text-[10px] text-amber-300/90 print:text-amber-700 mt-1 font-medium">
+                                לחץ לצפייה במפרט
+                              </span>
+                            )}
+                          </span>
+                        </div>
+                      )}
+                      {aggregatedQuoteInverterLogos.map((row) => {
+                        const logoCardClass =
+                          'relative w-full flex items-center justify-center rounded-[1.75rem] px-7 py-9 md:px-10 md:py-11 min-h-[148px] md:min-h-[180px] bg-white/[0.06] backdrop-blur-md border border-white/[0.12] shadow-[0_24px_60px_-20px_rgba(0,0,0,0.65),inset_0_1px_0_0_rgba(255,255,255,0.06)] print:bg-white print:border print:border-slate-200/90 print:shadow-md print:backdrop-blur-none min-[480px]:min-h-[168px]';
+                        const logoImgClass =
+                          'max-h-[7.5rem] sm:max-h-[9rem] md:max-h-[11rem] w-auto max-w-[92%] object-contain contrast-[1.05] saturate-[1.08] drop-shadow-[0_12px_28px_rgba(0,0,0,0.55)] brightness-[1.06]';
+                        return (
+                        <div
+                          key={row.slug}
+                          className="flex flex-col items-center gap-3 w-[min(100%,280px)] md:w-[min(100%,300px)]"
+                        >
+                          {row.datasheet ? (
+                            <button
+                              type="button"
+                              className={`${logoCardClass} cursor-pointer transition-transform hover:scale-[1.02] hover:border-orange-400/35 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400/70`}
+                              onClick={() => openQuoteDatasheet(`מפרט טכני — ${row.displayName}`, row.datasheet)}
+                            >
+                              <img src={inverterLogoSrc(row.slug)} alt="" className={logoImgClass} />
+                            </button>
+                          ) : (
+                          <div className={logoCardClass}>
+                            <img src={inverterLogoSrc(row.slug)} alt="" className={logoImgClass} />
+                          </div>
+                          )}
+                          {row.quantity > 1 && (
+                            <span className="rounded-full bg-white/10 text-white font-black text-sm md:text-base px-3.5 py-1 border border-white/20 backdrop-blur-sm print:bg-blue-50 print:text-blue-900 print:border-blue-200">
+                              ×{row.quantity}
+                            </span>
+                          )}
+                          <span className="text-slate-400/95 print:text-slate-500 text-xs text-center leading-snug font-medium px-1">
+                            {row.displayName}
+                            {row.datasheet && <span className="block text-[10px] text-orange-300/90 print:text-blue-600 mt-1">לחץ לצפייה במפרט</span>}
+                          </span>
+                        </div>
+                        );
+                      })}
+                      {quoteInvertersWithoutLogoAsset.map((inv) => {
+                        const plainCardClass =
+                          'relative w-full flex flex-col items-center justify-center gap-3 rounded-[1.75rem] px-6 py-8 md:px-8 md:py-10 min-h-[148px] md:min-h-[180px] bg-slate-800/35 backdrop-blur-md border border-slate-500/35 shadow-[0_24px_60px_-20px_rgba(0,0,0,0.55)] print:bg-white print:border print:border-slate-200 print:shadow-md print:backdrop-blur-none min-[480px]:min-h-[168px]';
+                        const inner = (
+                          <>
+                            <HardHat className="h-14 w-14 text-slate-300 print:text-slate-600 shrink-0" aria-hidden />
+                            <span className="text-center text-sm font-bold text-white print:text-slate-900 leading-snug px-2">{inv.name}</span>
+                          </>
+                        );
+                        return (
+                          <div
+                            key={`inv-plain-${inv.id}`}
+                            className="flex flex-col items-center gap-3 w-[min(100%,280px)] md:w-[min(100%,300px)]"
+                          >
+                            {inv.datasheet ? (
+                              <button
+                                type="button"
+                                className={`${plainCardClass} cursor-pointer transition-transform hover:scale-[1.02] hover:border-orange-400/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400/60`}
+                                onClick={() => openQuoteDatasheet(`מפרט טכני — ${inv.name}`, inv.datasheet)}
+                              >
+                                {inner}
+                              </button>
+                            ) : (
+                              <div className={plainCardClass}>{inner}</div>
+                            )}
+                            {inv.quantity > 1 && (
+                              <span className="rounded-full bg-white/10 text-white font-black text-sm md:text-base px-3.5 py-1 border border-white/20 backdrop-blur-sm print:bg-slate-100 print:text-slate-900 print:border-slate-300">
+                                ×{inv.quantity}
+                              </span>
+                            )}
+                            <span className="text-slate-400/95 print:text-slate-600 text-xs text-center leading-snug font-medium px-1">
+                              ממיר • {inv.quantity} יח&apos;
+                              {inv.datasheet && (
+                                <span className="block text-[10px] text-orange-300/90 print:text-blue-600 mt-1">לחץ לצפייה במפרט</span>
+                              )}
+                            </span>
+                          </div>
+                        );
+                      })}
+                      {quoteOptimizerQuoteCard && (
+                        <div className="flex flex-col items-center gap-3 w-[min(100%,280px)] md:w-[min(100%,300px)]">
+                          {quoteOptimizerQuoteCard.variant === 'tigo' && (
+                            <>
+                              {quoteOptimizerQuoteCard.datasheet ? (
+                                <button
+                                  type="button"
+                                  className="relative w-full flex items-center justify-center rounded-[1.75rem] px-7 py-9 md:px-10 md:py-11 min-h-[148px] md:min-h-[180px] bg-emerald-950/30 backdrop-blur-md border border-emerald-400/25 shadow-[0_24px_60px_-20px_rgba(0,0,0,0.65),inset_0_1px_0_0_rgba(255,255,255,0.06)] print:bg-white print:border print:border-emerald-200 print:shadow-md min-[480px]:min-h-[168px] cursor-pointer transition-transform hover:scale-[1.02] hover:border-emerald-300/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70"
+                                  onClick={() =>
+                                    openQuoteDatasheet('מפרט טכני — אופטימייזרים Tigo', quoteOptimizerQuoteCard.datasheet)
+                                  }
+                                >
+                                  <img
+                                    src={`${process.env.PUBLIC_URL}/optimizers/tigo.png`}
+                                    alt="Tigo"
+                                    className="max-h-[7rem] sm:max-h-[8.5rem] md:max-h-[10rem] w-auto max-w-[90%] object-contain drop-shadow-[0_12px_28px_rgba(0,0,0,0.45)]"
+                                  />
+                                </button>
+                              ) : (
+                                <div
+                                  className="relative w-full flex items-center justify-center rounded-[1.75rem] px-7 py-9 md:px-10 md:py-11 min-h-[148px] md:min-h-[180px]
+                                  bg-emerald-950/30 backdrop-blur-md border border-emerald-400/25 shadow-[0_24px_60px_-20px_rgba(0,0,0,0.65),inset_0_1px_0_0_rgba(255,255,255,0.06)]
+                                  print:bg-white print:border print:border-emerald-200 print:shadow-md min-[480px]:min-h-[168px]"
+                                >
+                                  <img
+                                    src={`${process.env.PUBLIC_URL}/optimizers/tigo.png`}
+                                    alt="Tigo"
+                                    className="max-h-[7rem] sm:max-h-[8.5rem] md:max-h-[10rem] w-auto max-w-[90%] object-contain drop-shadow-[0_12px_28px_rgba(0,0,0,0.45)]"
+                                  />
+                                </div>
+                              )}
+                              <span className="text-emerald-200/95 print:text-emerald-800 text-xs text-center leading-snug font-semibold px-1">
+                                {quoteOptimizerQuoteCard.captionHe}
+                                {quoteOptimizerQuoteCard.datasheet && (
+                                  <span className="block text-[10px] text-emerald-300/90 print:text-emerald-700 mt-1 font-medium">
+                                    לחץ לצפייה במפרט
+                                  </span>
+                                )}
+                              </span>
+                            </>
+                          )}
+                          {quoteOptimizerQuoteCard.variant === 'solaredge' && quoteOptimizerQuoteCard.logoSrc && (
+                            <>
+                              {quoteOptimizerQuoteCard.datasheet ? (
+                                <button
+                                  type="button"
+                                  className="relative w-full flex items-center justify-center rounded-[1.75rem] px-7 py-9 md:px-10 md:py-11 min-h-[148px] md:min-h-[180px] bg-blue-950/25 backdrop-blur-md border border-blue-400/30 shadow-[0_24px_60px_-20px_rgba(0,0,0,0.65)] print:bg-white print:border print:border-blue-200 print:shadow-md min-[480px]:min-h-[168px] cursor-pointer transition-transform hover:scale-[1.02] hover:border-blue-400/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/70"
+                                  onClick={() =>
+                                    openQuoteDatasheet(
+                                      `מפרט טכני — אופטימייזרים (${generatedQuote.optimizerDetails.type})`,
+                                      quoteOptimizerQuoteCard.datasheet
+                                    )
+                                  }
+                                >
+                                  <img
+                                    src={quoteOptimizerQuoteCard.logoSrc}
+                                    alt="SolarEdge"
+                                    className="max-h-[7rem] sm:max-h-[8.5rem] md:max-h-[10rem] w-auto max-w-[90%] object-contain drop-shadow-[0_12px_28px_rgba(0,0,0,0.45)]"
+                                  />
+                                </button>
+                              ) : (
+                                <div className="relative w-full flex items-center justify-center rounded-[1.75rem] px-7 py-9 md:px-10 md:py-11 min-h-[148px] md:min-h-[180px] bg-blue-950/25 backdrop-blur-md border border-blue-400/25 shadow-[0_24px_60px_-20px_rgba(0,0,0,0.65)] print:bg-white print:border print:border-blue-200 print:shadow-md min-[480px]:min-h-[168px]">
+                                  <img
+                                    src={quoteOptimizerQuoteCard.logoSrc}
+                                    alt="SolarEdge"
+                                    className="max-h-[7rem] sm:max-h-[8.5rem] md:max-h-[10rem] w-auto max-w-[90%] object-contain drop-shadow-[0_12px_28px_rgba(0,0,0,0.45)]"
+                                  />
+                                </div>
+                              )}
+                              <span className="text-blue-200/95 print:text-blue-900 text-xs text-center leading-snug font-semibold px-1">
+                                {quoteOptimizerQuoteCard.captionHe}
+                                {quoteOptimizerQuoteCard.datasheet && (
+                                  <span className="block text-[10px] text-blue-300/90 print:text-blue-700 mt-1 font-medium">
+                                    לחץ לצפייה במפרט
+                                  </span>
+                                )}
+                              </span>
+                            </>
+                          )}
+                          {quoteOptimizerQuoteCard.variant === 'generic' && (
+                            <>
+                              {quoteOptimizerQuoteCard.datasheet ? (
+                                <button
+                                  type="button"
+                                  className="relative w-full flex flex-col items-center justify-center gap-3 rounded-[1.75rem] px-6 py-8 md:px-8 md:py-10 min-h-[148px] md:min-h-[180px] bg-slate-800/35 backdrop-blur-md border border-slate-500/35 shadow-[0_24px_60px_-20px_rgba(0,0,0,0.55)] print:bg-white print:border print:border-slate-200 print:shadow-md print:backdrop-blur-none min-[480px]:min-h-[168px] cursor-pointer transition-transform hover:scale-[1.02] hover:border-orange-400/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400/60"
+                                  onClick={() =>
+                                    openQuoteDatasheet(
+                                      `מפרט טכני — אופטימייזרים (${generatedQuote.optimizerDetails.type})`,
+                                      quoteOptimizerQuoteCard.datasheet
+                                    )
+                                  }
+                                >
+                                  <Activity className="h-14 w-14 text-blue-400 print:text-blue-600 shrink-0" aria-hidden />
+                                  <span className="text-center text-xs font-bold text-white print:text-slate-900 px-2">
+                                    {generatedQuote.optimizerDetails.type}
+                                  </span>
+                                </button>
+                              ) : (
+                                <div className="relative w-full flex flex-col items-center justify-center gap-3 rounded-[1.75rem] px-6 py-8 md:px-8 md:py-10 min-h-[148px] md:min-h-[180px] bg-slate-800/35 backdrop-blur-md border border-slate-500/35 shadow-[0_24px_60px_-20px_rgba(0,0,0,0.55)] print:bg-white print:border print:border-slate-200 print:shadow-md print:backdrop-blur-none min-[480px]:min-h-[168px]">
+                                  <Activity className="h-14 w-14 text-blue-400 print:text-blue-600 shrink-0" aria-hidden />
+                                  <span className="text-center text-xs font-bold text-white print:text-slate-900 px-2">
+                                    {generatedQuote.optimizerDetails.type}
+                                  </span>
+                                </div>
+                              )}
+                              <span className="text-slate-400/95 print:text-slate-600 text-xs text-center leading-snug font-medium px-1">
+                                {quoteOptimizerQuoteCard.captionHe}
+                                {quoteOptimizerQuoteCard.datasheet && (
+                                  <span className="block text-[10px] text-orange-300/90 print:text-blue-600 mt-1">
+                                    לחץ לצפייה במפרט
+                                  </span>
+                                )}
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </section>
+                )}
+
+                {generatedQuote.hasBatteries && generatedQuote.batteryDetailsList?.length > 0 && (
+                <section className="border-y border-slate-200 bg-slate-50 py-12 px-6 md:px-12">
+                  <div className="mx-auto max-w-5xl">
+                    <h3 className="mb-8 text-center text-xl font-black text-blue-900 md:text-2xl">סוללות אגירה בהצעה</h3>
+                    <div className="flex flex-wrap items-stretch justify-center gap-6 md:gap-10">
+                      {generatedQuote.batteryDetailsList.map((bat) => (
+                        bat.datasheet ? (
+                          <button
+                            key={bat.id}
+                            type="button"
+                            onClick={() => openQuoteDatasheet(`מפרט טכני — ${bat.name}`, bat.datasheet)}
+                            className="flex w-[min(100%,260px)] flex-col items-center gap-3 rounded-3xl border border-blue-200 bg-white p-6 shadow-md transition-transform hover:scale-[1.02] hover:border-orange-400/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400"
+                          >
+                            <BatteryCharging className="h-14 w-14 text-blue-600" />
+                            <span className="text-center text-sm font-bold text-slate-800">{bat.name}</span>
+                            {bat.quantity > 1 && <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-black text-blue-900">×{bat.quantity}</span>}
+                            <span className="text-[11px] font-semibold text-orange-600">לחץ לצפייה במפרט</span>
+                          </button>
+                        ) : (
+                          <div
+                            key={bat.id}
+                            className="flex w-[min(100%,260px)] flex-col items-center gap-3 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm opacity-90"
+                          >
+                            <BatteryCharging className="h-14 w-14 text-slate-400" />
+                            <span className="text-center text-sm font-bold text-slate-700">{bat.name}</span>
+                            {bat.quantity > 1 && <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-700">×{bat.quantity}</span>}
+                          </div>
+                        )
+                      ))}
+                    </div>
+                  </div>
+                </section>
+                )}
+
                 {/* --- PAGE 2: ABOUT US --- */}
-                <section className="py-20 px-8 md:px-20 bg-slate-50 print:break-before-page">
+                <section className="py-20 px-8 md:px-20 bg-slate-50 print:break-before-auto">
                    <div className="max-w-4xl mx-auto text-center mb-16">
                      <h2 className="text-3xl md:text-4xl font-black text-blue-900 mb-4">מי אנחנו? המומחים שלכם באנרגיה סולארית</h2>
                      <p className="text-lg text-slate-600">אנו חברת בוטיק המתמחה בפתרונות אנרגיה מתקדמים. הסטנדרט שלנו הוא הגבוה בשוק - ללא פשרות על איכות הרכיבים, מקצועיות ההתקנה ומתן שירות אישי לכל לקוח.</p>
+                   </div>
+                   <div className="mx-auto mb-16 max-w-5xl">
+                     <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-xl ring-1 ring-slate-200/60">
+                       <img
+                         src={`${process.env.PUBLIC_URL}/team-building-about-us.png`}
+                         alt="משפחת מומחי אנרגיה סולארית — צילום צוות ביום גיבוש"
+                         className="quote-print-team-photo h-auto w-full object-contain"
+                       />
+                     </div>
+                     <p className="mt-4 text-center text-sm font-medium text-slate-500">הצוות שלנו ביום גיבוש — האנשים שמלווים אתכם בכל שלב בדרך לאנרגיה סולארית.</p>
                    </div>
                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                      <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 text-center">
@@ -1701,8 +2510,22 @@ export default function App() {
                 </section>
 
                 {/* --- PAGE 3: THE SYSTEM & FINANCIALS --- */}
-                <section className="py-12 px-4 sm:px-8 md:py-20 md:px-20 print:break-before-page">
+                <section className="py-12 px-4 sm:px-8 md:py-20 md:px-20 print:break-before-auto">
                    <h2 className="mb-8 text-center text-2xl font-black text-blue-900 sm:mb-12 sm:text-3xl md:text-4xl">המערכת ותחזית כלכלית</h2>
+
+                   {generatedQuote.hasUrbanPremium && (
+                     <div className="mx-auto mb-10 max-w-4xl rounded-2xl border border-emerald-300/90 bg-gradient-to-br from-emerald-50 via-white to-teal-50 px-6 py-5 text-center shadow-md">
+                       <div className="mb-2 flex items-center justify-center gap-2 text-emerald-800">
+                         <Award className="h-7 w-7 shrink-0" aria-hidden />
+                         <span className="text-xl font-black tracking-tight">ברכות!</span>
+                       </div>
+                       <p className="break-words px-1 text-base font-medium leading-relaxed text-slate-800 sm:px-2">
+                         {(generatedQuote.clientCity || '').trim()
+                           ? `על פי הנתונים ובהתאם לעיר ${(generatedQuote.clientCity || '').trim()}, בה עתידה להיות התקנת המערכת — אתם זכאים לפרמיה אורבנית מתעריף חברת החשמל, הכוללת תוספת של ${URBAN_PREMIUM_AGOROT_PER_KWH} אגורות לתעריף המשוקלל עד שנת ${URBAN_PREMIUM_VALID_UNTIL_YEAR}.`
+                           : `על פי הנתונים שהוזנו בהצעה זו — הפרויקט זכאי לפרמיה אורבנית מתעריף חברת החשמל, עם תוספת של ${URBAN_PREMIUM_AGOROT_PER_KWH} אגורות לתעריף המשוקלל עד שנת ${URBAN_PREMIUM_VALID_UNTIL_YEAR}.`}
+                       </p>
+                     </div>
+                   )}
                    
                    {/* Highlights — מובייל: עמודה אחת עד רוחב בינוני, כדי למנוע חפיפה של מספרים ויחידות */}
                    <div className="mb-16 grid grid-cols-1 gap-4 min-[400px]:grid-cols-2 md:grid-cols-4 md:gap-4">
@@ -1775,8 +2598,16 @@ export default function App() {
                           ) : generatedQuote.estimatedYearlySavings <= 100000 ? (
                              <span className="block text-xs text-center text-amber-400 bg-slate-800/80 px-2 py-2 rounded-lg border border-slate-700">מס: 10%</span>
                           ) : null}
-                          <span className="block text-xs text-center text-slate-300 bg-slate-800/80 px-2 py-2 rounded-lg border border-slate-700">
-                            תעריף חח"י: {Number((generatedQuote.calculatedTariff > 0 ? generatedQuote.calculatedTariff * 100 : 0).toFixed(4))} אג'
+                          <span className="block text-xs text-center text-slate-300 bg-slate-800/80 px-2 py-2 rounded-lg border border-slate-700 leading-snug">
+                            תעריף חח&quot;י (משוקלל): {Number((generatedQuote.calculatedTariff > 0 ? generatedQuote.calculatedTariff * 100 : 0).toFixed(4))} אג&apos;
+                            {generatedQuote.hasUrbanPremium && generatedQuote.baseCalculatedTariff != null ? (
+                              <span className="mt-1 block text-[10px] font-semibold text-emerald-300/95">
+                                כולל {URBAN_PREMIUM_AGOROT_PER_KWH} אג&apos; פרמיה אורבנית עד {URBAN_PREMIUM_VALID_UNTIL_YEAR}
+                                <span className="mt-0.5 block font-normal text-slate-400">
+                                  (בסיס ללא פרמיה: {Number((generatedQuote.baseCalculatedTariff * 100).toFixed(4))} אג&apos;)
+                                </span>
+                              </span>
+                            ) : null}
                           </span>
                         </div>
                      </div>
@@ -1802,7 +2633,7 @@ export default function App() {
                    <div className="bg-white border border-slate-200 rounded-3xl p-8 mb-16 shadow-lg">
                       <h3 className="text-xl font-bold text-blue-900 mb-8 flex items-center gap-2"><TrendingUp className="text-orange-500"/> תחזית תזרים מזומנים מצטבר (ל-25 שנים)</h3>
                       
-                      <div className="h-64 flex items-end justify-between gap-2 md:gap-8 mt-12 relative border-b-2 border-slate-300 pb-2">
+                      <div className="quote-print-cashflow-chart h-64 flex items-end justify-between gap-2 md:gap-8 mt-12 relative border-b-2 border-slate-300 pb-2 print:mt-6">
                         {/* 0 Line marker */}
                         <div className="absolute w-full border-t border-dashed border-slate-400" style={{bottom: `${Math.abs(generatedQuote.minLoss) / ((generatedQuote.maxProfit || 1) + Math.abs(generatedQuote.minLoss)) * 100}%`}}></div>
                         <span className="absolute left-0 font-bold text-xs text-slate-400" style={{bottom: `calc(${Math.abs(generatedQuote.minLoss) / ((generatedQuote.maxProfit || 1) + Math.abs(generatedQuote.minLoss)) * 100}% + 5px)`}}>איזון 0</span>
@@ -1844,7 +2675,7 @@ export default function App() {
                    </div>
 
                    {/* Investment Comparison Section */}
-                   <div className="mb-16 print:break-inside-avoid">
+                   <div className="mb-16">
                       <h3 className="text-2xl font-black text-blue-900 mb-6 border-r-4 border-orange-500 pr-4">השוואת אפיקי השקעה</h3>
                       <p className="text-slate-600 mb-8 max-w-3xl">לפני שמקבלים החלטה, חשוב להבין איך השקעה במערכת סולארית עומדת מול אלטרנטיבות ההשקעה הנפוצות במשק הישראלי.</p>
                       
@@ -1913,7 +2744,7 @@ export default function App() {
 
                    {/* Loan Simulation Table (25 Years Dynamics) */}
                    {generatedQuote.showLoanSimulation && (
-                     <div className="bg-white border border-slate-200 rounded-3xl p-8 mb-16 shadow-lg overflow-hidden print:break-before-page">
+                     <div className="bg-white border border-slate-200 rounded-3xl p-8 mb-16 shadow-lg overflow-hidden print:break-before-auto print:p-4">
                         <div className="mb-6">
                            <h3 className="text-2xl font-black text-blue-900">ניתוח כדאיות כלכלית - מימון 100% בנקאי</h3>
                            <p className="text-slate-600 mt-1 mb-2">
@@ -1923,30 +2754,45 @@ export default function App() {
                              </span>
                            </p>
                         </div>
-                        <div className="overflow-x-auto">
-                           <table className="w-full text-center border-collapse text-sm">
+                        <div className="overflow-x-auto -mx-2 px-2 max-w-full">
+                           <table className="min-w-[720px] print:min-w-0 w-full text-center border-collapse text-[11px] sm:text-sm table-fixed">
+                              <colgroup>
+                                <col className="w-[8%]" />
+                                <col className="w-[30%]" />
+                                <col className="w-[31%]" />
+                                <col className="w-[31%]" />
+                              </colgroup>
                               <thead>
                                  <tr className="bg-slate-100 text-blue-900">
-                                    <th className="py-3 px-2 font-bold border-b-2 border-slate-300 rounded-tr-xl">שנה</th>
-                                    <th className="py-3 px-2 font-bold border-b-2 border-slate-300">הכנסה שנתית (כולל פחת 0.33%)</th>
-                                    <th className="py-3 px-2 font-bold border-b-2 border-slate-300 text-red-600">החזר הלוואה (עד לסילוק)</th>
-                                    <th className="py-3 px-2 font-bold border-b-2 border-slate-300 text-green-600 rounded-tl-xl">רווח נטו ללקוח</th>
+                                    <th className="py-2.5 px-1 sm:px-2 font-bold border-b-2 border-slate-300 rounded-tr-xl whitespace-normal leading-tight align-middle">שנה</th>
+                                    <th className="py-2.5 px-1 sm:px-2 font-bold border-b-2 border-slate-300 whitespace-normal leading-tight align-middle">
+                                      <span className="block">הכנסה שנתית</span>
+                                      <span className="block text-[10px] sm:text-xs font-semibold text-slate-600 mt-0.5">כולל פחת 0.33%</span>
+                                    </th>
+                                    <th className="py-2.5 px-1 sm:px-2 font-bold border-b-2 border-slate-300 text-red-600 whitespace-normal leading-tight align-middle">
+                                      <span className="block">החזר הלוואה</span>
+                                      <span className="block text-[10px] sm:text-xs font-semibold text-red-500/90 mt-0.5">עד סילוק החוב</span>
+                                    </th>
+                                    <th className="py-2.5 px-1 sm:px-2 font-bold border-b-2 border-slate-300 text-green-700 rounded-tl-xl whitespace-normal leading-tight align-middle">
+                                      <span className="block">רווח נטו</span>
+                                      <span className="block text-[10px] sm:text-xs font-semibold text-green-700/90 mt-0.5">ללקוח</span>
+                                    </th>
                                  </tr>
                               </thead>
                               <tbody>
                                  {generatedQuote.loanSimulation.map((row) => (
                                     <tr key={row.year} className="border-b border-slate-100 hover:bg-blue-50/50 transition-colors">
-                                       <td className="py-2 px-2 font-semibold text-slate-800">{row.year}</td>
-                                       <td className="py-2 px-2 font-medium text-slate-600">₪{Math.round(row.income).toLocaleString()}</td>
-                                       <td className="py-2 px-2 font-medium text-red-500">{row.repayment > 0 ? `- ₪${Math.round(row.repayment).toLocaleString()}` : '-'}</td>
-                                       <td className="py-2 px-2 font-bold text-green-600">{row.netProfit > 0 ? `₪${Math.round(row.netProfit).toLocaleString()}` : '-'}</td>
+                                       <td className="py-2 px-1 sm:px-2 font-semibold text-slate-800 tabular-nums align-middle">{row.year}</td>
+                                       <td className="py-2 px-1 sm:px-2 font-medium text-slate-700 tabular-nums align-middle break-normal">₪{Math.round(row.income).toLocaleString()}</td>
+                                       <td className="py-2 px-1 sm:px-2 font-medium text-red-600 tabular-nums align-middle break-normal">{row.repayment > 0 ? `- ₪${Math.round(row.repayment).toLocaleString()}` : '—'}</td>
+                                       <td className="py-2 px-1 sm:px-2 font-bold text-green-700 tabular-nums align-middle break-normal">{row.netProfit > 0 ? `₪${Math.round(row.netProfit).toLocaleString()}` : '—'}</td>
                                     </tr>
                                  ))}
                                  <tr className="bg-blue-50/80 font-black text-blue-900">
-                                    <td className="py-4 px-2 border-t-2 border-blue-200 rounded-br-xl">סה"כ ל-25 שנים</td>
-                                    <td className="py-4 px-2 border-t-2 border-blue-200">₪{Math.round(generatedQuote.loanSimulation.reduce((acc, row) => acc + row.income, 0)).toLocaleString()}</td>
-                                    <td className="py-4 px-2 border-t-2 border-blue-200 text-red-600">- ₪{Math.round(generatedQuote.loanSimulation.reduce((acc, row) => acc + row.repayment, 0)).toLocaleString()}</td>
-                                    <td className="py-4 px-2 border-t-2 border-blue-200 text-green-600 rounded-bl-xl">₪{Math.round(generatedQuote.loanSimulation.reduce((acc, row) => acc + row.netProfit, 0)).toLocaleString()}</td>
+                                    <td className="py-3 px-1 sm:px-2 border-t-2 border-blue-200 rounded-br-xl whitespace-normal leading-tight align-middle">סה״כ<br className="sm:hidden" /> 25 שנה</td>
+                                    <td className="py-3 px-1 sm:px-2 border-t-2 border-blue-200 tabular-nums align-middle break-normal">₪{Math.round(generatedQuote.loanSimulation.reduce((acc, row) => acc + row.income, 0)).toLocaleString()}</td>
+                                    <td className="py-3 px-1 sm:px-2 border-t-2 border-blue-200 text-red-600 tabular-nums align-middle break-normal">- ₪{Math.round(generatedQuote.loanSimulation.reduce((acc, row) => acc + row.repayment, 0)).toLocaleString()}</td>
+                                    <td className="py-3 px-1 sm:px-2 border-t-2 border-blue-200 text-green-700 rounded-bl-xl tabular-nums align-middle break-normal">₪{Math.round(generatedQuote.loanSimulation.reduce((acc, row) => acc + row.netProfit, 0)).toLocaleString()}</td>
                                  </tr>
                               </tbody>
                            </table>
@@ -1958,7 +2804,7 @@ export default function App() {
                 </section>
 
                 {/* --- PAGE 4: INCLUSIONS & PRICING --- */}
-                <section className="py-20 px-8 md:px-20 bg-slate-900 text-white print:break-before-page print:bg-white print:text-slate-900">
+                <section className="py-20 px-8 md:px-20 bg-slate-900 text-white print:break-before-auto print:bg-white print:text-slate-900">
                   <h2 className="text-3xl md:text-4xl font-black mb-12 text-center text-white print:text-blue-900">ההשקעה שלך בפרויקט Turn-Key</h2>
                   
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-16">
@@ -1969,7 +2815,26 @@ export default function App() {
                          <div className="flex items-start gap-3"><CheckCircle className="w-5 h-5 text-green-500 shrink-0 mt-0.5"/><p className="text-slate-300 print:text-slate-700"><strong>חשמל:</strong> כבלי AC/DC, לוחות מותאמים לחיבור 3x{generatedQuote.requiredConnectionAmps}A, חשמלאי מוסמך.</p></div>
                          <div className="flex items-start gap-3"><CheckCircle className="w-5 h-5 text-green-500 shrink-0 mt-0.5"/><p className="text-slate-300 print:text-slate-700"><strong>התקנה:</strong> לוגיסטיקה, מנופים וצוות התקנה מקצועי.</p></div>
                          <div className="flex items-start gap-3"><CheckCircle className="w-5 h-5 text-green-500 shrink-0 mt-0.5"/><p className="text-slate-300 print:text-slate-700"><strong>בדיקות:</strong> בודק פרטי מוסמך וחיבור למערכת ניטור.</p></div>
-                         {generatedQuote.includesOptimizers && <div className="flex items-start gap-3"><CheckCircle className="w-5 h-5 text-green-500 shrink-0 mt-0.5"/><p className="text-slate-300 print:text-slate-700"><strong>אופטימייזרים:</strong> התקנת אופטימייזרים למיקסום תפוקה ({generatedQuote.optimizerDetails.type}).</p></div>}
+                         {generatedQuote.includesOptimizers && (
+                           <div className="flex items-start gap-3">
+                             <CheckCircle className="w-5 h-5 text-green-500 shrink-0 mt-0.5" />
+                             {generatedQuote.optimizerDatasheet ? (
+                               <button
+                                 type="button"
+                                 onClick={() => openQuoteDatasheet(`מפרט טכני — אופטימייזרים (${generatedQuote.optimizerDetails.type})`, generatedQuote.optimizerDatasheet)}
+                                 className="text-right text-slate-300 underline decoration-orange-400/60 underline-offset-2 transition-colors print:text-slate-700 hover:text-orange-300 print:no-underline"
+                               >
+                                 <strong className="text-green-400 print:text-green-700">אופטימייזרים:</strong>{' '}
+                                 התקנת אופטימייזרים למיקסום תפוקה ({generatedQuote.optimizerDetails.type}).{' '}
+                                 <span className="text-xs text-orange-300 print:hidden">(לחץ לצפייה במפרט)</span>
+                               </button>
+                             ) : (
+                               <p className="text-slate-300 print:text-slate-700">
+                                 <strong>אופטימייזרים:</strong> התקנת אופטימייזרים למיקסום תפוקה ({generatedQuote.optimizerDetails.type}).
+                               </p>
+                             )}
+                           </div>
+                         )}
                          {generatedQuote.includesWashing && <div className="flex items-start gap-3"><CheckCircle className="w-5 h-5 text-green-500 shrink-0 mt-0.5"/><p className="text-slate-300 print:text-slate-700"><strong>שטיפה:</strong> מערכת ניקוי פאנלים אוטומטית.</p></div>}
                          {generatedQuote.feesPayer === 'company' && <div className="flex items-start gap-3"><CheckCircle className="w-5 h-5 text-green-500 shrink-0 mt-0.5"/><p className="text-slate-300 print:text-slate-700"><strong>אגרות:</strong> תשלומים לרשויות כלולים.</p></div>}
                        </div>
@@ -2014,7 +2879,7 @@ export default function App() {
                 </section>
 
                 {/* --- PAGE 5: TECHNICAL SPECIFICATIONS --- */}
-                <section className="py-20 px-8 md:px-20 bg-white print:break-before-page">
+                <section className="py-20 px-8 md:px-20 bg-white print:break-before-auto">
                    <h2 className="text-3xl md:text-4xl font-black text-blue-900 mb-12 text-center">מפרט טכני</h2>
                    
                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-10 text-sm">
@@ -2087,7 +2952,7 @@ export default function App() {
                 </section>
 
                 {/* --- PAGE 6: PAYMENT TERMS & WARRANTY --- */}
-                <section className="py-20 px-8 md:px-20 bg-slate-50 print:break-before-page">
+                <section className="py-20 px-8 md:px-20 bg-slate-50 print:break-before-auto">
                    <h2 className="text-3xl md:text-4xl font-black text-blue-900 mb-12 text-center">תנאי תשלום ואחריות</h2>
                    
                    <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
@@ -2157,7 +3022,7 @@ export default function App() {
 
                 {/* --- PAGE 6.1: ADDITIONAL NOTES (CONDITIONAL) --- */}
                 {generatedQuote.additionalNotes && generatedQuote.additionalNotes.trim() !== '' && (
-                  <section className="py-10 px-8 md:px-20 bg-white border-t border-slate-200 print:break-inside-avoid">
+                  <section className="py-10 px-8 md:px-20 bg-white border-t border-slate-200">
                      <div className="max-w-4xl mx-auto bg-blue-50 border border-blue-100 p-8 rounded-3xl shadow-sm">
                         <h3 className="text-2xl font-bold text-blue-900 mb-4 flex items-center gap-2">
                            <FileText className="w-6 h-6 text-blue-600" /> סיכומים נוספים
@@ -2169,61 +3034,11 @@ export default function App() {
                   </section>
                 )}
 
-                {/* --- PAGE 6.5: DIGITAL SIGNATURE (PRINCIPLE APPROVAL) --- */}
-                <section className="py-16 px-8 md:px-20 bg-white border-t border-slate-200 print:break-inside-avoid">
-                   <div className="max-w-4xl mx-auto">
-                     <div className="flex items-center gap-3 mb-6">
-                        <div className="p-3 bg-blue-100 text-blue-600 rounded-xl"><PenTool className="w-6 h-6" /></div>
-                        <h3 className="text-2xl md:text-3xl font-black text-blue-900">אישור עקרוני להתקדם</h3>
-                     </div>
-                     <p className="text-slate-700 text-lg mb-8 leading-relaxed">
-                        הריני מאשר/ת כי עברתי על הצעת המחיר, המפרט הטכני והתנאים. חתימה זו מהווה הבעת רצון עקרונית לאשר את ההצעה ולהתקדם לשלב הבא. 
-                        <br/>
-                        <span className="text-sm font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded inline-block mt-2">
-                          * מובהר בזאת כי מסמך זה הינו הצעת מחיר ואינו מהווה חוזה משפטי. חוזה התקשרות מחייב ומפורט ייחתם בנפרד מול החברה.
-                        </span>
-                     </p>
-                     
-                     <div className="bg-slate-50 border border-slate-200 p-6 md:p-10 rounded-3xl flex flex-col md:flex-row items-center justify-between gap-8 shadow-sm">
-                       <div className="text-right flex-1 w-full">
-                          <p className="text-sm text-slate-500 mb-1">שם הלקוח / חברה:</p>
-                          <p className="font-bold text-2xl text-slate-800 mb-6">{generatedQuote.clientName || '__________________'}</p>
-                          <p className="text-sm text-slate-500 mb-1">תאריך אישור:</p>
-                          <p className="font-bold text-xl text-slate-800">{new Date().toLocaleDateString('he-IL')}</p>
-                       </div>
-                       
-                       <div className="flex-1 flex justify-center md:justify-end w-full">
-                         {!clientSignature ? (
-                           <div className="print:hidden">
-                             <SignaturePad onSave={handleClientSignatureSaved} />
-                           </div>
-                         ) : (
-                           <div className="text-center relative bg-white p-4 rounded-2xl border border-blue-100 shadow-sm w-[350px]">
-                             <button onClick={() => setClientSignature(null)} className="absolute -top-3 -right-3 bg-red-100 text-red-600 p-2 rounded-full hover:bg-red-200 print:hidden shadow-md transition-transform hover:scale-110" title="מחק חתימה"><Trash2 className="w-4 h-4" /></button>
-                             <img src={clientSignature} alt="חתימת לקוח" className="h-32 mx-auto object-contain mix-blend-multiply border-b-2 border-blue-200 pb-2 mb-2" />
-                             <p className="text-sm text-blue-600 font-bold flex items-center justify-center gap-1"><CheckCircle className="w-4 h-4"/> נחתם דיגיטלית בהצלחה</p>
-                             <p className="text-xs text-slate-500 mt-2 text-center leading-snug print:hidden">אם נפתח וואטסאפ לסוכן — שלחו את ההודעה כדי לעדכן אותו.</p>
-                           </div>
-                         )}
-                         {/* חלופה להדפסה אם המסמך טרם נחתם דיגיטלית */}
-                         <div className="hidden print:flex flex-col items-center justify-end w-[350px]">
-                           {!clientSignature && (
-                              <>
-                                <div className="border-b-2 border-slate-400 w-full mt-24 mb-2"></div>
-                                <p className="text-center text-slate-500 text-sm font-medium">חתימת הלקוח (אישור עקרוני)</p>
-                              </>
-                           )}
-                         </div>
-                       </div>
-                     </div>
-                   </div>
-                </section>
-
-                {/* --- PAGE 7: INTERACTIVE MAP (CLIENTS) --- */}
+                {/* --- PAGE 7: INTERACTIVE MAP (CLIENTS) — מעל החתימה והפוטר --- */}
                 <section className="py-20 px-8 md:px-20 bg-white print:hidden border-t border-slate-100">
                    <div className="max-w-4xl mx-auto text-center mb-10">
                      <h2 className="text-3xl md:text-4xl font-black text-blue-900 mb-4 flex items-center justify-center gap-3">
-                       <Map className="w-10 h-10 text-orange-500" />
+                       <MapIcon className="w-10 h-10 text-orange-500" />
                        מצא לקוח ממליץ מאזורך
                      </h2>
                      <p className="text-lg text-slate-600">מערכות סולאריות שלנו פזורות בכל רחבי הארץ. תוכלו לנווט במפה, לראות פרויקטים שהתקנו בסביבה שלכם ולקבל המלצות מהלקוחות שלנו שכבר התקינו איתנו</p>
@@ -2322,16 +3137,66 @@ export default function App() {
                        </h3>
                        <p className="text-slate-700">אשרו את הצעת המחיר בתוך 7 ימים מתאריך ההפקה, וקבלו {limitedOfferHighlightShort} במתנה!</p>
                     </div>
-                  </div>
+                    </div>
+                </section>
+
+                {/* --- PAGE 6.5: DIGITAL SIGNATURE (PRINCIPLE APPROVAL) — אחרי המפה והמבצע --- */}
+                <section className="py-16 px-8 md:px-20 bg-white border-t border-slate-200">
+                   <div className="max-w-4xl mx-auto">
+                     <div className="flex items-center gap-3 mb-6">
+                        <div className="p-3 bg-blue-100 text-blue-600 rounded-xl"><PenTool className="w-6 h-6" /></div>
+                        <h3 className="text-2xl md:text-3xl font-black text-blue-900">אישור עקרוני להתקדם</h3>
+                     </div>
+                     <p className="text-slate-700 text-lg mb-8 leading-relaxed">
+                        הריני מאשר/ת כי עברתי על הצעת המחיר, המפרט הטכני והתנאים. חתימה זו מהווה הבעת רצון עקרונית לאשר את ההצעה ולהתקדם לשלב הבא. 
+                        <br/>
+                        <span className="text-sm font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded inline-block mt-2">
+                          * מובהר בזאת כי מסמך זה הינו הצעת מחיר ואינו מהווה חוזה משפטי. חוזה התקשרות מחייב ומפורט ייחתם בנפרד מול החברה.
+                        </span>
+                     </p>
+                     
+                     <div className="bg-slate-50 border border-slate-200 p-6 md:p-10 rounded-3xl flex flex-col md:flex-row items-center justify-between gap-8 shadow-sm">
+                       <div className="text-right flex-1 w-full">
+                          <p className="text-sm text-slate-500 mb-1">שם הלקוח / חברה:</p>
+                          <p className="font-bold text-2xl text-slate-800 mb-6">{generatedQuote.clientName || '__________________'}</p>
+                          <p className="text-sm text-slate-500 mb-1">תאריך אישור:</p>
+                          <p className="font-bold text-xl text-slate-800">{new Date().toLocaleDateString('he-IL')}</p>
+                       </div>
+                       
+                       <div className="flex-1 flex justify-center md:justify-end w-full">
+                         {!clientSignature ? (
+                           <div className="print:hidden">
+                             <SignaturePad onSave={handleClientSignatureSaved} />
+                           </div>
+                         ) : (
+                           <div className="text-center relative bg-white p-4 rounded-2xl border border-blue-100 shadow-sm w-[350px]">
+                             <button onClick={() => setClientSignature(null)} className="absolute -top-3 -right-3 bg-red-100 text-red-600 p-2 rounded-full hover:bg-red-200 print:hidden shadow-md transition-transform hover:scale-110" title="מחק חתימה"><Trash2 className="w-4 h-4" /></button>
+                             <img src={clientSignature} alt="חתימת לקוח" className="h-32 mx-auto object-contain mix-blend-multiply border-b-2 border-blue-200 pb-2 mb-2" />
+                             <p className="text-sm text-blue-600 font-bold flex items-center justify-center gap-1"><CheckCircle className="w-4 h-4"/> נחתם דיגיטלית בהצלחה</p>
+                             <p className="text-xs text-slate-500 mt-2 text-center leading-snug print:hidden">אם נפתח וואטסאפ ליועץ — שלחו את ההודעה כדי לעדכן אותו.</p>
+                           </div>
+                         )}
+                         {/* חלופה להדפסה אם המסמך טרם נחתם דיגיטלית */}
+                         <div className="hidden print:flex flex-col items-center justify-end w-[350px]">
+                           {!clientSignature && (
+                              <>
+                                <div className="border-b-2 border-slate-400 w-full mt-24 mb-2"></div>
+                                <p className="text-center text-slate-500 text-sm font-medium">חתימת הלקוח (אישור עקרוני)</p>
+                              </>
+                           )}
+                         </div>
+                       </div>
+                     </div>
+                   </div>
                 </section>
 
                 {/* FOOTER */}
                 <footer className="py-10 px-8 md:px-20 bg-slate-50 border-t border-slate-200 flex flex-col md:flex-row justify-between items-center text-slate-500 print:bg-white">
                   <div className="flex flex-col md:flex-row items-center gap-6 mb-4 md:mb-0 font-medium text-slate-700">
-                    {/* הצגת פרטי הסוכן אם הופק ע"י סוכן, אחרת פרטי החברה */}
+                    {/* הצגת פרטי היועץ בהצעה */}
                     {generatedQuote?.agentDetails ? (
                       <>
-                        <span className="flex items-center gap-2 bg-blue-100/50 px-3 py-1.5 rounded-lg border border-blue-200"><User className="w-5 h-5 text-blue-600"/> סוכן אישי: {generatedQuote.agentDetails.name}</span>
+                        <span className="flex items-center gap-2 bg-blue-100/50 px-3 py-1.5 rounded-lg border border-blue-200"><User className="w-5 h-5 text-blue-600"/> יועץ אישי: {generatedQuote.agentDetails.name}</span>
                         <span className="flex items-center gap-2"><Phone className="w-5 h-5 text-blue-600"/> {generatedQuote.agentDetails.phone}</span>
                       </>
                     ) : (
