@@ -19,7 +19,8 @@
     "build": "react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
-    "pull:admin": "node scripts/pull-admin-settings.mjs"
+    "pull:admin": "node scripts/pull-admin-settings.mjs",
+    "sync:env:prod": "node scripts/sync-env-from-production-bundle.mjs"
   },
   "eslintConfig": {
     "extends": [
