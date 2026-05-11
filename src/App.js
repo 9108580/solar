@@ -307,21 +307,24 @@ function readFileAsDatasheet(file) {
   });
 }
 
-/** מסמך PDF סטטי מתיקיית public (למשל הצהרות משרד הבנייה) */
+/** מסמך PDF סטטי מתיקיית public (הצהרות איכות הסביבה וכו׳) */
 const ENV_QUALITY_DECLARATIONS_PDF = `${process.env.PUBLIC_URL}/documents/hatsara-misrad-habriyot.pdf`;
 
 /** צפייה ב-PDF מקומי — מסך מלא + חזרה + הורדה */
-function StaticPdfViewer({ open, title, url, downloadFileName, onClose }) {
+function StaticPdfViewer({ open, title, prominentSource, url, downloadFileName, onClose }) {
   if (!open || !url) return null;
+  const ariaLabel = prominentSource ? `${prominentSource}${title ? ` — ${title}` : ''}` : title;
   return (
     <div
       className="fixed inset-0 z-[221] flex flex-col bg-slate-950 text-white print:hidden"
       dir="rtl"
       role="dialog"
       aria-modal="true"
-      aria-label={title}
+      aria-label={ariaLabel}
     >
-      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 bg-slate-900 px-4 py-3 shadow-lg">
+      <div
+        className={`flex shrink-0 items-center justify-between gap-3 border-b border-white/10 bg-slate-900 px-4 shadow-lg ${prominentSource ? 'py-4 md:py-5' : 'py-3'}`}
+      >
         <button
           type="button"
           onClick={onClose}
@@ -329,7 +332,18 @@ function StaticPdfViewer({ open, title, url, downloadFileName, onClose }) {
         >
           חזרה
         </button>
-        <span className="min-w-0 flex-1 truncate text-center text-sm font-bold text-slate-100">{title}</span>
+        {prominentSource ? (
+          <div className="flex min-w-0 flex-1 flex-col items-center justify-center gap-1 px-2 text-center">
+            <span className="text-balance text-2xl font-black leading-[1.15] tracking-tight text-white md:text-4xl">
+              {prominentSource}
+            </span>
+            {title ? (
+              <span className="max-w-[min(100%,28rem)] text-xs font-bold text-slate-300 md:text-sm">{title}</span>
+            ) : null}
+          </div>
+        ) : (
+          <span className="min-w-0 flex-1 truncate text-center text-sm font-bold text-slate-100">{title}</span>
+        )}
         <a
           href={url}
           download={downloadFileName || 'document.pdf'}
@@ -339,7 +353,7 @@ function StaticPdfViewer({ open, title, url, downloadFileName, onClose }) {
         </a>
       </div>
       <div className="min-h-0 flex-1 bg-slate-900 p-2">
-        <iframe title={title} src={url} className="h-full w-full rounded-lg border-0 bg-white" />
+        <iframe title={ariaLabel} src={url} className="h-full w-full rounded-lg border-0 bg-white" />
       </div>
     </div>
   );
@@ -2662,7 +2676,8 @@ export default function App() {
               />
               <StaticPdfViewer
                 open={envDeclarationsPdfOpen}
-                title="הצהרות איכות הסביבה — משרד הבינוי והשיכון"
+                prominentSource="משרד הבריאות"
+                title="הצהרות איכות הסביבה"
                 url={ENV_QUALITY_DECLARATIONS_PDF}
                 downloadFileName="hatsara-misrad-habriyot.pdf"
                 onClose={() => setEnvDeclarationsPdfOpen(false)}
