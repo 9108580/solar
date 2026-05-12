@@ -1,11 +1,19 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { getSupabase } from './supabaseClient';
 import { 
   Calculator, Settings, Sun, User, FileText, CheckCircle, Zap, DollarSign, 
   Trash2, Plus, ChevronDown, ChevronUp, HardHat, BatteryCharging, 
   ShieldCheck, Activity, MapPin, Phone, TrendingUp, Award, Clock, Wrench, AlertCircle,
-  Home, LineChart, Map as MapIcon, Gift, Users, LogOut, PenTool, Loader2, CloudUpload
+  Home, LineChart, Map as MapIcon, Gift, Users, LogOut, PenTool, Loader2, CloudUpload, Copy
 } from 'lucide-react';
+
+/** כתובת מלאה לשיתוף הצעה: /q/:uuid (מכבד PUBLIC_URL) */
+function quoteShareAbsoluteUrl(quoteId) {
+  const base = (process.env.PUBLIC_URL || '').replace(/\/$/, '');
+  if (typeof window === 'undefined') return `${base}/q/${quoteId}`;
+  return `${window.location.origin}${base}/q/${quoteId}`;
+}
 
 /** פרמיה אורבנית (חח"י) — תוספת לתעריף המשוקלל בתחשיב ההצעה */
 const URBAN_PREMIUM_AGOROT_PER_KWH = 6;
@@ -758,6 +766,13 @@ function resolveSegmentDefaultInverterId(adminList, systemType) {
 }
 
 export default function App() {
+  const routeParams = useParams();
+  const navigate = useNavigate();
+  const rawQuoteParam = typeof routeParams.quoteId === 'string' ? routeParams.quoteId.trim() : '';
+  const shareQuoteId =
+    rawQuoteParam && /^[0-9a-fA-F-]{36}$/.test(rawQuoteParam) ? rawQuoteParam : null;
+  const shareLinkMalformed = Boolean(rawQuoteParam) && !shareQuoteId;
+
   // --- מערכת התחברות (Login) ---
   const [currentUser, setCurrentUser] = useState(null); // הופעל מחדש
   const [loginInput, setLoginInput] = useState(() => {
@@ -935,6 +950,94 @@ export default function App() {
   const [clientSignature, setClientSignature] = useState(null); // סטייט לשמירת החתימה הדיגיטלית
   const [quoteDatasheetViewer, setQuoteDatasheetViewer] = useState(null); // { title, datasheet } — צפייה במפרט טכני בהצעה
   const [envDeclarationsPdfOpen, setEnvDeclarationsPdfOpen] = useState(false);
+  /** טעינת הצעה משותפת מ־/q/:id */
+  const [shareQuoteLoad, setShareQuoteLoad] = useState({ phase: 'idle', message: '' });
+  const [shareLinkFeedback, setShareLinkFeedback] = useState(null);
+  const [shareLinkBusy, setShareLinkBusy] = useState(false);
+
+  useEffect(() => {
+    if (!shareQuoteId) {
+      setShareQuoteLoad({ phase: 'idle', message: '' });
+      return undefined;
+    }
+    if (!supabase) {
+      setShareQuoteLoad({
+        phase: 'error',
+        message: 'אין חיבור ל-Supabase. הגדירו REACT_APP_SUPABASE_URL ו-REACT_APP_SUPABASE_ANON_KEY והריצו את supabase/shared_quotes.sql.',
+      });
+      return undefined;
+    }
+    let cancelled = false;
+    setShareQuoteLoad({ phase: 'loading', message: '' });
+    (async () => {
+      const { data, error } = await supabase
+        .from('shared_quotes')
+        .select('payload')
+        .eq('id', shareQuoteId)
+        .maybeSingle();
+      if (cancelled) return;
+      if (error) {
+        setShareQuoteLoad({ phase: 'error', message: error.message || 'שגיאת טעינה' });
+        return;
+      }
+      const payload = data?.payload;
+      if (!payload || typeof payload !== 'object') {
+        setShareQuoteLoad({ phase: 'error', message: 'הקישור לא נמצא או שפג תוקפו.' });
+        return;
+      }
+      setGeneratedQuote(payload);
+      setCurrentUser({ role: 'viewer', data: null });
+      setActiveTab('quote');
+      setShareQuoteLoad({ phase: 'ready', message: '' });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [shareQuoteId, supabase]);
+
+  const handleCreateShareLink = useCallback(async () => {
+    if (!generatedQuote) return;
+    if (!supabase) {
+      setShareLinkFeedback({ type: 'error', text: 'אין חיבור ל-Supabase.' });
+      return;
+    }
+    if (typeof crypto === 'undefined' || !crypto.randomUUID) {
+      setShareLinkFeedback({ type: 'error', text: 'הדפדפן לא תומך ביצירת מזהה בטוח.' });
+      return;
+    }
+    setShareLinkBusy(true);
+    setShareLinkFeedback(null);
+    const id = crypto.randomUUID();
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 90);
+    try {
+      const { error } = await supabase.from('shared_quotes').insert({
+        id,
+        payload: generatedQuote,
+        expires_at: expiresAt.toISOString(),
+      });
+      if (error) throw error;
+      const url = quoteShareAbsoluteUrl(id);
+      try {
+        await navigator.clipboard.writeText(url);
+        setShareLinkFeedback({ type: 'success', text: 'הקישור הועתק ללוח.', url });
+      } catch {
+        setShareLinkFeedback({ type: 'success', text: 'הקישור נוצר — העתק ידנית:', url });
+      }
+    } catch (err) {
+      const msg = err?.message || String(err);
+      setShareLinkFeedback({
+        type: 'error',
+        text:
+          msg.includes('shared_quotes') || msg.includes('schema cache')
+            ? 'הטבלה shared_quotes חסרה ב-Supabase. הריצו את הקובץ supabase/shared_quotes.sql.'
+            : msg,
+      });
+    } finally {
+      setShareLinkBusy(false);
+      window.setTimeout(() => setShareLinkFeedback(null), 12000);
+    }
+  }, [supabase, generatedQuote]);
 
   useEffect(() => {
     let interval = null;
@@ -1048,6 +1151,10 @@ export default function App() {
     setCurrentUser(null);
     setGeneratedQuote(null);
     setLoginInput('');
+    setShareQuoteLoad({ phase: 'idle', message: '' });
+    if (shareQuoteId) {
+      navigate('/', { replace: true });
+    }
   };
 
   /** אחרי שמירת חתימה: פותח וואטסאפ לסוכן (או טלפון החברה) עם טקסט מוכן — הלקוח רק לוחץ «שלח». ללא שרת אין שליחה אוטומטית אמיתית. */
@@ -1741,6 +1848,56 @@ export default function App() {
 
   // --- מסך התחברות (Login Screen) ---
   if (!currentUser) {
+    if (shareLinkMalformed) {
+      return (
+        <div
+          className="flex min-h-screen flex-col items-center justify-center gap-5 p-6 text-center text-white"
+          dir="rtl"
+          style={{ background: 'linear-gradient(135deg, #050c1a 0%, #0b1628 50%, #0a1a30 100%)' }}
+        >
+          <AlertCircle className="h-14 w-14 text-amber-400" aria-hidden />
+          <p className="max-w-md text-sm text-slate-300">קישור ההצעה אינו תקין. בדקו שהעתקתם את הקישור המלא.</p>
+          <Link
+            to="/"
+            className="rounded-xl border border-white/20 bg-white/10 px-6 py-3 text-sm font-bold text-white transition-colors hover:bg-white/20"
+          >
+            כניסה למערכת
+          </Link>
+        </div>
+      );
+    }
+    if (shareQuoteId) {
+      if (shareQuoteLoad.phase === 'loading' || shareQuoteLoad.phase === 'idle') {
+        return (
+          <div
+            className="flex min-h-screen flex-col items-center justify-center gap-4 p-6 text-white"
+            dir="rtl"
+            style={{ background: 'linear-gradient(135deg, #050c1a 0%, #0b1628 50%, #0a1a30 100%)' }}
+          >
+            <Loader2 className="h-12 w-12 animate-spin text-orange-400" aria-hidden />
+            <p className="text-center text-sm font-semibold text-slate-300">טוען הצעת מחיר…</p>
+          </div>
+        );
+      }
+      if (shareQuoteLoad.phase === 'error') {
+        return (
+          <div
+            className="flex min-h-screen flex-col items-center justify-center gap-5 p-6 text-center text-white"
+            dir="rtl"
+            style={{ background: 'linear-gradient(135deg, #050c1a 0%, #0b1628 50%, #0a1a30 100%)' }}
+          >
+            <AlertCircle className="h-14 w-14 text-red-400" aria-hidden />
+            <p className="max-w-md text-sm text-slate-300">{shareQuoteLoad.message}</p>
+            <Link
+              to="/"
+              className="rounded-xl border border-white/20 bg-white/10 px-6 py-3 text-sm font-bold text-white transition-colors hover:bg-white/20"
+            >
+              כניסה למערכת
+            </Link>
+          </div>
+        );
+      }
+    }
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-4 relative overflow-hidden" dir="rtl"
            style={{ background: 'linear-gradient(135deg, #050c1a 0%, #0b1628 50%, #0a1a30 100%)' }}>
@@ -1837,7 +1994,12 @@ export default function App() {
               <h1 className="text-lg md:text-xl font-black text-white tracking-wide leading-tight">מומחי אנרגיה סולארית</h1>
               <p className="text-blue-400/80 text-xs flex items-center gap-1.5 mt-0.5">
                 <span className="inline-block w-2 h-2 rounded-full bg-green-400 shadow-[0_0_6px_rgba(74,222,128,0.8)]"></span>
-                מחובר: {currentUser.role === 'admin' ? 'מנהל ראשי' : currentUser.data.name}
+                מחובר:{' '}
+                {currentUser.role === 'admin'
+                  ? 'מנהל ראשי'
+                  : currentUser.role === 'viewer'
+                    ? 'צפייה בלבד (קישור ללקוח)'
+                    : currentUser.data?.name}
               </p>
             </div>
           </div>
@@ -1845,6 +2007,28 @@ export default function App() {
           {/* Right: Navigation */}
           <nav className="flex items-center gap-1 rounded-2xl p-1.5 border border-white/10 shadow-xl max-w-full overflow-x-auto"
                style={{ background: 'rgba(255,255,255,0.05)', backdropFilter: 'blur(12px)' }}>
+            {currentUser.role === 'viewer' ? (
+              <>
+                <span className="px-3 py-2 text-xs font-semibold text-slate-400">הצעת מחיר</span>
+                <div className="mx-1 h-6 w-px bg-white/10" />
+                <Link
+                  to="/"
+                  className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-blue-200 transition-all hover:bg-white/10"
+                >
+                  <Home className="h-4 w-4" aria-hidden />
+                  כניסה למערכת
+                </Link>
+                <div className="mx-1 h-6 w-px bg-white/10" />
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-300 transition-colors hover:bg-white/5 hover:text-white"
+                >
+                  סגירה
+                </button>
+              </>
+            ) : (
+              <>
             <button onClick={() => setActiveTab('sales')}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 ${activeTab === 'sales' || activeTab === 'quote' ? 'text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
               style={activeTab === 'sales' || activeTab === 'quote' ? { background: 'linear-gradient(135deg, #1d4ed8, #2563eb)', boxShadow: '0 4px 15px rgba(59,130,246,0.4)' } : {}}>
@@ -1862,6 +2046,8 @@ export default function App() {
               className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-all duration-200 font-medium">
               <LogOut className="w-4 h-4" /> התנתק
             </button>
+              </>
+            )}
           </nav>
         </header>
 
@@ -2683,17 +2869,57 @@ export default function App() {
                 onClose={() => setEnvDeclarationsPdfOpen(false)}
               />
               {/* Toolbar */}
-              <div className="max-w-6xl mx-auto flex justify-between items-center mb-8 px-4 print:hidden">
-                 <button onClick={() => setActiveTab('sales')}
-                   className="text-blue-300 hover:text-blue-200 text-sm flex items-center gap-2 font-semibold px-4 py-2.5 rounded-xl transition-all border border-white/10 hover:border-white/20 hover:bg-white/5"
-                   style={{ background: 'rgba(255,255,255,0.04)' }}>
-                   &rarr; חזרה לעריכה
-                 </button>
-                 <button onClick={() => window.print()}
-                   className="bg-white text-slate-900 px-6 py-2.5 rounded-xl font-bold shadow-xl flex items-center gap-2 hover:bg-slate-100 transition-all hover:scale-[1.02] hover:shadow-2xl">
-                   <FileText className="w-4 h-4"/> הדפס לקובץ PDF
-                 </button>
+              <div className="max-w-6xl mx-auto flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between mb-8 px-4 print:hidden">
+                 {currentUser.role !== 'viewer' ? (
+                   <button
+                     type="button"
+                     onClick={() => setActiveTab('sales')}
+                     className="text-blue-300 hover:text-blue-200 text-sm flex items-center gap-2 font-semibold px-4 py-2.5 rounded-xl transition-all border border-white/10 hover:border-white/20 hover:bg-white/5"
+                     style={{ background: 'rgba(255,255,255,0.04)' }}
+                   >
+                     &rarr; חזרה לעריכה
+                   </button>
+                 ) : (
+                   <span className="text-xs font-semibold text-slate-500">צפייה בלבד — להדפסה או שמירה כ-PDF מהדפדפן</span>
+                 )}
+                 <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                   {supabase && currentUser.role !== 'viewer' && (
+                     <button
+                       type="button"
+                       onClick={handleCreateShareLink}
+                       disabled={shareLinkBusy}
+                       className="inline-flex items-center gap-2 rounded-xl border border-emerald-500/35 bg-emerald-600/20 px-4 py-2.5 text-sm font-bold text-emerald-100 transition-all hover:bg-emerald-600/30 disabled:cursor-not-allowed disabled:opacity-50"
+                     >
+                       {shareLinkBusy ? (
+                         <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                       ) : (
+                         <Copy className="h-4 w-4" aria-hidden />
+                       )}
+                       קישור ללקוח
+                     </button>
+                   )}
+                   <button
+                     type="button"
+                     onClick={() => window.print()}
+                     className="bg-white text-slate-900 px-6 py-2.5 rounded-xl font-bold shadow-xl flex items-center gap-2 hover:bg-slate-100 transition-all hover:scale-[1.02] hover:shadow-2xl"
+                   >
+                     <FileText className="w-4 h-4" /> הדפס לקובץ PDF
+                   </button>
+                 </div>
               </div>
+              {shareLinkFeedback && (
+                <div
+                  className={`max-w-6xl mx-auto mb-4 px-4 print:hidden ${
+                    shareLinkFeedback.type === 'success' ? 'text-emerald-300' : 'text-red-300'
+                  }`}
+                  role="status"
+                >
+                  <p className="text-sm font-semibold">{shareLinkFeedback.text}</p>
+                  {shareLinkFeedback.url && (
+                    <p className="mt-1 break-all text-xs font-mono text-slate-400">{shareLinkFeedback.url}</p>
+                  )}
+                </div>
+              )}
 
               <div className="max-w-6xl mx-auto mb-8 px-4 print:hidden">
                 <button

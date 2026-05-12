@@ -1,0 +1,3 @@
+{
+  "rewrites": [{ "source": "/q/:path*", "destination": "/index.html" }]
+}
