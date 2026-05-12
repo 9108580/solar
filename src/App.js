@@ -15,6 +15,15 @@ function quoteShareAbsoluteUrl(quoteId) {
   return `${window.location.origin}${base}/q/${quoteId}`;
 }
 
+function buildWhatsappMeLink(rawPhone, message) {
+  const digits = String(rawPhone || '').replace(/\D/g, '');
+  let clean = digits;
+  if (clean.startsWith('0')) clean = '972' + clean.slice(1);
+  if (!clean) return null;
+  const text = typeof message === 'string' && message.length > 0 ? `?text=${encodeURIComponent(message)}` : '';
+  return `https://wa.me/${clean}${text}`;
+}
+
 /** פרמיה אורבנית (חח"י) — תוספת לתעריף המשוקלל בתחשיב ההצעה */
 const URBAN_PREMIUM_AGOROT_PER_KWH = 6;
 const URBAN_PREMIUM_VALID_UNTIL_YEAR = 2042;
@@ -951,44 +960,74 @@ export default function App() {
   const [quoteDatasheetViewer, setQuoteDatasheetViewer] = useState(null); // { title, datasheet } — צפייה במפרט טכני בהצעה
   const [envDeclarationsPdfOpen, setEnvDeclarationsPdfOpen] = useState(false);
   /** טעינת הצעה משותפת מ־/q/:id */
-  const [shareQuoteLoad, setShareQuoteLoad] = useState({ phase: 'idle', message: '' });
+  const [shareQuoteLoad, setShareQuoteLoad] = useState({ phase: 'idle', message: '', waHref: null });
   const [shareLinkFeedback, setShareLinkFeedback] = useState(null);
   const [shareLinkBusy, setShareLinkBusy] = useState(false);
 
   useEffect(() => {
     if (!shareQuoteId) {
-      setShareQuoteLoad({ phase: 'idle', message: '' });
+      setShareQuoteLoad({ phase: 'idle', message: '', waHref: null });
       return undefined;
     }
     if (!supabase) {
       setShareQuoteLoad({
         phase: 'error',
         message: 'אין חיבור ל-Supabase. הגדירו REACT_APP_SUPABASE_URL ו-REACT_APP_SUPABASE_ANON_KEY והריצו את supabase/shared_quotes.sql.',
+        waHref: null,
       });
       return undefined;
     }
     let cancelled = false;
     setShareQuoteLoad({ phase: 'loading', message: '' });
     (async () => {
-      const { data, error } = await supabase
-        .from('shared_quotes')
-        .select('payload')
-        .eq('id', shareQuoteId)
-        .maybeSingle();
+      const { data, error } = await supabase.rpc('get_shared_quote', { p_id: shareQuoteId });
       if (cancelled) return;
       if (error) {
-        setShareQuoteLoad({ phase: 'error', message: error.message || 'שגיאת טעינה' });
+        setShareQuoteLoad({ phase: 'error', message: error.message || 'שגיאת טעינה', waHref: null });
         return;
       }
-      const payload = data?.payload;
-      if (!payload || typeof payload !== 'object') {
-        setShareQuoteLoad({ phase: 'error', message: 'הקישור לא נמצא או שפג תוקפו.' });
+      let row = data;
+      if (typeof row === 'string') {
+        try {
+          row = JSON.parse(row);
+        } catch {
+          row = null;
+        }
+      }
+      if (!row || typeof row !== 'object') {
+        setShareQuoteLoad({
+          phase: 'error',
+          message: 'תגובה לא צפויה מהשרת.',
+          waHref: null,
+        });
         return;
       }
-      setGeneratedQuote(payload);
-      setCurrentUser({ role: 'viewer', data: null });
-      setActiveTab('quote');
-      setShareQuoteLoad({ phase: 'ready', message: '' });
+      if (row.ok === true && row.payload && typeof row.payload === 'object') {
+        setGeneratedQuote(row.payload);
+        setCurrentUser({ role: 'viewer', data: null });
+        setActiveTab('quote');
+        setShareQuoteLoad({ phase: 'ready', message: '', waHref: null });
+        return;
+      }
+      if (row.ok === false && row.reason === 'expired') {
+        const agentName = String(row.agent_name || '').trim();
+        const phone = String(row.agent_phone || row.company_phone || '').trim();
+        const greet = agentName ? `שלום ${agentName},` : 'שלום,';
+        const waText = `${greet} הקישור להצעת המחיר שקיבלתי כבר לא פעיל (פג תוקף של 14 ימים). אשמח לקבל שוב את ההצעה או להמשיך לשלב הבא. תודה!`;
+        const waHref = buildWhatsappMeLink(phone, waText);
+        setShareQuoteLoad({
+          phase: 'expired',
+          message:
+            'פג תוקף הקישור (14 ימים). לקבלת ההצעה מחדש — שלחו הודעה בוואטסאפ לסוכן/ת או למשרד.',
+          waHref,
+        });
+        return;
+      }
+      setShareQuoteLoad({
+        phase: 'error',
+        message: 'הקישור לא נמצא או שאינו תקף.',
+        waHref: null,
+      });
     })();
     return () => {
       cancelled = true;
@@ -1009,35 +1048,51 @@ export default function App() {
     setShareLinkFeedback(null);
     const id = crypto.randomUUID();
     const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 90);
+    expiresAt.setDate(expiresAt.getDate() + 14);
+    const agentPhone = String(generatedQuote?.agentDetails?.phone || adminPrices.companyPhone || '').trim();
+    const agentName = String(generatedQuote?.agentDetails?.name || '').trim();
+    const companyPhone = String(adminPrices.companyPhone || '').trim();
     try {
       const { error } = await supabase.from('shared_quotes').insert({
         id,
         payload: generatedQuote,
         expires_at: expiresAt.toISOString(),
+        agent_phone: agentPhone || null,
+        agent_name: agentName || null,
+        company_phone: companyPhone || null,
       });
       if (error) throw error;
       const url = quoteShareAbsoluteUrl(id);
       try {
         await navigator.clipboard.writeText(url);
-        setShareLinkFeedback({ type: 'success', text: 'הקישור הועתק ללוח.', url });
+        setShareLinkFeedback({
+          type: 'success',
+          text: 'הקישור הועתק ללוח. תוקף: 14 ימים.',
+          url,
+        });
       } catch {
-        setShareLinkFeedback({ type: 'success', text: 'הקישור נוצר — העתק ידנית:', url });
+        setShareLinkFeedback({
+          type: 'success',
+          text: 'הקישור נוצר (תוקף 14 ימים) — העתק ידנית:',
+          url,
+        });
       }
     } catch (err) {
       const msg = err?.message || String(err);
       setShareLinkFeedback({
         type: 'error',
         text:
-          msg.includes('shared_quotes') || msg.includes('schema cache')
-            ? 'הטבלה shared_quotes חסרה ב-Supabase. הריצו את הקובץ supabase/shared_quotes.sql.'
+          msg.includes('shared_quotes') ||
+          msg.includes('schema cache') ||
+          msg.includes('get_shared_quote')
+            ? 'עדכנו את Supabase: הריצו מחדש את supabase/shared_quotes.sql (כולל הפונקציה get_shared_quote).'
             : msg,
       });
     } finally {
       setShareLinkBusy(false);
       window.setTimeout(() => setShareLinkFeedback(null), 12000);
     }
-  }, [supabase, generatedQuote]);
+  }, [supabase, generatedQuote, adminPrices]);
 
   useEffect(() => {
     let interval = null;
@@ -1151,7 +1206,7 @@ export default function App() {
     setCurrentUser(null);
     setGeneratedQuote(null);
     setLoginInput('');
-    setShareQuoteLoad({ phase: 'idle', message: '' });
+    setShareQuoteLoad({ phase: 'idle', message: '', waHref: null });
     if (shareQuoteId) {
       navigate('/', { replace: true });
     }
@@ -1876,6 +1931,39 @@ export default function App() {
           >
             <Loader2 className="h-12 w-12 animate-spin text-orange-400" aria-hidden />
             <p className="text-center text-sm font-semibold text-slate-300">טוען הצעת מחיר…</p>
+          </div>
+        );
+      }
+      if (shareQuoteLoad.phase === 'expired') {
+        return (
+          <div
+            className="flex min-h-screen flex-col items-center justify-center gap-6 p-6 text-center text-white"
+            dir="rtl"
+            style={{ background: 'linear-gradient(135deg, #050c1a 0%, #0b1628 50%, #0a1a30 100%)' }}
+          >
+            <Clock className="h-14 w-14 text-amber-400" aria-hidden />
+            <p className="max-w-md text-sm leading-relaxed text-slate-200">{shareQuoteLoad.message}</p>
+            {shareQuoteLoad.waHref ? (
+              <a
+                href={shareQuoteLoad.waHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 rounded-2xl border border-emerald-500/40 bg-emerald-600/25 px-6 py-3.5 text-sm font-black text-emerald-100 shadow-lg transition-all hover:bg-emerald-600/40 hover:scale-[1.02]"
+              >
+                <Phone className="h-5 w-5 shrink-0" aria-hidden />
+                שליחת וואטסאפ לסוכן/ת
+              </a>
+            ) : (
+              <p className="max-w-sm text-xs text-slate-500">
+                לא נמצא מספר וואטסאפ במערכת לקישור זה. פנו לחברה בדרכים אחרות.
+              </p>
+            )}
+            <Link
+              to="/"
+              className="rounded-xl border border-white/20 bg-white/10 px-6 py-3 text-sm font-bold text-white transition-colors hover:bg-white/20"
+            >
+              כניסה למערכת
+            </Link>
           </div>
         );
       }
