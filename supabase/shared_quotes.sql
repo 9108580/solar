@@ -1,4 +1,12 @@
--- Per-quote share links (/q/:id). Run in Supabase SQL Editor (idempotent — safe to re-run).
+-- =============================================================================
+-- הצעות מחיר לפי קישור (/q/:uuid) — הרצה ב-Supabase
+-- =============================================================================
+-- 1) היכנסו לפרויקט ב-Supabase → SQL Editor → New query
+-- 2) העתיקו את כל הקובץ הזה, הדביקו, והריצו Run (אפשר להריץ שוב — idempotent)
+-- 3) אם עדיין יש שגיאת RPC בדפדפן: המתינו ~דקה, או Project Settings → API →
+--    "Reload schema" (אם קיים), או הריצו שוב רק את השורה NOTIFY למטה
+-- =============================================================================
+-- Per-quote share links (/q/:id). Idempotent — safe to re-run.
 -- Links are valid 14 days; after expiry the client sees WhatsApp to the agent (no payload leak).
 
 create extension if not exists "pgcrypto";
@@ -69,6 +77,9 @@ $$;
 
 revoke all on function public.get_shared_quote(uuid) from public;
 grant execute on function public.get_shared_quote(uuid) to anon, authenticated;
+
+-- ריענון מטמון PostgREST כדי ש־supabase.rpc('get_shared_quote') יופיע מיד (מומלץ אחרי CREATE FUNCTION)
+notify pgrst, 'reload schema';
 
 -- Optional: delete rows that expired but were never opened (no RPC). With pg_cron, e.g. daily:
 --   DELETE FROM public.shared_quotes WHERE expires_at IS NOT NULL AND expires_at < NOW();
