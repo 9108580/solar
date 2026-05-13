@@ -1078,15 +1078,29 @@ export default function App() {
         });
       }
     } catch (err) {
-      const msg = err?.message || String(err);
+      const raw = err?.message != null ? String(err.message) : String(err);
+      const code = err?.code != null ? String(err.code) : '';
+      const combined = `${raw} ${code}`.toLowerCase();
+      const needsSupabaseMigration =
+        /shared_quotes|schema cache|does not exist|42p01|undefined column|column .* does not exist|permission denied for table|violates row-level security|row-level security policy/i.test(
+          combined
+        );
+      const payloadTooLarge =
+        /too large|413|request entity|maximum|payload|body.*size|exceeds/i.test(combined);
+      let text;
+      if (needsSupabaseMigration) {
+        text =
+          'שמירת הקישור ללקוח נכשלה — ב-Supabase חסרה הטבלה או ההרשאות. ב-SQL Editor הריצו את כל הקובץ supabase/shared_quotes.sql מהריפו (טבלה shared_quotes, מדיניות INSERT ל-anon, פונקציית get_shared_quote, ו-NOTIFY pgrst). ודאו ש-REACT_APP_SUPABASE_URL באתר מצביע על אותו פרויקט Supabase.';
+      } else if (payloadTooLarge) {
+        text =
+          'גודל ההצעה גדול מדי לשמירה בענן (למשל תמונות מוטמעות). השתמשו בהדפסה ל-PDF או צמצמו קבצים בהצעה. פירוט: ' +
+          raw.slice(0, 160);
+      } else {
+        text = 'לא ניתן ליצור קישור כרגע. ' + (raw ? raw.slice(0, 220) : code || 'שגיאה לא ידועה');
+      }
       setShareLinkFeedback({
         type: 'error',
-        text:
-          msg.includes('shared_quotes') ||
-          msg.includes('schema cache') ||
-          msg.includes('get_shared_quote')
-            ? 'עדכנו את Supabase: הריצו מחדש את supabase/shared_quotes.sql (כולל הפונקציה get_shared_quote).'
-            : msg,
+        text,
       });
     } finally {
       setShareLinkBusy(false);
