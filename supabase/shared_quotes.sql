@@ -75,8 +75,13 @@ begin
 end;
 $$;
 
-revoke all on function public.get_shared_quote(uuid) from public;
+-- הרשאות ל־API: PUBLIC = כל המשתמשים; אחר כך מעניקים EXECUTE רק ל־anon/authenticated (מפתח מהדפדפן)
+revoke all on function public.get_shared_quote(uuid) from PUBLIC;
 grant execute on function public.get_shared_quote(uuid) to anon, authenticated;
+
+-- אימות מהיר (אופציונלי — להריץ בנפרד): אמור להחזיר שורה אחת עם get_shared_quote
+-- select routine_name from information_schema.routines
+--   where routine_schema = 'public' and routine_name = 'get_shared_quote';
 
 -- ריענון מטמון PostgREST כדי ש־supabase.rpc('get_shared_quote') יופיע מיד (מומלץ אחרי CREATE FUNCTION)
 notify pgrst, 'reload schema';
