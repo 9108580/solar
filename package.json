@@ -22,7 +22,8 @@
     "eject": "react-scripts eject",
     "pull:admin": "node scripts/pull-admin-settings.mjs",
     "sync:env:prod": "node scripts/sync-env-from-production-bundle.mjs",
-    "db:apply:shared-quotes": "node scripts/apply-shared-quotes.mjs"
+    "db:apply:shared-quotes": "node scripts/apply-shared-quotes.mjs",
+    "build:og-share": "node scripts/build-og-quote-share.mjs"
   },
   "eslintConfig": {
     "extends": [
@@ -48,6 +49,7 @@
     "dotenv": "^17.4.2",
     "pg": "^8.20.0",
     "postcss": "^8.5.13",
+    "sharp": "^0.34.5",
     "tailwindcss": "^3.4.19"
   }
 }
