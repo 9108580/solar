@@ -5,7 +5,7 @@ import {
   Calculator, Settings, Sun, User, FileText, CheckCircle, Zap, DollarSign, 
   Trash2, Plus, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, HardHat, BatteryCharging, ExternalLink, 
   ShieldCheck, Activity, MapPin, Phone, TrendingUp, Award, Clock, Wrench, AlertCircle,
-  Home, LineChart, Map as MapIcon, Gift, Users, LogOut, PenTool, Loader2, CloudUpload, Copy, Globe
+  Home, Gift, Users, LogOut, PenTool, Loader2, CloudUpload, Copy, Globe
 } from 'lucide-react';
 
 const COMPANY_WEBSITE_URL = 'https://mes.co.il';
@@ -81,10 +81,6 @@ function getEffectiveTariffForCalendarYear(baseTariffShekels, hasUrbanPremium, c
   );
 }
 
-/** תא ברשת כרטיסי ציוד — רוחב אחיד */
-const QUOTE_EQUIPMENT_CELL_CLASS =
-  'flex w-[11.5rem] shrink-0 flex-col items-center gap-2 sm:w-[13rem] md:w-[14rem]';
-
 /** תא צר בשורת רכיבים — ממיר / אופטימייזר / שטיפה / פאנלים בצד */
 const QUOTE_EQUIPMENT_STRIP_CELL =
   'flex w-[7.25rem] shrink-0 flex-col items-center gap-1 sm:w-[8rem] md:w-[8.75rem]';
@@ -121,26 +117,8 @@ const QUOTE_EQUIP_BELOW_HINT_CLASS =
 const QUOTE_CARD_SHELL =
   'relative box-border flex h-[12rem] w-full shrink-0 flex-col items-center justify-center gap-1 overflow-hidden rounded-[1.75rem] px-3 py-3 shadow-[0_24px_60px_-20px_rgba(0,0,0,0.65),inset_0_1px_0_0_rgba(255,255,255,0.06)] backdrop-blur-md md:h-[13rem] md:gap-1.5 md:px-4 md:py-4 print:shadow-md print:backdrop-blur-none';
 
-const QUOTE_BRAND_CARD_CLASS =
-  `${QUOTE_CARD_SHELL} border border-white/[0.12] bg-white/[0.06] print:border-slate-200/90 print:bg-white`;
-
-const QUOTE_BRAND_CARD_EMERALD_CLASS =
-  `${QUOTE_CARD_SHELL} border border-emerald-400/25 bg-emerald-950/30 print:border-emerald-200 print:bg-white`;
-
-const QUOTE_BRAND_CARD_BLUE_CLASS =
-  `${QUOTE_CARD_SHELL} border border-blue-400/30 bg-blue-950/25 print:border-blue-200 print:bg-white`;
-
-const QUOTE_BRAND_CARD_CYAN_CLASS =
-  `${QUOTE_CARD_SHELL} border border-cyan-400/28 bg-cyan-950/28 print:border-cyan-200 print:bg-white`;
-
 const QUOTE_BRAND_CARD_AMBER_CLASS =
   `${QUOTE_CARD_SHELL} border border-amber-400/30 bg-amber-950/22 print:border-amber-200 print:bg-white`;
-
-const QUOTE_PLAIN_EQUIP_CARD_CLASS =
-  `${QUOTE_CARD_SHELL} border border-slate-500/35 bg-slate-800/35 print:border-slate-200 print:bg-white`;
-
-const QUOTE_BRAND_LOGO_IMG_CLASS =
-  'max-h-[4.5rem] w-auto max-w-[90%] object-contain contrast-[1.05] saturate-[1.08] drop-shadow-[0_12px_28px_rgba(0,0,0,0.55)] brightness-[1.06] md:max-h-[5.25rem]';
 
 /** תמונת מערכת שטיפה בהצעה */
 const QUOTE_WASHING_SYSTEM_IMG = `${process.env.PUBLIC_URL}/equipment/panel-washing.png`;
