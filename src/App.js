@@ -3,7 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { getSupabase } from './supabaseClient';
 import { 
   Calculator, Settings, Sun, User, FileText, CheckCircle, Zap, DollarSign, 
-  Trash2, Plus, ChevronDown, ChevronUp, HardHat, BatteryCharging, 
+  Trash2, Plus, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, HardHat, BatteryCharging, 
   ShieldCheck, Activity, MapPin, Phone, TrendingUp, Award, Clock, Wrench, AlertCircle,
   Home, LineChart, Map as MapIcon, Gift, Users, LogOut, PenTool, Loader2, CloudUpload, Copy
 } from 'lucide-react';
@@ -77,12 +77,12 @@ const QUOTE_PROJECT_EXAMPLE_IMAGES = Array.from({ length: 14 }, (_, i) => {
 function QuoteExpandableSection({ title, subtitle, teaser, children, className = '' }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className={`mb-10 max-w-3xl mx-auto print:max-w-full ${className}`}>
+    <div className={`mb-6 max-w-3xl mx-auto print:max-w-full ${className}`}>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className="flex w-full items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-4 text-right shadow-sm transition-colors hover:border-blue-300 hover:bg-blue-50/40 print:hidden"
+        className="flex w-full items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-3 text-right shadow-sm transition-colors hover:border-blue-300 hover:bg-blue-50/40 print:hidden"
       >
         <ChevronDown
           className={`h-5 w-5 shrink-0 text-blue-600 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
@@ -100,6 +100,63 @@ function QuoteExpandableSection({ title, subtitle, teaser, children, className =
         {subtitle ? <p className="mt-1 text-sm text-slate-600">{subtitle}</p> : null}
       </div>
       <div className={`${open ? 'block' : 'hidden'} print:block`}>{children}</div>
+    </div>
+  );
+}
+
+/** סליידר תמונות פרויקטים — תמונה אחת, מעבר בחצים */
+function QuoteProjectSlider({ images }) {
+  const [idx, setIdx] = useState(0);
+  const total = images.length;
+  if (!total) return null;
+  const safeIdx = ((idx % total) + total) % total;
+  const go = (delta) => setIdx((i) => (i + delta + total) % total);
+
+  return (
+    <div className="mx-auto max-w-md print:max-w-full">
+      <div className="relative aspect-[16/10] max-h-44 sm:max-h-48 overflow-hidden rounded-xl border border-slate-200 bg-slate-100 shadow-inner print:max-h-32">
+        <img
+          src={images[safeIdx]}
+          alt={`דוגמת פרויקט ${safeIdx + 1} מתוך ${total}`}
+          className="h-full w-full object-cover"
+        />
+        <button
+          type="button"
+          onClick={() => go(-1)}
+          aria-label="תמונה קודמת"
+          className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-white/90 p-1.5 text-blue-900 shadow-md hover:bg-white print:hidden"
+        >
+          <ChevronRight className="h-5 w-5" aria-hidden />
+        </button>
+        <button
+          type="button"
+          onClick={() => go(1)}
+          aria-label="תמונה הבאה"
+          className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-white/90 p-1.5 text-blue-900 shadow-md hover:bg-white print:hidden"
+        >
+          <ChevronLeft className="h-5 w-5" aria-hidden />
+        </button>
+      </div>
+      <div className="mt-2 flex items-center justify-center gap-1.5 print:hidden">
+        {images.map((_, i) => (
+          <button
+            key={i}
+            type="button"
+            aria-label={`תמונה ${i + 1}`}
+            onClick={() => setIdx(i)}
+            className={`h-1.5 rounded-full transition-all ${i === safeIdx ? 'w-5 bg-orange-500' : 'w-1.5 bg-slate-300 hover:bg-slate-400'}`}
+          />
+        ))}
+      </div>
+      <p className="mt-1 text-center text-xs text-slate-500 tabular-nums">
+        {safeIdx + 1} / {total}
+        <span className="print:hidden"> · לחצו על החצים לעיון</span>
+      </p>
+      <div className="mt-2 hidden print:grid grid-cols-4 gap-1">
+        {images.slice(0, 4).map((src) => (
+          <img key={src} src={src} alt="" className="aspect-[4/3] w-full rounded object-cover border border-slate-200" />
+        ))}
+      </div>
     </div>
   );
 }
@@ -124,7 +181,7 @@ function QuoteInvestmentYieldChart({ annualYield }) {
       role="img"
       aria-label={`תשואה שנתית: סולארי ${solarPct.toFixed(1)} אחוז, שוק ההון כ-9 אחוז, נדלן כ-4 אחוז`}
     >
-      <div className="flex items-end justify-center gap-5 sm:gap-8 h-36 sm:h-40">
+      <div className="flex items-end justify-center gap-4 sm:gap-6 h-28 sm:h-32">
         {bars.map((bar) => {
           const h = Math.max(6, (bar.pct / scaleMax) * 100);
           return (
@@ -3595,12 +3652,12 @@ export default function App() {
                 )}
 
                 {/* --- PAGE 2: ABOUT US --- */}
-                <section className="py-20 px-8 md:px-20 bg-slate-50 print:break-before-auto">
-                   <div className="max-w-4xl mx-auto text-center mb-16">
-                     <h2 className="text-3xl md:text-4xl font-black text-blue-900 mb-4">מי אנחנו? המומחים שלכם באנרגיה סולארית</h2>
-                     <p className="text-lg text-slate-600">אנו חברת בוטיק המתמחה בפתרונות אנרגיה מתקדמים. הסטנדרט שלנו הוא הגבוה בשוק - ללא פשרות על איכות הרכיבים, מקצועיות ההתקנה ומתן שירות אישי לכל לקוח.</p>
+                <section className="py-10 px-4 sm:px-8 md:px-20 bg-slate-50 print:break-before-auto print:py-6">
+                   <div className="max-w-4xl mx-auto text-center mb-8">
+                     <h2 className="text-2xl md:text-3xl font-black text-blue-900 mb-3">מי אנחנו? המומחים שלכם באנרגיה סולארית</h2>
+                     <p className="text-base text-slate-600">אנו חברת בוטיק המתמחה בפתרונות אנרגיה מתקדמים — איכות, מקצועיות ושירות אישי.</p>
                    </div>
-                   <div className="mx-auto mb-16 max-w-5xl">
+                   <div className="mx-auto mb-8 max-w-3xl">
                      <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-xl ring-1 ring-slate-200/60">
                        <img
                          src={`${process.env.PUBLIC_URL}/team-building-about-us.png`}
@@ -3610,19 +3667,19 @@ export default function App() {
                      </div>
                      <p className="mt-4 text-center text-sm font-medium text-slate-500">הצוות שלנו ביום גיבוש — האנשים שמלווים אתכם בכל שלב בדרך לאנרגיה סולארית.</p>
                    </div>
-                   <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                     <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 text-center">
-                        <Award className="w-12 h-12 text-orange-500 mx-auto mb-4"/>
+                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                     <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200 text-center">
+                        <Award className="w-10 h-10 text-orange-500 mx-auto mb-3"/>
                         <h3 className="text-xl font-bold text-blue-800 mb-2">איכות ללא פשרות</h3>
                         <p className="text-slate-600 text-sm">אנו עובדים רק עם המותגים המובילים בעולם (Tier 1) כדי להבטיח אמינות ותפוקה מקסימלית לאורך עשרות שנים.</p>
                      </div>
-                     <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 text-center">
-                        <ShieldCheck className="w-12 h-12 text-blue-600 mx-auto mb-4"/>
+                     <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200 text-center">
+                        <ShieldCheck className="w-10 h-10 text-blue-600 mx-auto mb-3"/>
                         <h3 className="text-xl font-bold text-blue-800 mb-2">אחריות וביטחון</h3>
                         <p className="text-slate-600 text-sm">שקט נפשי מלא. אנו מלווים אתכם גם לאחר ההתקנה עם מערכות ניטור מתקדמות ואחריות ארוכת טווח.</p>
                      </div>
-                     <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 text-center">
-                        <Wrench className="w-12 h-12 text-green-500 mx-auto mb-4"/>
+                     <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200 text-center">
+                        <Wrench className="w-10 h-10 text-green-500 mx-auto mb-3"/>
                         <h3 className="text-xl font-bold text-blue-800 mb-2">פתרון Turn-Key</h3>
                         <p className="text-slate-600 text-sm">מא' ועד ת'. אנו מטפלים בכל הביורוקרטיה, הרישוי, התכנון וההתקנה - אתם רק נהנים מהחשמל.</p>
                      </div>
@@ -3630,8 +3687,8 @@ export default function App() {
                 </section>
 
                 {/* --- PAGE 3: THE SYSTEM & FINANCIALS --- */}
-                <section className="py-12 px-4 sm:px-8 md:py-20 md:px-20 print:break-before-auto">
-                   <h2 className="mb-8 text-center text-2xl font-black text-blue-900 sm:mb-12 sm:text-3xl md:text-4xl">המערכת ותחזית כלכלית</h2>
+                <section className="py-8 px-4 sm:px-8 md:py-12 md:px-20 print:break-before-auto">
+                   <h2 className="mb-6 text-center text-2xl font-black text-blue-900 sm:text-3xl">המערכת ותחזית כלכלית</h2>
 
                    {generatedQuote.hasUrbanPremium && (
                      <div className="mx-auto mb-10 max-w-4xl rounded-2xl border border-emerald-300/90 bg-gradient-to-br from-emerald-50 via-white to-teal-50 px-6 py-5 text-center shadow-md">
@@ -3648,7 +3705,7 @@ export default function App() {
                    )}
                    
                    {/* Highlights — מובייל: עמודה אחת עד רוחב בינוני, כדי למנוע חפיפה של מספרים ויחידות */}
-                   <div className="mb-16 grid grid-cols-1 gap-4 min-[400px]:grid-cols-2 md:grid-cols-4 md:gap-4">
+                   <div className="mb-8 grid grid-cols-1 gap-3 min-[400px]:grid-cols-2 md:grid-cols-4 md:gap-3">
                      
                      {/* Card 1 */}
                      <div className="flex h-full min-w-0 flex-col items-center overflow-hidden rounded-2xl border border-slate-700/50 bg-gradient-to-br from-slate-900 to-slate-800 p-4 text-center text-white shadow-lg sm:p-6">
@@ -3750,10 +3807,10 @@ export default function App() {
                    </div>
 
                    {/* Custom Financial Chart (CSS Based) */}
-                   <div className="bg-white border border-slate-200 rounded-3xl p-8 mb-16 shadow-lg">
-                      <h3 className="text-xl font-bold text-blue-900 mb-8 flex items-center gap-2"><TrendingUp className="text-orange-500"/> תחזית תזרים מזומנים מצטבר (ל-25 שנים)</h3>
+                   <div className="bg-white border border-slate-200 rounded-2xl p-5 mb-8 shadow-md">
+                      <h3 className="text-lg font-bold text-blue-900 mb-4 flex items-center gap-2"><TrendingUp className="text-orange-500 w-5 h-5"/> תחזית תזרים מזומנים (25 שנה)</h3>
                       
-                      <div className="quote-print-cashflow-chart h-64 flex items-end justify-between gap-2 md:gap-8 mt-12 relative border-b-2 border-slate-300 pb-2 print:mt-6">
+                      <div className="quote-print-cashflow-chart h-48 sm:h-52 flex items-end justify-between gap-2 md:gap-6 mt-6 relative border-b-2 border-slate-300 pb-2 print:mt-4 print:h-40">
                         {/* 0 Line marker */}
                         <div className="absolute w-full border-t border-dashed border-slate-400" style={{bottom: `${Math.abs(generatedQuote.minLoss) / ((generatedQuote.maxProfit || 1) + Math.abs(generatedQuote.minLoss)) * 100}%`}}></div>
                         <span className="absolute left-0 font-bold text-xs text-slate-400" style={{bottom: `calc(${Math.abs(generatedQuote.minLoss) / ((generatedQuote.maxProfit || 1) + Math.abs(generatedQuote.minLoss)) * 100}% + 5px)`}}>איזון 0</span>
@@ -3874,10 +3931,10 @@ export default function App() {
                 </section>
 
                 {/* --- PAGE 4: INCLUSIONS & PRICING --- */}
-                <section className="py-20 px-8 md:px-20 bg-slate-900 text-white print:break-before-auto print:bg-white print:text-slate-900">
-                  <h2 className="text-3xl md:text-4xl font-black mb-12 text-center text-white print:text-blue-900">ההשקעה שלך בפרויקט Turn-Key</h2>
+                <section className="py-10 px-4 sm:px-8 md:px-20 bg-slate-900 text-white print:break-before-auto print:bg-white print:text-slate-900 print:py-6">
+                  <h2 className="text-2xl md:text-3xl font-black mb-8 text-center text-white print:text-blue-900">ההשקעה שלך בפרויקט Turn-Key</h2>
                   
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-16">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
                      <div className="bg-slate-800 p-8 rounded-3xl print:bg-slate-50 print:border print:border-slate-200">
                        <h3 className="text-2xl font-bold mb-6 text-blue-400 print:text-blue-800">מה כלול בהצעה?</h3>
                        <div className="space-y-4">
@@ -3949,8 +4006,8 @@ export default function App() {
                 </section>
 
                 {/* --- PAGE 5: TECHNICAL SPECIFICATIONS --- */}
-                <section className="py-20 px-8 md:px-20 bg-white print:break-before-auto">
-                   <h2 className="text-3xl md:text-4xl font-black text-blue-900 mb-12 text-center">מפרט טכני</h2>
+                <section className="py-10 px-4 sm:px-8 md:px-20 bg-white print:break-before-auto print:py-6">
+                   <h2 className="text-2xl md:text-3xl font-black text-blue-900 mb-8 text-center">מפרט טכני</h2>
                    
                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-10 text-sm">
                      
@@ -4022,8 +4079,8 @@ export default function App() {
                 </section>
 
                 {/* --- PAGE 6: PAYMENT TERMS & WARRANTY --- */}
-                <section className="py-20 px-8 md:px-20 bg-slate-50 print:break-before-auto">
-                   <h2 className="text-3xl md:text-4xl font-black text-blue-900 mb-12 text-center">תנאי תשלום ואחריות</h2>
+                <section className="py-10 px-4 sm:px-8 md:px-20 bg-slate-50 print:break-before-auto print:py-6">
+                   <h2 className="text-2xl md:text-3xl font-black text-blue-900 mb-8 text-center">תנאי תשלום ואחריות</h2>
                    
                    <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
                       
@@ -4104,45 +4161,27 @@ export default function App() {
                   </section>
                 )}
 
-                {/* --- PROJECT EXAMPLES GALLERY --- */}
-                <section className="py-16 px-8 md:px-20 bg-slate-50 border-t border-slate-200 print:bg-white print:py-10">
-                  <div className="max-w-6xl mx-auto">
-                    <h2 className="text-3xl md:text-4xl font-black text-blue-900 mb-3 text-center flex items-center justify-center gap-3">
-                      <Home className="w-9 h-9 text-orange-500 shrink-0" aria-hidden />
-                      דוגמאות מפרויקטים שלנו
-                    </h2>
-                    <p className="text-center text-slate-600 text-lg mb-10 max-w-2xl mx-auto">
-                      מבחר התקנות אמיתיות שביצענו — בתים פרטיים, מבני ציבור ועסקים ברחבי הארץ.
-                    </p>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
-                      {QUOTE_PROJECT_EXAMPLE_IMAGES.map((src, idx) => (
-                        <div
-                          key={src}
-                          className="group relative aspect-[4/3] overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-md print:shadow-sm print:break-inside-avoid"
-                        >
-                          <img
-                            src={src}
-                            alt={`דוגמת פרויקט סולארי ${idx + 1}`}
-                            loading="lazy"
-                            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105 print:group-hover:scale-100"
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                {/* --- PROJECT EXAMPLES — סליידר, נפתח בלחיצה --- */}
+                <section className="px-4 sm:px-8 md:px-20 py-6 border-t border-slate-200 bg-slate-50/50 print:bg-white print:py-4">
+                  <QuoteExpandableSection
+                    title="דוגמאות מפרויקטים שלנו"
+                    subtitle="התקנות אמיתיות ברחבי הארץ"
+                    teaser={`${QUOTE_PROJECT_EXAMPLE_IMAGES.length} תמונות · סליידר`}
+                    className="max-w-md"
+                  >
+                    <QuoteProjectSlider images={QUOTE_PROJECT_EXAMPLE_IMAGES} />
+                  </QuoteExpandableSection>
                 </section>
 
-                {/* --- PAGE 7: INTERACTIVE MAP (CLIENTS) — מעל החתימה והפוטר --- */}
-                <section className="py-20 px-8 md:px-20 bg-white print:hidden border-t border-slate-100">
-                   <div className="max-w-4xl mx-auto text-center mb-10">
-                     <h2 className="text-3xl md:text-4xl font-black text-blue-900 mb-4 flex items-center justify-center gap-3">
-                       <MapIcon className="w-10 h-10 text-orange-500" />
-                       מצא לקוח ממליץ מאזורך
-                     </h2>
-                     <p className="text-lg text-slate-600">מערכות סולאריות שלנו פזורות בכל רחבי הארץ. תוכלו לנווט במפה, לראות פרויקטים שהתקנו בסביבה שלכם ולקבל המלצות מהלקוחות שלנו שכבר התקינו איתנו</p>
-                   </div>
-                   
-                   <div className="w-full rounded-3xl overflow-hidden shadow-2xl border border-slate-200 relative" style={{ height: '600px' }}>
+                {/* --- MAP — נפתח בלחיצה, לא תופס שטח כשסגור --- */}
+                <section className="px-4 sm:px-8 md:px-20 py-6 bg-white print:hidden border-t border-slate-100">
+                   <QuoteExpandableSection
+                     title="מצא לקוח ממליץ מאזורך"
+                     subtitle="מפה אינטראקטיבית של התקנות ברחבי הארץ"
+                     teaser="לחצו לפתיחת המפה"
+                     className="max-w-4xl"
+                   >
+                   <div className="w-full rounded-2xl overflow-hidden shadow-lg border border-slate-200 relative" style={{ height: 'min(360px, 55vh)' }}>
                       {/* מסכת כיסוי חכמה לכותרת של גוגל (מסתיר את השם ומציג רק את שם החברה בעיצוב תואם) */}
                       <div className="absolute top-0 left-0 w-full h-[58px] bg-blue-900 flex items-center px-6 z-10 shadow-md">
                         <MapPin className="w-5 h-5 text-orange-400 ml-3" />
@@ -4161,10 +4200,11 @@ export default function App() {
                         title="לקוחות ממליצים"
                       ></iframe>
                    </div>
+                   </QuoteExpandableSection>
                 </section>
 
                 {/* --- LIMITED TIME OFFER BANNER --- */}
-                <section className="pb-20 pt-8 px-8 md:px-20 bg-white">
+                <section className="pb-10 pt-6 px-4 sm:px-8 md:px-20 bg-white">
                   <div className="max-w-4xl mx-auto">
                     {/* לתצוגת ווב (טיימר חי וכפתור) */}
                     {!timeLeft.expired ? (
