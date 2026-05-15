@@ -1,3 +1,16 @@
 {
-  "rewrites": [{ "source": "/q/:path*", "destination": "/index.html" }]
+  "rewrites": [
+    {
+      "source": "/q/:id",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": "(?i).*(facebookexternalhit|whatsapp|twitterbot|linkedinbot|slackbot|telegrambot|discordbot).*"
+        }
+      ],
+      "destination": "/api/quote-og?id=:id"
+    },
+    { "source": "/q/:path*", "destination": "/index.html" }
+  ]
 }
