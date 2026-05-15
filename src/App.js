@@ -73,6 +73,37 @@ const QUOTE_PROJECT_EXAMPLE_IMAGES = Array.from({ length: 14 }, (_, i) => {
   return `${process.env.PUBLIC_URL}/project-examples/project-${n}.jpg`;
 });
 
+/** סקשן בהצעה — סגור במסך, נפתח בלחיצה; בהדפסה תמיד פתוח */
+function QuoteExpandableSection({ title, subtitle, teaser, children, className = '' }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className={`mb-10 max-w-3xl mx-auto print:max-w-full ${className}`}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex w-full items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-4 text-right shadow-sm transition-colors hover:border-blue-300 hover:bg-blue-50/40 print:hidden"
+      >
+        <ChevronDown
+          className={`h-5 w-5 shrink-0 text-blue-600 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+          aria-hidden
+        />
+        <div className="min-w-0 flex-1">
+          <h3 className="text-lg font-black text-blue-900">{title}</h3>
+          {subtitle ? <p className="mt-0.5 text-sm text-slate-600">{subtitle}</p> : null}
+          {teaser ? <p className="mt-1 text-xs font-semibold text-orange-600">{teaser}</p> : null}
+          {!open ? <p className="mt-1 text-xs text-slate-500">לחצו לפתיחת הפירוט המלא</p> : null}
+        </div>
+      </button>
+      <div className="mb-4 hidden print:block">
+        <h3 className="text-xl font-black text-blue-900">{title}</h3>
+        {subtitle ? <p className="mt-1 text-sm text-slate-600">{subtitle}</p> : null}
+      </div>
+      <div className={`${open ? 'block' : 'hidden'} print:block`}>{children}</div>
+    </div>
+  );
+}
+
 /** גרף תשואה שנתית קומפקטי — סולארי מול נדל״ן ושוק ההון */
 function QuoteInvestmentYieldChart({ annualYield }) {
   const solarPct = Math.max(0, Number(annualYield) || 0);
@@ -3763,29 +3794,35 @@ export default function App() {
                       </div>
                    </div>
 
-                   {/* Investment Comparison — גרף תשואה שנתית קומפקטי */}
-                   <div className="mb-10 max-w-xl mx-auto print:max-w-full">
-                      <h3 className="text-xl font-black text-blue-900 mb-1 text-center">
-                        השוואת תשואה שנתית משוערת
-                      </h3>
-                      <p className="text-center text-sm text-slate-500 mb-5 print:text-slate-600">
-                        מערכת סולארית לעומת אפיקי השקעה נפוצים
-                      </p>
-                      <QuoteInvestmentYieldChart annualYield={generatedQuote.annualYield} />
-                   </div>
+                   {/* Investment Comparison — נפתח בלחיצה */}
+                   <QuoteExpandableSection
+                     title="השוואת תשואה שנתית משוערת"
+                     subtitle="מערכת סולארית לעומת אפיקי השקעה נפוצים"
+                     teaser={
+                       generatedQuote.annualYield
+                         ? `תשואה שנתית במערכת סולארית: ${generatedQuote.annualYield.toFixed(1)}%`
+                         : null
+                     }
+                   >
+                     <QuoteInvestmentYieldChart annualYield={generatedQuote.annualYield} />
+                   </QuoteExpandableSection>
 
-                   {/* Loan Simulation Table (25 Years Dynamics) */}
+                   {/* Loan Simulation — נפתח בלחיצה */}
                    {generatedQuote.showLoanSimulation && (
-                     <div className="bg-white border border-slate-200 rounded-3xl p-8 mb-16 shadow-lg overflow-hidden print:break-before-auto print:p-4">
-                        <div className="mb-6">
-                           <h3 className="text-2xl font-black text-blue-900">ניתוח כדאיות כלכלית - מימון 100% בנקאי</h3>
-                           <p className="text-slate-600 mt-1 mb-2">
-                             פריים + {generatedQuote.loanSettings.loanMargin}% (סה"כ ריבית משוערת: {generatedQuote.loanSettings.annualInterestRate}%)<br/>
-                             <span className="text-sm font-medium bg-blue-50 text-blue-800 px-2 py-1 rounded inline-block mt-2 border border-blue-100">
+                     <QuoteExpandableSection
+                       title="תכנית פיננסית — מימון 100% בנקאי"
+                       subtitle={`פריים + ${generatedQuote.loanSettings.loanMargin}% (ריבית משוערת: ${generatedQuote.loanSettings.annualInterestRate}%)`}
+                       teaser={`רווח נטו צפוי ל־25 שנה: ₪${Math.round(
+                         generatedQuote.loanSimulation.reduce((acc, row) => acc + row.netProfit, 0)
+                       ).toLocaleString('he-IL')}`}
+                       className="max-w-5xl"
+                     >
+                     <div className="bg-white border border-slate-200 rounded-3xl p-6 md:p-8 shadow-lg overflow-hidden print:break-before-auto print:p-4 print:shadow-none print:border-slate-300">
+                        <p className="text-slate-600 mb-4 text-sm leading-relaxed">
+                             <span className="font-medium bg-blue-50 text-blue-800 px-2 py-1 rounded inline-block border border-blue-100">
                                החזר ההלוואה מבוסס על הפניית 100% מההכנסות לטובת סילוק הקרן והריבית עד לסיומה. לאחר מכן, ההכנסות עוברות לרווח נקי.
                              </span>
-                           </p>
-                        </div>
+                        </p>
                         <div className="overflow-x-auto -mx-2 px-2 max-w-full">
                            <table className="min-w-[720px] print:min-w-0 w-full text-center border-collapse text-[11px] sm:text-sm table-fixed">
                               <colgroup>
@@ -3831,6 +3868,7 @@ export default function App() {
                         </div>
                         <p className="text-xs text-slate-400 mt-4">* הסימולציה מציגה הערכה כללית הכוללת פחת מודולים סולאריים משוער של 0.33% בשנה. התנאים הסופיים כפופים לאישור הבנק המממן ולשינויים בריבית הפריים. </p>
                      </div>
+                     </QuoteExpandableSection>
                    )}
 
                 </section>
