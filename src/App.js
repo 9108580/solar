@@ -73,6 +73,55 @@ const QUOTE_PROJECT_EXAMPLE_IMAGES = Array.from({ length: 14 }, (_, i) => {
   return `${process.env.PUBLIC_URL}/project-examples/project-${n}.jpg`;
 });
 
+/** גרף תשואה שנתית קומפקטי — סולארי מול נדל״ן ושוק ההון */
+function QuoteInvestmentYieldChart({ annualYield }) {
+  const solarPct = Math.max(0, Number(annualYield) || 0);
+  const scaleMax = Math.max(solarPct, 12, 1);
+  const bars = [
+    { label: 'נדל״ן', pct: 4, range: '3–5%', color: 'bg-slate-400' },
+    { label: 'שוק ההון', pct: 9, range: '8–10%', color: 'bg-emerald-500' },
+    {
+      label: 'מערכת סולארית',
+      pct: solarPct,
+      color: 'bg-gradient-to-t from-orange-500 to-blue-600',
+      highlight: true,
+    },
+  ];
+  return (
+    <div
+      className="rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-5 shadow-sm print:border-slate-300 print:bg-white"
+      role="img"
+      aria-label={`תשואה שנתית: סולארי ${solarPct.toFixed(1)} אחוז, שוק ההון כ-9 אחוז, נדלן כ-4 אחוז`}
+    >
+      <div className="flex items-end justify-center gap-5 sm:gap-8 h-36 sm:h-40">
+        {bars.map((bar) => {
+          const h = Math.max(6, (bar.pct / scaleMax) * 100);
+          return (
+            <div key={bar.label} className="flex flex-col items-center flex-1 max-w-[5.5rem] sm:max-w-[6.5rem]">
+              <span
+                className={`mb-1 text-sm font-black tabular-nums ${bar.highlight ? 'text-orange-600' : 'text-slate-600'}`}
+              >
+                {bar.highlight ? `${solarPct.toFixed(1)}%` : bar.range}
+              </span>
+              <div className="relative w-full flex-1 flex flex-col justify-end min-h-[5rem]">
+                <div
+                  className={`w-full rounded-t-lg shadow-sm ${bar.color} ${bar.highlight ? 'ring-2 ring-orange-400/60' : ''}`}
+                  style={{ height: `${h}%` }}
+                />
+              </div>
+              <span
+                className={`mt-2 text-center text-xs font-bold leading-tight ${bar.highlight ? 'text-blue-900' : 'text-slate-600'}`}
+              >
+                {bar.label}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 const BrandLogoSvg = ({ className }) => (
   <svg viewBox="0 0 100 100" className={className} fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
     <circle cx="50" cy="45" r="35" fill="url(#sun-grad)"/>
@@ -3714,72 +3763,15 @@ export default function App() {
                       </div>
                    </div>
 
-                   {/* Investment Comparison Section */}
-                   <div className="mb-16">
-                      <h3 className="text-2xl font-black text-blue-900 mb-6 border-r-4 border-orange-500 pr-4">השוואת אפיקי השקעה</h3>
-                      <p className="text-slate-600 mb-8 max-w-3xl">לפני שמקבלים החלטה, חשוב להבין איך השקעה במערכת סולארית עומדת מול אלטרנטיבות ההשקעה הנפוצות במשק הישראלי.</p>
-                      
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        
-                        {/* Real Estate */}
-                        <div className="bg-emerald-50/40 border border-emerald-100 rounded-2xl p-6 shadow-sm flex flex-col transition-all hover:shadow-md">
-                           <div className="flex items-center gap-3 mb-4">
-                             <div className="p-3 bg-emerald-100/50 text-emerald-600 rounded-xl"><Home className="w-6 h-6" /></div>
-                             <h4 className="font-bold text-lg text-slate-800">נדל"ן (דירה להשקעה)</h4>
-                           </div>
-                           <div className="space-y-4 flex-1">
-                              <div>
-                                <p className="text-sm text-slate-500 mb-1">תשואה שנתית ממוצעת</p>
-                                <p className="text-2xl font-black text-emerald-700/70">3% - 5%</p>
-                              </div>
-                              <ul className="space-y-2 text-sm text-slate-600">
-                                <li className="flex items-start gap-2"><Activity className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" /> <strong>רמת סיכון:</strong> נמוכה</li>
-                                <li className="flex items-start gap-2"><Wrench className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" /> <strong>מעורבות:</strong> גבוהה (חיפוש שוכרים, תיקונים, עו"ד)</li>
-                                <li className="flex items-start gap-2"><FileText className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" /> <strong>הבטחת הכנסה:</strong> תלוי בשוכר ובשוק</li>
-                              </ul>
-                           </div>
-                        </div>
-
-                        {/* Stock Market */}
-                        <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-6 shadow-sm flex flex-col transition-all hover:shadow-md">
-                           <div className="flex items-center gap-3 mb-4">
-                             <div className="p-3 bg-emerald-100 text-emerald-600 rounded-xl"><LineChart className="w-6 h-6" /></div>
-                             <h4 className="font-bold text-lg text-slate-800">שוק ההון (מדד S&P 500)</h4>
-                           </div>
-                           <div className="space-y-4 flex-1">
-                              <div>
-                                <p className="text-sm text-slate-500 mb-1">תשואה שנתית ממוצעת</p>
-                                <p className="text-2xl font-black text-emerald-700">8% - 10%</p>
-                              </div>
-                              <ul className="space-y-2 text-sm text-slate-600">
-                                <li className="flex items-start gap-2"><Activity className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" /> <strong>רמת סיכון:</strong> בינונית-גבוהה (תנודתיות)</li>
-                                <li className="flex items-start gap-2"><Wrench className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" /> <strong>מעורבות:</strong> נמוכה</li>
-                                <li className="flex items-start gap-2"><FileText className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" /> <strong>הבטחת הכנסה:</strong> אין (תלוי בשוק הגלובלי)</li>
-                              </ul>
-                           </div>
-                        </div>
-
-                        {/* Solar System (Branded Colors) */}
-                        <div className="bg-blue-50 border-2 border-blue-500 rounded-2xl p-6 shadow-md flex flex-col relative overflow-hidden transition-all hover:shadow-lg transform hover:-translate-y-1">
-                           <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-400 to-orange-400"></div>
-                           <div className="flex items-center gap-3 mb-4">
-                             <div className="p-3 bg-orange-500 text-white rounded-xl"><Sun className="w-6 h-6" /></div>
-                             <h4 className="font-bold text-lg text-blue-900">מערכת סולארית</h4>
-                           </div>
-                           <div className="space-y-4 flex-1">
-                              <div>
-                                <p className="text-sm text-blue-800 mb-1">תשואה שנתית משוערת</p>
-                                <p className="text-3xl font-black text-blue-700">{generatedQuote.annualYield ? generatedQuote.annualYield.toFixed(1) : 0}%</p>
-                              </div>
-                              <ul className="space-y-2 text-sm text-blue-900 font-medium">
-                                <li className="flex items-start gap-2"><Activity className="w-4 h-4 text-orange-500 shrink-0 mt-0.5" /> <strong>רמת סיכון:</strong> אפסית</li>
-                                <li className="flex items-start gap-2"><Wrench className="w-4 h-4 text-orange-500 shrink-0 mt-0.5" /> <strong>מעורבות:</strong> אפסית (הכנסה פסיבית)</li>
-                                <li className="flex items-start gap-2"><FileText className="w-4 h-4 text-orange-500 shrink-0 mt-0.5" /> <strong>הבטחת הכנסה:</strong> מובטחת ע"י המדינה ל-25 שנה!</li>
-                              </ul>
-                           </div>
-                        </div>
-
-                      </div>
+                   {/* Investment Comparison — גרף תשואה שנתית קומפקטי */}
+                   <div className="mb-10 max-w-xl mx-auto print:max-w-full">
+                      <h3 className="text-xl font-black text-blue-900 mb-1 text-center">
+                        השוואת תשואה שנתית משוערת
+                      </h3>
+                      <p className="text-center text-sm text-slate-500 mb-5 print:text-slate-600">
+                        מערכת סולארית לעומת אפיקי השקעה נפוצים
+                      </p>
+                      <QuoteInvestmentYieldChart annualYield={generatedQuote.annualYield} />
                    </div>
 
                    {/* Loan Simulation Table (25 Years Dynamics) */}
