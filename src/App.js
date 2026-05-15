@@ -4005,11 +4005,15 @@ export default function App() {
                   </div>
                 </section>
 
-                {/* --- PAGE 5: TECHNICAL SPECIFICATIONS --- */}
-                <section className="py-10 px-4 sm:px-8 md:px-20 bg-white print:break-before-auto print:py-6">
-                   <h2 className="text-2xl md:text-3xl font-black text-blue-900 mb-8 text-center">מפרט טכני</h2>
-                   
-                   <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-10 text-sm">
+                {/* --- PAGE 5: TECHNICAL SPECIFICATIONS — נפתח בלחיצה --- */}
+                <section className="py-6 px-4 sm:px-8 md:px-20 bg-white print:break-before-auto print:py-6">
+                   <QuoteExpandableSection
+                     title="פירוט מלא של מפרט טכני"
+                     subtitle="אביזרי חשמל, קונסטרוקציה, DC/AC והגנות וניטור"
+                     teaser="לחצו לצפייה בכל סעיפי המפרט"
+                     className="max-w-5xl"
+                   >
+                   <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-8 text-sm print:gap-y-6">
                      
                      {/* Column 1 */}
                      <div className="space-y-8">
@@ -4076,6 +4080,7 @@ export default function App() {
                      </div>
 
                    </div>
+                   </QuoteExpandableSection>
                 </section>
 
                 {/* --- PAGE 6: PAYMENT TERMS & WARRANTY --- */}
