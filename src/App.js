@@ -3,10 +3,53 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { getSupabase } from './supabaseClient';
 import { 
   Calculator, Settings, Sun, User, FileText, CheckCircle, Zap, DollarSign, 
-  Trash2, Plus, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, HardHat, BatteryCharging, 
+  Trash2, Plus, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, HardHat, BatteryCharging, ExternalLink, 
   ShieldCheck, Activity, MapPin, Phone, TrendingUp, Award, Clock, Wrench, AlertCircle,
-  Home, LineChart, Map as MapIcon, Gift, Users, LogOut, PenTool, Loader2, CloudUpload, Copy
+  Home, LineChart, Map as MapIcon, Gift, Users, LogOut, PenTool, Loader2, CloudUpload, Copy, Globe
 } from 'lucide-react';
+
+const COMPANY_WEBSITE_URL = 'https://mes.co.il';
+const COMPANY_WEBSITE_DISPLAY = 'mes.co.il';
+const COMPANY_FACEBOOK_URL = 'https://www.facebook.com/mumhimenergiyasolarit';
+
+function FacebookIcon({ className = 'h-5 w-5' }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+    </svg>
+  );
+}
+
+function CompanySocialLinks({ className = '', variant = 'light' }) {
+  const linkClass =
+    variant === 'dark'
+      ? 'inline-flex items-center gap-2 rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-sm font-semibold text-slate-200 transition-colors hover:border-white/30 hover:bg-white/10 hover:text-white'
+      : 'inline-flex items-center gap-2 rounded-lg border border-blue-200/80 bg-white px-3 py-1.5 text-sm font-semibold text-blue-800 transition-colors hover:border-blue-400 hover:bg-blue-50 print:border-slate-300 print:text-slate-800';
+  return (
+    <div className={`flex flex-wrap items-center gap-3 ${className}`}>
+      <a href={COMPANY_WEBSITE_URL} target="_blank" rel="noopener noreferrer" className={linkClass}>
+        <Globe className="h-5 w-5 shrink-0" aria-hidden />
+        {COMPANY_WEBSITE_DISPLAY}
+      </a>
+      <a href={COMPANY_FACEBOOK_URL} target="_blank" rel="noopener noreferrer" className={linkClass}>
+        <FacebookIcon className="h-5 w-5 shrink-0" />
+        פייסבוק
+      </a>
+    </div>
+  );
+}
+
+/** אייקון שקל — במקום DollarSign (סמל דולר) בהצעה */
+function ShekelIcon({ className = '' }) {
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center justify-center font-black leading-none text-current ${className}`}
+      aria-hidden
+    >
+      ₪
+    </span>
+  );
+}
 
 /** כתובת מלאה לשיתוף הצעה: /q/:uuid (מכבד PUBLIC_URL) */
 function quoteShareAbsoluteUrl(quoteId) {
@@ -28,9 +71,44 @@ function buildWhatsappMeLink(rawPhone, message) {
 const URBAN_PREMIUM_AGOROT_PER_KWH = 6;
 const URBAN_PREMIUM_VALID_UNTIL_YEAR = 2042;
 
+/** תעריף לשנה קלנדרית — פרמיה אורבנית רק עד URBAN_PREMIUM_VALID_UNTIL_YEAR כולל */
+function getEffectiveTariffForCalendarYear(baseTariffShekels, hasUrbanPremium, calendarYear) {
+  const premiumActive =
+    hasUrbanPremium && calendarYear <= URBAN_PREMIUM_VALID_UNTIL_YEAR;
+  return (
+    baseTariffShekels +
+    (premiumActive ? URBAN_PREMIUM_AGOROT_PER_KWH / 100 : 0)
+  );
+}
+
 /** תא ברשת כרטיסי ציוד — רוחב אחיד */
 const QUOTE_EQUIPMENT_CELL_CLASS =
   'flex w-[11.5rem] shrink-0 flex-col items-center gap-2 sm:w-[13rem] md:w-[14rem]';
+
+/** תא צר בשורת רכיבים — ממיר / אופטימייזר / שטיפה / פאנלים בצד */
+const QUOTE_EQUIPMENT_STRIP_CELL =
+  'flex w-[7.25rem] shrink-0 flex-col items-center gap-1 sm:w-[8rem] md:w-[8.75rem]';
+
+const QUOTE_CARD_SHELL_COMPACT =
+  'relative box-border flex h-[8.25rem] w-full shrink-0 flex-col items-center justify-center gap-0.5 overflow-hidden rounded-xl px-2 py-2 shadow-[0_12px_32px_-12px_rgba(0,0,0,0.55)] backdrop-blur-md md:h-[8.75rem] print:shadow-sm print:backdrop-blur-none';
+
+const QUOTE_BRAND_CARD_COMPACT_CLASS =
+  `${QUOTE_CARD_SHELL_COMPACT} border border-white/[0.12] bg-white/[0.06] print:border-slate-200/90 print:bg-white`;
+
+const QUOTE_BRAND_CARD_COMPACT_EMERALD_CLASS =
+  `${QUOTE_CARD_SHELL_COMPACT} border border-emerald-400/25 bg-emerald-950/30 print:border-emerald-200 print:bg-white`;
+
+const QUOTE_BRAND_CARD_COMPACT_BLUE_CLASS =
+  `${QUOTE_CARD_SHELL_COMPACT} border border-blue-400/30 bg-blue-950/25 print:border-blue-200 print:bg-white`;
+
+const QUOTE_BRAND_CARD_COMPACT_CYAN_CLASS =
+  `${QUOTE_CARD_SHELL_COMPACT} border border-cyan-400/28 bg-cyan-950/28 print:border-cyan-200 print:bg-white`;
+
+const QUOTE_PLAIN_EQUIP_CARD_COMPACT_CLASS =
+  `${QUOTE_CARD_SHELL_COMPACT} border border-slate-500/35 bg-slate-800/35 print:border-slate-200 print:bg-white`;
+
+const QUOTE_BRAND_LOGO_IMG_COMPACT_CLASS =
+  'max-h-[3.25rem] w-auto max-w-[88%] object-contain md:max-h-[3.5rem]';
 
 /** כיתוב מתחת לכרטיס — ללא רקע; הדגשה עם צל כהה לקריאות על גרדיאנט */
 const QUOTE_EQUIP_BELOW_CAPTION_CLASS =
@@ -73,6 +151,70 @@ const QUOTE_PROJECT_EXAMPLE_IMAGES = Array.from({ length: 14 }, (_, i) => {
   return `${process.env.PUBLIC_URL}/project-examples/project-${n}.jpg`;
 });
 
+/** מפת פרויקטים (Google My Maps) — viewer לחלון חדש, embed לתצוגה מוטמעת */
+const QUOTE_PROJECTS_MAP_ID = '1gmzO7k_SBVucywFFtwSgYE35ltMabc0';
+const QUOTE_PROJECTS_MAP_VIEWER_URL = `https://www.google.com/maps/d/u/0/viewer?mid=${QUOTE_PROJECTS_MAP_ID}&hl=iw`;
+const QUOTE_PROJECTS_MAP_EMBED_URL = `https://www.google.com/maps/d/embed?mid=${QUOTE_PROJECTS_MAP_ID}&hl=iw&ll=31.93778024868962%2C35.098651000000025&z=8`;
+
+function QuoteProjectsMap({ clientCity }) {
+  const [mapKey, setMapKey] = useState(0);
+  const cityLabel = String(clientCity || '').trim();
+
+  return (
+    <div className="w-full overflow-hidden rounded-2xl border border-slate-200 shadow-lg">
+      <div className="bg-blue-900 px-4 py-3 text-white">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex min-w-0 items-start gap-2">
+            <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-orange-400" aria-hidden />
+            <div>
+              <p className="text-lg font-bold leading-snug">פרויקטים של מומחי אנרגיה סולארית</p>
+              <p className="mt-1 text-sm text-blue-100/95">
+                {cityLabel
+                  ? `חפשו נקודות כחולות ליד ${cityLabel} — זום וגררו במפה`
+                  : 'זום וגררו כדי לראות פרויקטים באזורכם'}
+              </p>
+            </div>
+          </div>
+          <div className="flex shrink-0 flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setMapKey((k) => k + 1)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-white/25 bg-white/10 px-3 py-2 text-sm font-bold text-white transition-colors hover:bg-white/20"
+            >
+              <ChevronRight className="h-4 w-4" aria-hidden />
+              חזרה למפה
+            </button>
+            <a
+              href={QUOTE_PROJECTS_MAP_VIEWER_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-orange-500 px-3 py-2 text-sm font-bold text-slate-900 transition-colors hover:bg-orange-400"
+            >
+              <ExternalLink className="h-4 w-4" aria-hidden />
+              מפה מלאה (מומלץ)
+            </a>
+          </div>
+        </div>
+      </div>
+      <div className="relative bg-slate-100" style={{ height: 'min(360px, 55vh)' }}>
+        <iframe
+          key={mapKey}
+          title="מפת פרויקטים בארץ"
+          src={QUOTE_PROJECTS_MAP_EMBED_URL}
+          className="absolute inset-0 h-full w-full border-0"
+          loading="lazy"
+          referrerPolicy="no-referrer-when-downgrade"
+          allowFullScreen
+        />
+      </div>
+      <p className="border-t border-slate-200 bg-slate-50 px-4 py-2.5 text-xs leading-relaxed text-slate-600">
+        כל נקודה כחולה = פרויקט שביצענו. לחיצה על נקודה מציגה את שם הפרויקט — אם המסך נתקע (דף לבן), לחצו{' '}
+        <strong>חזרה למפה</strong> למעלה, או <strong>מפה מלאה</strong> לחיפוש נוח בגוגל מפות.
+      </p>
+    </div>
+  );
+}
+
 /** סקשן בהצעה — סגור במסך, נפתח בלחיצה; בהדפסה תמיד פתוח */
 function QuoteExpandableSection({ title, subtitle, teaser, children, className = '' }) {
   const [open, setOpen] = useState(false);
@@ -113,12 +255,12 @@ function QuoteProjectSlider({ images }) {
   const go = (delta) => setIdx((i) => (i + delta + total) % total);
 
   return (
-    <div className="mx-auto max-w-md print:max-w-full">
-      <div className="relative aspect-[16/10] max-h-44 sm:max-h-48 overflow-hidden rounded-xl border border-slate-200 bg-slate-100 shadow-inner print:max-h-32">
+    <div className="mx-auto w-full max-w-3xl lg:max-w-4xl print:max-w-full">
+      <div className="relative flex items-center justify-center rounded-xl border border-slate-200 bg-slate-100 p-1 shadow-inner sm:p-1.5">
         <img
           src={images[safeIdx]}
           alt={`דוגמת פרויקט ${safeIdx + 1} מתוך ${total}`}
-          className="h-full w-full object-cover"
+          className="block h-auto w-full max-h-[28rem] rounded-lg object-contain object-center sm:max-h-[32rem] lg:max-h-[36rem] print:max-h-48"
         />
         <button
           type="button"
@@ -154,58 +296,515 @@ function QuoteProjectSlider({ images }) {
       </p>
       <div className="mt-2 hidden print:grid grid-cols-4 gap-1">
         {images.slice(0, 4).map((src) => (
-          <img key={src} src={src} alt="" className="aspect-[4/3] w-full rounded object-cover border border-slate-200" />
+          <img key={src} src={src} alt="" className="aspect-[4/3] w-full rounded border border-slate-200 object-contain bg-slate-50" />
         ))}
       </div>
     </div>
   );
 }
 
-/** גרף תשואה שנתית קומפקטי — סולארי מול נדל״ן ושוק ההון */
+/** גרף תשואה שנתית — סולארי מול נדל״ן ושוק ההון */
 function QuoteInvestmentYieldChart({ annualYield }) {
   const solarPct = Math.max(0, Number(annualYield) || 0);
   const scaleMax = Math.max(solarPct, 12, 1);
+  const trackPx = 140;
   const bars = [
-    { label: 'נדל״ן', pct: 4, range: '3–5%', color: 'bg-slate-400' },
-    { label: 'שוק ההון', pct: 9, range: '8–10%', color: 'bg-emerald-500' },
+    {
+      label: 'נדל״ן',
+      pct: 4,
+      range: '3–5%',
+      riskLabel: 'סיכון נמוך',
+      riskClass: 'text-slate-300 print:text-slate-600',
+      barClass: 'bg-gradient-to-t from-slate-500 to-slate-400',
+      Icon: Home,
+    },
+    {
+      label: 'שוק ההון',
+      pct: 9,
+      range: '8–10%',
+      riskLabel: 'סיכון בינוני',
+      riskClass: 'text-amber-200/90 print:text-amber-800',
+      barClass: 'bg-gradient-to-t from-emerald-600 to-emerald-400',
+      Icon: TrendingUp,
+    },
     {
       label: 'מערכת סולארית',
       pct: solarPct,
-      color: 'bg-gradient-to-t from-orange-500 to-blue-600',
+      range: `${solarPct.toFixed(1)}%`,
+      riskLabel: 'סיכון אפסי',
+      riskClass: 'text-emerald-300 print:text-emerald-700',
+      barClass: 'bg-gradient-to-t from-orange-500 via-amber-400 to-blue-600',
       highlight: true,
+      Icon: Sun,
     },
   ];
   return (
     <div
-      className="rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-5 shadow-sm print:border-slate-300 print:bg-white"
+      className="relative overflow-hidden rounded-2xl border border-blue-300/40 bg-gradient-to-br from-[#0c1a33] via-[#122a4d] to-[#0a1628] px-5 py-6 shadow-lg sm:px-8 sm:py-8 print:border-slate-300 print:bg-white print:shadow-none"
       role="img"
-      aria-label={`תשואה שנתית: סולארי ${solarPct.toFixed(1)} אחוז, שוק ההון כ-9 אחוז, נדלן כ-4 אחוז`}
+      aria-label={`תשואה שנתית: נדלן 3–5 אחוז סיכון נמוך, שוק ההון 8–10 אחוז סיכון בינוני, סולארי ${solarPct.toFixed(1)} אחוז סיכון אפסי`}
     >
-      <div className="flex items-end justify-center gap-4 sm:gap-6 h-28 sm:h-32">
+      <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
+        <div className="absolute -right-10 -top-10 h-44 w-44 rounded-full bg-orange-500/20 blur-3xl" />
+        <div className="absolute -bottom-14 -left-10 h-52 w-52 rounded-full bg-blue-500/25 blur-3xl" />
+        <div
+          className="absolute inset-0 opacity-[0.06]"
+          style={{
+            backgroundImage: 'radial-gradient(circle at 1px 1px, rgb(255 255 255) 1px, transparent 0)',
+            backgroundSize: '22px 22px',
+          }}
+        />
+      </div>
+
+      <div className="relative grid grid-cols-3 gap-3 sm:gap-6">
         {bars.map((bar) => {
-          const h = Math.max(6, (bar.pct / scaleMax) * 100);
+          const barPx = Math.round(Math.max(18, (bar.pct / scaleMax) * trackPx));
+          const Icon = bar.Icon;
           return (
-            <div key={bar.label} className="flex flex-col items-center flex-1 max-w-[5.5rem] sm:max-w-[6.5rem]">
-              <span
-                className={`mb-1 text-sm font-black tabular-nums ${bar.highlight ? 'text-orange-600' : 'text-slate-600'}`}
+            <div
+              key={bar.label}
+              className={`flex flex-col items-center ${bar.highlight ? 'z-10' : ''}`}
+            >
+              <div
+                className={`flex w-full max-w-[7.5rem] flex-col items-center rounded-2xl border px-2 pb-2 pt-3 sm:max-w-[9rem] sm:px-3 ${
+                  bar.highlight
+                    ? 'border-amber-400/50 bg-amber-500/10 shadow-lg shadow-amber-500/10'
+                    : 'border-white/12 bg-white/5'
+                } print:border-slate-200 print:bg-slate-50`}
               >
-                {bar.highlight ? `${solarPct.toFixed(1)}%` : bar.range}
-              </span>
-              <div className="relative w-full flex-1 flex flex-col justify-end min-h-[5rem]">
+                <span
+                  className={`mb-3 font-black tabular-nums leading-none ${
+                    bar.highlight
+                      ? 'text-2xl text-amber-300 sm:text-3xl'
+                      : 'text-lg text-white/95 sm:text-xl print:text-slate-800'
+                  }`}
+                >
+                  {bar.range}
+                </span>
                 <div
-                  className={`w-full rounded-t-lg shadow-sm ${bar.color} ${bar.highlight ? 'ring-2 ring-orange-400/60' : ''}`}
-                  style={{ height: `${h}%` }}
-                />
+                  className="relative flex w-full items-end justify-center overflow-hidden rounded-lg bg-black/30"
+                  style={{ height: trackPx }}
+                >
+                  <div
+                    className={`w-[72%] min-w-[2.25rem] rounded-t-lg shadow-md ${bar.barClass} ${
+                      bar.highlight ? 'ring-2 ring-amber-400/60' : ''
+                    }`}
+                    style={{ height: barPx }}
+                  ></div>
+                </div>
               </div>
-              <span
-                className={`mt-2 text-center text-xs font-bold leading-tight ${bar.highlight ? 'text-blue-900' : 'text-slate-600'}`}
-              >
-                {bar.label}
-              </span>
+              <div className="mt-3 flex flex-col items-center gap-1.5">
+                <Icon
+                  className={`h-6 w-6 shrink-0 sm:h-7 sm:w-7 ${
+                    bar.highlight ? 'text-amber-400' : 'text-slate-300 print:text-slate-500'
+                  }`}
+                  aria-hidden
+                />
+                <span
+                  className={`text-center text-sm font-bold leading-tight sm:text-base ${
+                    bar.highlight ? 'text-amber-100 print:text-blue-900' : 'text-slate-200 print:text-slate-600'
+                  }`}
+                >
+                  {bar.label}
+                </span>
+                <span
+                  className={`text-center text-[11px] font-semibold leading-tight sm:text-xs ${bar.riskClass}`}
+                >
+                  {bar.riskLabel}
+                </span>
+              </div>
             </div>
           );
         })}
       </div>
+    </div>
+  );
+}
+
+/** הטבת 7 ימים — רוחב מלא מעל סיכום המחיר */
+function QuoteLimitedOfferBanner({ timeLeft, highlightText, whatsappLink }) {
+  if (timeLeft.expired) return null;
+
+  const units = [
+    { value: timeLeft.days, label: 'ימים' },
+    { value: timeLeft.hours, label: 'שע׳' },
+    { value: timeLeft.minutes, label: 'דק׳' },
+    { value: timeLeft.seconds, label: 'שנ׳' },
+  ];
+
+  return (
+    <>
+      <div
+        className="mb-6 print:hidden overflow-hidden rounded-2xl border border-amber-400/40 bg-gradient-to-br from-amber-950/40 via-slate-900 to-slate-950 shadow-md"
+        dir="rtl"
+      >
+        <div className="border-b border-amber-400/20 bg-amber-500/10 px-4 py-2.5 text-center sm:px-6">
+          <p className="text-xs font-bold tracking-wide text-amber-200 sm:text-sm">הטבה דחופה · 7 ימים בלבד</p>
+        </div>
+        <div className="space-y-4 px-4 py-4 text-center sm:px-6 sm:py-5">
+          <p className="mx-auto max-w-2xl text-sm font-semibold leading-relaxed text-white sm:text-base">
+            אישור הצעה השבוע ={' '}
+            <span className="font-bold text-amber-200">{highlightText}</span> במתנה
+          </p>
+          <div className="flex flex-wrap items-center justify-center gap-2" dir="ltr" aria-label="זמן שנותר להטבה">
+            {units.map((u, i) => (
+              <React.Fragment key={u.label}>
+                {i > 0 ? <span className="px-0.5 text-lg font-bold text-amber-500/60">:</span> : null}
+                <span className="inline-flex min-w-[3rem] flex-col items-center rounded-lg border border-white/10 bg-slate-900/90 px-2 py-1.5 shadow-inner">
+                  <span className="text-lg font-black tabular-nums leading-none text-white sm:text-xl">
+                    {String(u.value).padStart(2, '0')}
+                  </span>
+                  <span className="mt-0.5 text-[10px] font-semibold text-amber-200/90">{u.label}</span>
+                </span>
+              </React.Fragment>
+            ))}
+          </div>
+          <a
+            href={whatsappLink}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mx-auto inline-flex w-full max-w-xs items-center justify-center gap-2 rounded-xl bg-amber-500 px-5 py-3 text-sm font-bold text-slate-900 shadow-lg transition-colors hover:bg-amber-400 sm:text-base"
+          >
+            <Gift className="h-5 w-5 shrink-0" aria-hidden />
+            לקבלת ההטבה
+          </a>
+        </div>
+      </div>
+      <div className="mb-4 hidden rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-center text-sm text-slate-800 print:block">
+        <span className="font-bold text-amber-800">הטבה ל-7 ימים:</span> אישור הצעה = {highlightText} במתנה
+      </div>
+    </>
+  );
+}
+
+function QuoteSystemSpecSummary({ quote }) {
+  if (!quote) return null;
+  const inverterSummary = (quote.inverterDetailsList || [])
+    .map((inv) => `${inv.name}${inv.quantity > 1 ? ` ×${inv.quantity}` : ''}`)
+    .join(' · ');
+  const rows = [
+    { label: 'הספק DC', value: `${quote.systemSizeKw} kWp`, Icon: Zap, iconClass: 'text-orange-400' },
+    { label: 'הספק AC', value: `${quote.systemSizeAcKw} kWp`, Icon: Activity, iconClass: 'text-sky-400' },
+    {
+      label: 'פאנלים',
+      value: `${quote.calculatedNumPanels} × ${quote.panelPowerWatts}W`,
+      Icon: Sun,
+      iconClass: 'text-amber-300',
+    },
+    {
+      label: 'סוג פרויקט',
+      value: quote.systemType === 'commercial' ? 'מסחרית' : 'ביתית',
+      Icon: Home,
+      iconClass: 'text-blue-300',
+    },
+    {
+      label: 'סוג ממיר',
+      value: quote.inverterSystemType === 'hybrid' ? 'היברידי' : 'אונגריד',
+      Icon: BatteryCharging,
+      iconClass: 'text-emerald-400',
+    },
+    {
+      label: 'חיבור חשמל נדרש',
+      value: `3×${quote.requiredConnectionAmps}A`,
+      Icon: Zap,
+      iconClass: 'text-violet-300',
+    },
+  ];
+  return (
+    <div className="relative mb-6 overflow-hidden rounded-2xl border border-blue-400/35 bg-gradient-to-br from-[#0e2240] via-[#153560] to-[#0c1a30] p-5 shadow-lg sm:p-6 print:border-slate-300 print:bg-white print:shadow-none">
+      <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
+        <div className="absolute -right-8 -top-8 h-36 w-36 rounded-full bg-orange-500/15 blur-3xl" />
+        <div className="absolute -bottom-10 -left-6 h-40 w-40 rounded-full bg-blue-400/20 blur-3xl" />
+        <Sun className="absolute left-5 top-5 h-14 w-14 text-amber-400/10 sm:h-16 sm:w-16" />
+      </div>
+      <h3 className="relative mb-4 text-xl font-black text-white sm:text-2xl print:text-blue-900">פירוט המערכת</h3>
+      <dl className="relative grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-6">
+        {rows.map((row) => {
+          const Icon = row.Icon;
+          return (
+            <div
+              key={row.label}
+              className="rounded-xl border border-white/12 bg-white/10 px-3 py-3 text-right backdrop-blur-sm transition-colors hover:bg-white/15 sm:px-4 sm:py-4 print:border-slate-200 print:bg-slate-50"
+            >
+              <Icon className={`mb-2 h-5 w-5 sm:h-6 sm:w-6 ${row.iconClass} print:text-blue-600`} aria-hidden />
+              <dt className="text-xs font-semibold text-blue-100/85 sm:text-sm print:text-slate-500">{row.label}</dt>
+              <dd className="mt-1 text-base font-black tabular-nums leading-tight text-white sm:text-lg print:text-slate-900">
+                {row.value}
+              </dd>
+            </div>
+          );
+        })}
+      </dl>
+      {(inverterSummary || (quote.includesOptimizers && quote.optimizerDetails?.type)) && (
+        <div className="relative mt-4 space-y-2 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm sm:text-base print:border-slate-200 print:bg-slate-50">
+          {inverterSummary ? (
+            <p className="leading-relaxed text-blue-50 print:text-slate-700">
+              <span className="font-bold text-amber-200 print:text-blue-900">דגמי ממירים:</span>{' '}
+              <span className="font-semibold text-white print:text-slate-800">{inverterSummary}</span>
+            </p>
+          ) : null}
+          {quote.includesOptimizers && quote.optimizerDetails?.type ? (
+            <p className="leading-relaxed text-blue-50 print:text-slate-700">
+              <span className="font-bold text-amber-200 print:text-blue-900">אופטימייזרים:</span>{' '}
+              <span className="font-semibold text-white print:text-slate-800">
+                {quote.optimizerDetails.type}
+                {quote.optimizerDetails.quantity > 0 ? ` · ${quote.optimizerDetails.quantity} יח׳` : ''}
+              </span>
+            </p>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function quoteHasMultipleOrientations(quote) {
+  const od = quote?.orientationDetails;
+  if (!quote?.specifyOrientation || !od) return false;
+  return [od.pSouth, od.pEW, od.pNorth].filter((n) => Number(n) > 0).length >= 2;
+}
+
+function QuoteFinancialHighlights({ quote }) {
+  if (!quote) return null;
+  const showOrientationBreakdown = quoteHasMultipleOrientations(quote);
+  const od = quote.orientationDetails;
+
+  return (
+    <div className="grid grid-cols-1 gap-3 min-[400px]:grid-cols-2">
+      {!showOrientationBreakdown && (
+        <div className="flex min-w-0 flex-col items-center overflow-hidden rounded-2xl border border-slate-700/50 bg-gradient-to-br from-slate-900 to-slate-800 p-4 text-center text-white shadow-lg sm:p-5">
+          <Zap className="mb-2 h-7 w-7 shrink-0 text-orange-400" />
+          <p className="text-xs font-medium text-slate-400">הספק (DC)</p>
+          <p className="mt-1 text-2xl font-black tabular-nums sm:text-3xl">{quote.systemSizeKw}</p>
+          <p className="text-xs font-bold text-slate-400">kWp · AC {quote.systemSizeAcKw}</p>
+        </div>
+      )}
+      <div
+        className={`flex min-w-0 flex-col overflow-hidden rounded-2xl border border-slate-700/50 bg-gradient-to-br from-slate-900 to-slate-800 p-4 text-center text-white shadow-lg sm:p-5 ${
+          showOrientationBreakdown ? 'min-[400px]:col-span-2' : 'items-center'
+        }`}
+      >
+        <Activity className={`mb-2 h-7 w-7 shrink-0 text-blue-400 ${showOrientationBreakdown ? 'mx-auto' : ''}`} />
+        <p className="text-xs font-medium text-slate-400">ייצור שנתי</p>
+        <p className="mt-1 max-w-full break-words text-xl font-black tabular-nums sm:text-2xl">
+          {Math.round(quote.estimatedYearlyProductionKwh).toLocaleString('en-US')}
+        </p>
+        <p className="text-xs font-bold text-slate-400">
+          קוט&quot;ש · ממוצע {Math.round(quote.productionHoursValid)} שעות
+        </p>
+        {showOrientationBreakdown && od ? (
+          <div className="mt-3 w-full space-y-1.5 rounded-lg border border-slate-700/50 bg-slate-900/50 p-2.5 text-right text-[11px] text-slate-400">
+            <p className="mb-1 border-b border-slate-700/50 pb-1 text-center font-bold text-slate-500">
+              פירוט שעות לפי כיוונים
+            </p>
+            {od.pSouth > 0 ? (
+              <div className="flex items-center justify-between gap-2">
+                <span>דרום ({od.pSouth} יח&apos;)</span>
+                <span className="shrink-0 font-semibold text-slate-300">{Math.round(od.southHours)} שעות</span>
+              </div>
+            ) : null}
+            {od.pEW > 0 ? (
+              <div className="flex items-center justify-between gap-2">
+                <span>מזרח/מערב ({od.pEW} יח&apos;)</span>
+                <span className="shrink-0 font-semibold text-slate-300">{Math.round(od.ewHours)} שעות</span>
+              </div>
+            ) : null}
+            {od.pNorth > 0 ? (
+              <div className="flex items-center justify-between gap-2">
+                <span>צפון ({od.pNorth} יח&apos;)</span>
+                <span className="shrink-0 font-semibold text-slate-300">{Math.round(od.northHours)} שעות</span>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+      <div className="flex min-w-0 flex-col items-center overflow-hidden rounded-2xl border border-slate-700/50 bg-gradient-to-br from-slate-900 to-slate-800 p-4 text-center text-white shadow-lg sm:p-5">
+        <ShekelIcon className="mb-2 text-3xl text-green-400" />
+        <p className="text-xs font-medium text-slate-400">הכנסה שנתית צפויה</p>
+        <p className="mt-1 text-xl font-black tabular-nums text-green-400 sm:text-2xl">
+          ₪{Math.round(quote.estimatedYearlySavings).toLocaleString('en-US')}
+        </p>
+        <p className="text-[11px] font-semibold text-slate-400">
+          תעריף: {Number((quote.calculatedTariff > 0 ? quote.calculatedTariff * 100 : 0).toFixed(2))} אג&apos;
+          {quote.hasUrbanPremium && quote.urbanPremiumValidUntilYear
+            ? ` (פרמיה עד ${quote.urbanPremiumValidUntilYear})`
+            : ''}
+        </p>
+      </div>
+      <div className="flex min-w-0 flex-col items-center overflow-hidden rounded-2xl border border-slate-700/50 bg-gradient-to-br from-slate-900 to-slate-800 p-4 text-center text-white shadow-lg sm:p-5">
+        <Clock className="mb-2 h-7 w-7 shrink-0 text-blue-400" />
+        <p className="text-xs font-medium text-slate-400">החזר השקעה</p>
+        <p className="mt-1 text-2xl font-black tabular-nums sm:text-3xl">
+          {quote.roiYears > 0 && isFinite(quote.roiYears) ? quote.roiYears.toFixed(1) : '—'}
+        </p>
+        <p className="text-xs font-bold text-orange-400">תשואה שנתית {quote.annualYield ? quote.annualYield.toFixed(1) : 0}%</p>
+      </div>
+    </div>
+  );
+}
+
+function QuotePricingSummary({ quote, adminPrices, companyPaysFees }) {
+  if (!quote?.breakdown) return null;
+  const vatRate = Number(adminPrices.vatRate) || 18;
+  const isResidential = quote.systemType === 'residential';
+  const finalPrice = quote.breakdown.finalPrice;
+  const totalWithVat = finalPrice * (1 + vatRate / 100);
+
+  return (
+    <div className="flex h-full flex-col justify-center rounded-2xl border border-blue-500/30 bg-gradient-to-br from-slate-900 to-blue-950 p-6 text-center shadow-lg print:border-blue-200 print:bg-blue-50 print:shadow-none">
+      <p className="mb-1 text-base font-bold text-orange-400 print:text-blue-800">השקעה כוללת בפרויקט</p>
+      <p className="text-5xl font-black tabular-nums text-white print:text-blue-900 sm:text-6xl">
+        ₪{(isResidential ? totalWithVat : finalPrice).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+      </p>
+      <p className="mb-4 text-sm text-slate-400 print:text-slate-500">
+        {isResidential ? 'סה״כ לתשלום (כולל מע״מ)' : 'לפני מע״מ'}
+      </p>
+      <div className="mx-auto w-full max-w-sm rounded-xl border border-slate-700 bg-slate-900/50 p-3 text-sm text-slate-300 print:border-blue-200 print:bg-white print:text-blue-900">
+        {quote.includesWashing && (
+          <div className="mb-2 flex justify-between border-b border-slate-600 pb-2 print:border-blue-200">
+            <span className="font-semibold text-green-400 print:text-green-700">מערכת שטיפה אוטומטית</span>
+            <span className="shrink-0 font-bold text-green-300 print:text-green-700">במתנה</span>
+          </div>
+        )}
+        {companyPaysFees && (
+          <div className="mb-2 flex justify-between border-b border-slate-600 pb-2 print:border-blue-200">
+            <span className="font-semibold text-amber-300 print:text-amber-800">אגרות חח״י ורשויות</span>
+            <span className="shrink-0 font-bold text-amber-200 print:text-amber-800">במתנה</span>
+          </div>
+        )}
+        {isResidential ? (
+          <>
+            <div className="flex justify-between">
+              <span>לפני מע״מ</span>
+              <span className="tabular-nums">₪{finalPrice.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>מע״מ ({vatRate}%)</span>
+              <span className="tabular-nums">₪{(finalPrice * (vatRate / 100)).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="flex justify-between">
+              <span>מע״מ ({vatRate}%)</span>
+              <span className="tabular-nums">₪{(finalPrice * (vatRate / 100)).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+            </div>
+            <div className="mt-2 flex justify-between border-t border-slate-700 pt-2 font-bold print:border-blue-200">
+              <span>סה״כ כולל מע״מ</span>
+              <span className="tabular-nums">₪{totalWithVat.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function parseBatteryKwhFromName(name) {
+  const m = String(name || '').match(/(\d+(?:[.,]\d+)?)\s*kwh/i);
+  return m ? Number(m[1].replace(',', '.')) : null;
+}
+
+function detectBatteryBrandLabel(name) {
+  const s = String(name || '').toLowerCase();
+  if (/growatt|גרואט|גרוואט/.test(s)) return 'GROWATT';
+  if (/solaredge|סולאראדג/.test(s)) return 'SolarEdge';
+  if (/byd/.test(s)) return 'BYD';
+  if (/deye/.test(s)) return 'Deye';
+  return null;
+}
+
+function batteryBrandLogoSrc(brandLabel) {
+  if (brandLabel === 'GROWATT') return inverterLogoSrc('growatt');
+  if (brandLabel === 'SolarEdge') return inverterLogoSrc('solaredge');
+  return null;
+}
+
+function aggregateBatteryStorageSummary(batteryDetailsList) {
+  if (!batteryDetailsList?.length) return null;
+  const merged = new Map();
+  for (const bat of batteryDetailsList) {
+    const qty = Number(bat.quantity) || 0;
+    if (qty <= 0) continue;
+    const prev = merged.get(bat.id);
+    if (prev) prev.quantity += qty;
+    else merged.set(bat.id, { ...bat, quantity: qty });
+  }
+  const rows = Array.from(merged.values());
+  if (!rows.length) return null;
+
+  let totalKwh = 0;
+  let totalUnits = 0;
+  const brands = new Set();
+  let logo = null;
+  let datasheet = null;
+  const primaryName = rows[0].name;
+
+  for (const row of rows) {
+    const unitKwh = row.unitKwh ?? parseBatteryKwhFromName(row.name);
+    totalUnits += row.quantity;
+    if (unitKwh) totalKwh += unitKwh * row.quantity;
+    const brand = detectBatteryBrandLabel(row.name);
+    if (brand) brands.add(brand);
+    if (!logo && row.logo) logo = row.logo;
+    if (!datasheet && row.datasheet) datasheet = row.datasheet;
+  }
+
+  const brandLabel =
+    brands.size === 1 ? [...brands][0] : brands.size > 1 ? 'מערכת אגירה' : detectBatteryBrandLabel(primaryName);
+
+  return {
+    brandLabel: brandLabel || 'אגירה',
+    totalKwh,
+    totalUnits,
+    primaryName,
+    logo,
+    datasheet,
+    rowCount: rows.length,
+  };
+}
+
+function QuoteBatteryStorageSummary({ summary, onOpenDatasheet }) {
+  if (!summary) return null;
+  const logoSrc = datasheetToSrc(normalizeDatasheet(summary.logo)) || batteryBrandLogoSrc(summary.brandLabel);
+  const inner = (
+    <>
+      {logoSrc ? (
+        <img src={logoSrc} alt="" className="h-12 w-12 rounded-xl border border-blue-100 bg-white object-contain p-1 shadow-inner" />
+      ) : (
+        <BatteryCharging className="h-12 w-12 text-blue-600" aria-hidden />
+      )}
+      <div className="min-w-0 flex-1 text-right">
+        <p className="text-[11px] font-bold uppercase tracking-wide text-blue-600">סוללות אגירה</p>
+        <p className="text-lg font-black leading-tight text-blue-950 md:text-xl">
+          {summary.totalKwh > 0 ? `${summary.totalKwh} kWh` : summary.primaryName}
+          {summary.brandLabel ? (
+            <span className="text-base font-extrabold text-blue-800"> · {summary.brandLabel}</span>
+          ) : null}
+        </p>
+        {summary.totalUnits > 0 ? (
+          <p className="text-xs font-medium text-slate-600">{summary.totalUnits} יחידות אגירה במערכת</p>
+        ) : null}
+      </div>
+    </>
+  );
+
+  return (
+    <div className="mx-auto mt-4 max-w-2xl print:max-w-full">
+      {summary.datasheet ? (
+        <button
+          type="button"
+          onClick={() => onOpenDatasheet(`מפרט טכני — ${summary.brandLabel}`, summary.datasheet)}
+          className="flex w-full items-center gap-4 rounded-2xl border border-blue-200 bg-white px-4 py-3 text-right shadow-sm transition-colors hover:border-orange-300 hover:bg-orange-50/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400 print:pointer-events-none print:border-slate-200"
+        >
+          {inner}
+          <span className="shrink-0 text-xs font-bold text-orange-600 print:hidden">מפרט</span>
+        </button>
+      ) : (
+        <div className="flex items-center gap-4 rounded-2xl border border-blue-200 bg-white px-4 py-3 shadow-sm print:border-slate-200">
+          {inner}
+        </div>
+      )}
     </div>
   );
 }
@@ -1092,7 +1691,7 @@ export default function App() {
     additionalNotes: '',
     /** לוגו Tigo בהצעה — רלוונטי כשמסומנים אופטימייזרים מסוג Tigo (לא SolarEdge) */
     showTigoLogoOnQuote: true,
-    /** פרמיה אורבנית חח"י — בתחשיב מתווספות 6 אגורות לתעריף המשוקלל עד 2042 */
+    /** פרמיה אורבנית חח"י — בתחשיב מתווספות 6 אגורות לשנים קלנדריות עד 2042 כולל */
     hasUrbanPremium: false,
   });
 
@@ -1690,19 +2289,27 @@ export default function App() {
     const hasBatteries = isHybridSystem && quoteForm.includesBatteries;
     
     if (hasBatteries) {
-      quoteForm.selectedBatteries.forEach(sel => {
-        const batData = adminPrices.batteries.find(b => b.id === sel.id);
-        if (batData && sel.quantity > 0) {
-          totalBatteriesCost += (Number(batData.cost) || 0) * sel.quantity;
-          batteryDetailsList.push({
-            id: batData.id,
-            name: batData.name,
-            quantity: sel.quantity,
-            logo: normalizeDatasheet(batData.logo),
-            datasheet: normalizeDatasheet(batData.datasheet),
-          });
+      const batteryById = new Map();
+      quoteForm.selectedBatteries.forEach((sel) => {
+        const batData = adminPrices.batteries.find((b) => b.id === sel.id);
+        const qty = Number(sel.quantity) || 0;
+        if (batData && qty > 0) {
+          totalBatteriesCost += (Number(batData.cost) || 0) * qty;
+          const prev = batteryById.get(batData.id);
+          if (prev) prev.quantity += qty;
+          else {
+            batteryById.set(batData.id, {
+              id: batData.id,
+              name: batData.name,
+              quantity: qty,
+              unitKwh: parseBatteryKwhFromName(batData.name),
+              logo: normalizeDatasheet(batData.logo),
+              datasheet: normalizeDatasheet(batData.datasheet),
+            });
+          }
         }
       });
+      batteryDetailsList.push(...batteryById.values());
     }
     
     let optimizersCost = 0;
@@ -1764,9 +2371,7 @@ export default function App() {
 
     const baseCalculatedTariff = calculateTariff(acKw);
     const hasUrbanPremium = Boolean(quoteForm.hasUrbanPremium);
-    const calculatedTariff = hasUrbanPremium
-      ? baseCalculatedTariff + URBAN_PREMIUM_AGOROT_PER_KWH / 100
-      : baseCalculatedTariff;
+    const projectionStartYear = new Date().getFullYear();
     const baseProductionHours = Number(adminPrices.productionHours) > 0 ? Number(adminPrices.productionHours) : 1700;
     let productionHoursValid = baseProductionHours;
     let orientationDetails = null;
@@ -1795,32 +2400,55 @@ export default function App() {
     setClientSignature(null); // איפוס חתימה בכל הפקה מחדש של ההצעה
 
     const estimatedYearlyProductionKwhYear1 = sizeKw * productionHoursValid;
-    const estimatedYearlySavingsYear1 = estimatedYearlyProductionKwhYear1 * calculatedTariff;
-    
+    const degradationRate = 0.0033;
+
+    const getTariffForModelYear = (modelYear) =>
+      getEffectiveTariffForCalendarYear(
+        baseCalculatedTariff,
+        hasUrbanPremium,
+        projectionStartYear + modelYear - 1
+      );
+
+    const getYearlyProductionKwh = (modelYear) =>
+      estimatedYearlyProductionKwhYear1 *
+      Math.pow(1 - degradationRate, modelYear - 1);
+
+    const getYearlyEstimatedIncome = (modelYear) =>
+      getYearlyProductionKwh(modelYear) * getTariffForModelYear(modelYear);
+
+    const calculatedTariff = getTariffForModelYear(1);
+    const estimatedYearlySavingsYear1 = getYearlyEstimatedIncome(1);
+
     const vatRate = Number(adminPrices.vatRate) || 18;
     const initialInvestment = quoteForm.systemType === 'residential' ? finalPrice * (1 + vatRate / 100) : finalPrice;
 
     let roiYears = 0;
     let annualYield = 0;
     if (estimatedYearlySavingsYear1 > 0 && initialInvestment > 0) {
-      roiYears = initialInvestment / estimatedYearlySavingsYear1;
       annualYield = (estimatedYearlySavingsYear1 / initialInvestment) * 100;
+      let cumulativeSavings = 0;
+      for (let y = 1; y <= 25; y++) {
+        const yearIncome = getYearlyEstimatedIncome(y);
+        if (yearIncome <= 0) continue;
+        const prevCumulative = cumulativeSavings;
+        cumulativeSavings += yearIncome;
+        if (cumulativeSavings >= initialInvestment) {
+          roiYears = (y - 1) + (initialInvestment - prevCumulative) / yearIncome;
+          break;
+        }
+      }
     }
 
     const primeRate = Number(adminPrices.primeRate) || 6.0;
     const loanMargin = Number(adminPrices.loanMargin) || 4.0;
     const annualInterestRate = (primeRate + loanMargin) / 100;
-    const degradationRate = 0.0033;
-    
+
     let remainingDebt = initialInvestment;
-    let currentYearIncome = estimatedYearlySavingsYear1;
     const loanSimulation = [];
-    
+
     for (let year = 1; year <= 25; year++) {
-      if (year > 1) {
-        currentYearIncome = currentYearIncome * (1 - degradationRate);
-      }
-      
+      const currentYearIncome = getYearlyEstimatedIncome(year);
+
       let yearlyRepaymentAccumulator = 0;
       let monthlyIncome = currentYearIncome / 12;
 
@@ -1851,10 +2479,8 @@ export default function App() {
 
     const getCumulativeIncomeWithDegradation = (years) => {
       let total = 0;
-      let current = estimatedYearlySavingsYear1;
-      for(let i=1; i<=years; i++){
-         total += current;
-         current *= (1 - degradationRate);
+      for (let i = 1; i <= years; i++) {
+        total += getYearlyEstimatedIncome(i);
       }
       return total;
     };
@@ -1895,6 +2521,7 @@ export default function App() {
       calculatedTariff,
       urbanPremiumAgorotPerKwh: hasUrbanPremium ? URBAN_PREMIUM_AGOROT_PER_KWH : 0,
       urbanPremiumValidUntilYear: hasUrbanPremium ? URBAN_PREMIUM_VALID_UNTIL_YEAR : null,
+      projectionStartYear,
       requiredConnectionAmps,
       estimatedYearlyProductionKwh: estimatedYearlyProductionKwhYear1,
       estimatedYearlySavings: estimatedYearlySavingsYear1,
@@ -2045,7 +2672,7 @@ export default function App() {
   // כשמערכת שטיפה כבר בהצעה — ההטבה בבאנר היא תוספת אופטימייזרים; אחרת מתנת שטיפה
   const limitedOfferHighlightShort = generatedQuote?.includesWashing
     ? 'תוספת אופטימייזרים לפי הצורך לתפוקה מקסימלית במקומות מוצללים'
-    : 'מערכת שטיפה אוטומטית בשווי 6,500 ₪';
+    : 'מערכת שטיפה אוטומטית';
   const whatsappBenefitPhrase = generatedQuote?.includesWashing
     ? 'תוספת האופטימייזרים לפי הצורך לתפוקה מקסימלית במקומות מוצללים'
     : 'מערכת השטיפה במתנה';
@@ -2057,6 +2684,12 @@ export default function App() {
     cleanPhone = '972' + cleanPhone.slice(1);
   }
   const whatsappLink = `https://wa.me/${cleanPhone}?text=${whatsappMessage}`;
+
+  const quoteCompanyPaysFees = generatedQuote?.feesPayer === 'company';
+  const quoteBatteryStorageSummary = useMemo(
+    () => aggregateBatteryStorageSummary(generatedQuote?.batteryDetailsList),
+    [generatedQuote?.batteryDetailsList]
+  );
 
   // --- מסך התחברות (Login Screen) ---
   if (!currentUser) {
@@ -2158,6 +2791,7 @@ export default function App() {
                 <BrandLogo className="h-16 w-16" />
               </div>
               <h1 className="text-2xl font-black text-white tracking-wide">מומחי אנרגיה סולארית</h1>
+              <CompanySocialLinks className="mt-4 justify-center" variant="dark" />
             </div>
 
             {/* Login card */}
@@ -2963,10 +3597,17 @@ export default function App() {
                           </div>
                         )}
                       </div>
-                      <label className="flex items-center gap-3 p-4 bg-black/15 border border-white/8 rounded-2xl cursor-pointer hover:bg-white/5 transition-colors">
-                        <input type="checkbox" name="includesWashing" checked={quoteForm.includesWashing} onChange={handleFormChange} className="w-5 h-5 accent-blue-500 rounded" />
-                        <span className="block text-white font-semibold">התקנת מערכת שטיפה אוטומטית</span>
-                      </label>
+                      <div className={`rounded-2xl border transition-all ${quoteForm.includesWashing ? 'border-amber-400/50 bg-amber-500/10' : 'border-white/8 bg-black/15'}`}>
+                        <label className="flex items-center gap-3 p-4 cursor-pointer hover:bg-white/5 transition-colors rounded-2xl">
+                          <input type="checkbox" name="includesWashing" checked={quoteForm.includesWashing} onChange={handleFormChange} className="w-5 h-5 accent-amber-500 rounded shrink-0" />
+                          <span className="block text-white font-semibold">התקנת מערכת שטיפה אוטומטית</span>
+                        </label>
+                        {quoteForm.includesWashing && (
+                          <p className="px-4 pb-4 pt-0 text-sm font-medium leading-snug text-amber-100/90">
+                            מערכת ניקוי פאנלים אוטומטית — נכללת בהצעה לפי תמחור מערכת השטיפה.
+                          </p>
+                        )}
+                      </div>
                       <label className="flex items-center gap-3 p-4 bg-black/15 border border-white/8 rounded-2xl cursor-pointer hover:bg-white/5 transition-colors">
                         <input type="checkbox" name="showLoanSimulation" checked={quoteForm.showLoanSimulation} onChange={handleFormChange} className="w-5 h-5 accent-blue-500 rounded" />
                         <span className="block text-white font-semibold">הצג טבלת סימולציית מימון (100% הלוואה בנקאית)</span>
@@ -3043,7 +3684,7 @@ export default function App() {
                     <div className="md:col-span-2 pt-2">
                        <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">מי נושא בעלות אגרות חח"י / רשויות?</label>
                        <div className="flex gap-3">
-                          <label className={`flex-1 flex items-center justify-center gap-2 p-3.5 rounded-xl cursor-pointer border transition-all duration-200 ${quoteForm.feesPayer === 'client' ? 'border-blue-500/60 text-blue-200' : 'border-white/8 text-slate-400 hover:border-white/20 hover:text-slate-300'}`}
+                          <label className={`flex-1 flex cursor-pointer items-center justify-center gap-2 rounded-xl border p-3.5 transition-all duration-200 ${quoteForm.feesPayer === 'client' ? 'border-blue-500/60 text-blue-200' : 'border-white/8 text-slate-400 hover:border-white/20 hover:text-slate-300'}`}
                                  style={quoteForm.feesPayer === 'client' ? { background: 'rgba(29,78,216,0.2)' } : { background: 'rgba(0,0,0,0.2)' }}>
                             <input type="radio" name="feesPayer" value="client" checked={quoteForm.feesPayer === 'client'} onChange={handleFormChange} className="hidden" />
                             הלקוח משלם
@@ -3255,6 +3896,44 @@ export default function App() {
                    </div>
                 </section>
 
+                {/* --- סיכום מערכת, מספרים ומחיר (בתחילת ההצעה) --- */}
+                <section className="border-b border-slate-200 bg-slate-50 px-4 py-8 sm:px-8 md:px-20 print:py-6">
+                  <div className="mx-auto max-w-6xl">
+                    <h2 className="mb-6 text-center text-2xl font-black text-blue-900 sm:text-3xl">
+                      סיכום המערכת וההשקעה
+                    </h2>
+                    <QuoteSystemSpecSummary quote={generatedQuote} />
+                    <QuoteLimitedOfferBanner
+                      timeLeft={timeLeft}
+                      highlightText={limitedOfferHighlightShort}
+                      whatsappLink={whatsappLink}
+                    />
+                    {generatedQuote.hasUrbanPremium && (
+                      <div className="mx-auto mb-6 max-w-4xl rounded-2xl border border-emerald-300/90 bg-gradient-to-br from-emerald-50 via-white to-teal-50 px-6 py-5 text-center shadow-md print:mb-8">
+                        <div className="mb-2 flex items-center justify-center gap-2 text-emerald-800">
+                          <Award className="h-7 w-7 shrink-0" aria-hidden />
+                          <span className="text-xl font-black tracking-tight">ברכות!</span>
+                        </div>
+                        <p className="break-words px-1 text-base font-medium leading-relaxed text-slate-800 sm:px-2">
+                          {(generatedQuote.clientCity || '').trim()
+                            ? `על פי הנתונים ובהתאם לעיר ${(generatedQuote.clientCity || '').trim()}, בה עתידה להיות התקנת המערכת — אתם זכאים לפרמיה אורבנית מתעריף חברת החשמל, הכוללת תוספת של ${URBAN_PREMIUM_AGOROT_PER_KWH} אגורות לתעריף המשוקלל עד שנת ${URBAN_PREMIUM_VALID_UNTIL_YEAR}.`
+                            : `על פי הנתונים שהוזנו בהצעה זו — הפרויקט זכאי לפרמיה אורבנית מתעריף חברת החשמל, עם תוספת של ${URBAN_PREMIUM_AGOROT_PER_KWH} אגורות לתעריף המשוקלל עד שנת ${URBAN_PREMIUM_VALID_UNTIL_YEAR}.`}
+                        </p>
+                      </div>
+                    )}
+                    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-stretch lg:gap-8">
+                      <QuoteFinancialHighlights quote={generatedQuote} />
+                      <div className="max-md:order-first lg:order-none">
+                        <QuotePricingSummary
+                          quote={generatedQuote}
+                          adminPrices={adminPrices}
+                          companyPaysFees={quoteCompanyPaysFees}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
                 {quoteShowEquipmentBrandsSection && (
                 <section
                   className="relative overflow-hidden border-y border-white/5 print:border-slate-200 print:break-inside-auto"
@@ -3273,8 +3952,8 @@ export default function App() {
                     }}
                     aria-hidden
                   />
-                  <div className="relative z-[1] max-w-6xl mx-auto px-5 sm:px-8 pt-14 pb-16 md:pt-20 md:pb-24 print:py-10 print:bg-slate-50">
-                    <div className="text-center mb-11 md:mb-14 print:mb-10">
+                  <div className="relative z-[1] max-w-6xl mx-auto px-5 sm:px-8 pt-8 pb-10 md:pt-10 md:pb-12 print:py-6 print:bg-slate-50">
+                    <div className="text-center mb-6 md:mb-8 print:mb-6">
                       <h2
                         id="quote-equipment-brands-heading"
                         className="text-2xl md:text-3xl font-black tracking-tight text-white drop-shadow-sm print:text-blue-900"
@@ -3286,68 +3965,24 @@ export default function App() {
                       </p>
                       <div className="mx-auto mt-5 h-px w-24 rounded-full bg-gradient-to-l from-transparent via-orange-400/80 to-transparent print:via-blue-400/60" aria-hidden />
                     </div>
-                    <div className="flex flex-wrap items-start justify-center gap-x-6 gap-y-8 md:gap-x-8 md:gap-y-10 lg:gap-x-10">
-                      {(generatedQuote.calculatedNumPanels || 0) > 0 && (
-                        <div className={QUOTE_EQUIPMENT_CELL_CLASS}>
-                          {generatedQuote.panelDatasheet ? (
-                            <button
-                              type="button"
-                              className={`${QUOTE_BRAND_CARD_CLASS} cursor-pointer transition-transform hover:scale-[1.02] hover:border-orange-400/35 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400/70`}
-                              onClick={() =>
-                                openQuoteDatasheet(
-                                  `מפרט טכני — פאנלים ${generatedQuote.panelPowerWatts}W`,
-                                  generatedQuote.panelDatasheet
-                                )
-                              }
-                            >
-                              <div className="rounded-xl bg-white px-2 py-2 shadow-inner ring-1 ring-black/10 print:ring-slate-200 md:px-3 md:py-2.5">
-                                <img src={quotePanelBrandLogoSrc} alt="" className={QUOTE_BRAND_LOGO_IMG_CLASS} />
-                              </div>
-                              <span className="text-center text-xs font-bold leading-tight text-white/95 print:text-slate-900 md:text-sm">
-                                פאנלים {generatedQuote.panelPowerWatts}W
-                              </span>
-                              <span className="line-clamp-2 px-0.5 text-center text-xs font-semibold leading-snug text-slate-100 md:text-sm print:text-slate-600">
-                                דוצדדיים • מרשימת Tier 1
-                              </span>
-                            </button>
-                          ) : (
-                            <div className={QUOTE_BRAND_CARD_CLASS}>
-                              <div className="rounded-xl bg-white px-2 py-2 shadow-inner ring-1 ring-black/10 print:ring-slate-200 md:px-3 md:py-2.5">
-                                <img src={quotePanelBrandLogoSrc} alt="" className={QUOTE_BRAND_LOGO_IMG_CLASS} />
-                              </div>
-                              <span className="text-center text-xs font-bold leading-tight text-white/95 print:text-slate-900 md:text-sm">
-                                פאנלים {generatedQuote.panelPowerWatts}W
-                              </span>
-                              <span className="line-clamp-2 px-0.5 text-center text-xs font-semibold leading-snug text-slate-100 md:text-sm print:text-slate-600">
-                                דוצדדיים • מרשימת Tier 1
-                              </span>
-                            </div>
-                          )}
-                          <span className={QUOTE_EQUIP_BELOW_CAPTION_CLASS}>
-                            פאנלים דוצדדיים מרשימת Tier 1 • בסט תפוקה מלאה • {generatedQuote.calculatedNumPanels} יח&apos;
-                            {generatedQuote.panelDatasheet && (
-                              <span className={QUOTE_EQUIP_BELOW_HINT_CLASS}>לחץ לצפייה במפרט</span>
-                            )}
-                          </span>
-                        </div>
-                      )}
+                    <div className="mx-auto flex max-w-5xl flex-wrap items-start justify-center gap-3 md:gap-4">
                       {aggregatedQuoteInverterLogos.map((row) => {
                         return (
                         <div
                           key={row.aggregateKey}
-                          className={QUOTE_EQUIPMENT_CELL_CLASS}
+                          className={QUOTE_EQUIPMENT_STRIP_CELL}
                         >
                           {row.datasheet ? (
                             <button
                               type="button"
-                              className={`${QUOTE_BRAND_CARD_CLASS} cursor-pointer transition-transform hover:scale-[1.02] hover:border-orange-400/35 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400/70`}
+                              className={`${QUOTE_BRAND_CARD_COMPACT_CLASS} cursor-pointer transition-transform hover:scale-[1.02] hover:border-orange-400/35 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400/70`}
                               onClick={() => openQuoteDatasheet(`מפרט טכני — ${row.displayName}`, row.datasheet)}
                             >
-                              <img src={row.imageSrc} alt="" className={QUOTE_BRAND_LOGO_IMG_CLASS} />
+                              <img src={row.imageSrc} alt="" className={QUOTE_BRAND_LOGO_IMG_COMPACT_CLASS} />
                             </button>
                           ) : (
-                          <div className={QUOTE_BRAND_CARD_CLASS}>
-                            <img src={row.imageSrc} alt="" className={QUOTE_BRAND_LOGO_IMG_CLASS} />
+                          <div className={QUOTE_BRAND_CARD_COMPACT_CLASS}>
+                            <img src={row.imageSrc} alt="" className={QUOTE_BRAND_LOGO_IMG_COMPACT_CLASS} />
                           </div>
                           )}
                           {row.quantity > 1 && (
@@ -3374,18 +4009,18 @@ export default function App() {
                         return (
                           <div
                             key={`inv-plain-${inv.id}`}
-                            className={QUOTE_EQUIPMENT_CELL_CLASS}
+                            className={QUOTE_EQUIPMENT_STRIP_CELL}
                           >
                             {inv.datasheet ? (
                               <button
                                 type="button"
-                                className={`${QUOTE_PLAIN_EQUIP_CARD_CLASS} cursor-pointer transition-transform hover:scale-[1.02] hover:border-orange-400/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400/60`}
+                                className={`${QUOTE_PLAIN_EQUIP_CARD_COMPACT_CLASS} cursor-pointer transition-transform hover:scale-[1.02] hover:border-orange-400/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400/60`}
                                 onClick={() => openQuoteDatasheet(`מפרט טכני — ${inv.name}`, inv.datasheet)}
                               >
                                 {inner}
                               </button>
                             ) : (
-                              <div className={QUOTE_PLAIN_EQUIP_CARD_CLASS}>{inner}</div>
+                              <div className={QUOTE_PLAIN_EQUIP_CARD_COMPACT_CLASS}>{inner}</div>
                             )}
                             {inv.quantity > 1 && (
                               <span className="rounded-full border border-white/20 bg-white/10 px-3 py-0.5 text-xs font-black text-white backdrop-blur-sm print:border-slate-300 print:bg-slate-100 print:text-slate-900 md:text-sm">
@@ -3402,13 +4037,13 @@ export default function App() {
                         );
                       })}
                       {quoteOptimizerQuoteCard && (
-                        <div className={QUOTE_EQUIPMENT_CELL_CLASS}>
+                        <div className={QUOTE_EQUIPMENT_STRIP_CELL}>
                           {quoteOptimizerQuoteCard.variant === 'tigo' && (
                             <>
                               {quoteOptimizerQuoteCard.datasheet ? (
                                 <button
                                   type="button"
-                                  className={`${QUOTE_BRAND_CARD_EMERALD_CLASS} cursor-pointer transition-transform hover:scale-[1.02] hover:border-emerald-300/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70`}
+                                  className={`${QUOTE_BRAND_CARD_COMPACT_EMERALD_CLASS} cursor-pointer transition-transform hover:scale-[1.02] hover:border-emerald-300/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70`}
                                   onClick={() =>
                                     openQuoteDatasheet('מפרט טכני — אופטימייזרים Tigo', quoteOptimizerQuoteCard.datasheet)
                                   }
@@ -3416,15 +4051,15 @@ export default function App() {
                                   <img
                                     src={quoteOptimizerQuoteCard.logoSrc}
                                     alt="Tigo"
-                                    className={QUOTE_BRAND_LOGO_IMG_CLASS}
+                                    className={QUOTE_BRAND_LOGO_IMG_COMPACT_CLASS}
                                   />
                                 </button>
                               ) : (
-                                <div className={QUOTE_BRAND_CARD_EMERALD_CLASS}>
+                                <div className={QUOTE_BRAND_CARD_COMPACT_EMERALD_CLASS}>
                                   <img
                                     src={quoteOptimizerQuoteCard.logoSrc}
                                     alt="Tigo"
-                                    className={QUOTE_BRAND_LOGO_IMG_CLASS}
+                                    className={QUOTE_BRAND_LOGO_IMG_COMPACT_CLASS}
                                   />
                                 </div>
                               )}
@@ -3441,7 +4076,7 @@ export default function App() {
                               {quoteOptimizerQuoteCard.datasheet ? (
                                 <button
                                   type="button"
-                                  className={`${QUOTE_BRAND_CARD_BLUE_CLASS} cursor-pointer transition-transform hover:scale-[1.02] hover:border-blue-400/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/70`}
+                                  className={`${QUOTE_BRAND_CARD_COMPACT_BLUE_CLASS} cursor-pointer transition-transform hover:scale-[1.02] hover:border-blue-400/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/70`}
                                   onClick={() =>
                                     openQuoteDatasheet(
                                       `מפרט טכני — אופטימייזרים (${generatedQuote.optimizerDetails.type})`,
@@ -3452,15 +4087,15 @@ export default function App() {
                                   <img
                                     src={quoteOptimizerQuoteCard.logoSrc}
                                     alt="SolarEdge"
-                                    className={QUOTE_BRAND_LOGO_IMG_CLASS}
+                                    className={QUOTE_BRAND_LOGO_IMG_COMPACT_CLASS}
                                   />
                                 </button>
                               ) : (
-                                <div className={QUOTE_BRAND_CARD_BLUE_CLASS}>
+                                <div className={QUOTE_BRAND_CARD_COMPACT_BLUE_CLASS}>
                                   <img
                                     src={quoteOptimizerQuoteCard.logoSrc}
                                     alt="SolarEdge"
-                                    className={QUOTE_BRAND_LOGO_IMG_CLASS}
+                                    className={QUOTE_BRAND_LOGO_IMG_COMPACT_CLASS}
                                   />
                                 </div>
                               )}
@@ -3477,7 +4112,7 @@ export default function App() {
                               {quoteOptimizerQuoteCard.datasheet ? (
                                 <button
                                   type="button"
-                                  className={`${QUOTE_PLAIN_EQUIP_CARD_CLASS} cursor-pointer transition-transform hover:scale-[1.02] hover:border-orange-400/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400/60`}
+                                  className={`${QUOTE_PLAIN_EQUIP_CARD_COMPACT_CLASS} cursor-pointer transition-transform hover:scale-[1.02] hover:border-orange-400/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400/60`}
                                   onClick={() =>
                                     openQuoteDatasheet(
                                       `מפרט טכני — אופטימייזרים (${generatedQuote.optimizerDetails.type})`,
@@ -3491,7 +4126,7 @@ export default function App() {
                                   </span>
                                 </button>
                               ) : (
-                                <div className={QUOTE_PLAIN_EQUIP_CARD_CLASS}>
+                                <div className={QUOTE_PLAIN_EQUIP_CARD_COMPACT_CLASS}>
                                   <Activity className="h-10 w-10 shrink-0 text-blue-400 print:text-blue-600 md:h-11 md:w-11" aria-hidden />
                                   <span className="line-clamp-3 px-1 text-center text-[11px] font-bold leading-snug text-white print:text-slate-900 md:text-xs">
                                     {generatedQuote.optimizerDetails.type}
@@ -3509,19 +4144,67 @@ export default function App() {
                         </div>
                       )}
                       {generatedQuote.includesWashing && (
-                        <div className={QUOTE_EQUIPMENT_CELL_CLASS}>
-                          <div className={`${QUOTE_BRAND_CARD_CYAN_CLASS} !gap-0 !p-1 md:!p-1.5`}>
+                        <div className={QUOTE_EQUIPMENT_STRIP_CELL}>
+                          <div className={`${QUOTE_BRAND_CARD_COMPACT_CYAN_CLASS} !gap-0 !p-1 md:!p-1.5 relative`}>
                             <img
                               src={QUOTE_WASHING_SYSTEM_IMG}
                               alt=""
-                              className="h-[10.25rem] w-full rounded-lg object-cover object-center md:h-[11.25rem]"
+                              className="h-[5.5rem] w-full rounded-lg object-cover object-center md:h-[6rem]"
                             />
                           </div>
                           <span className={QUOTE_EQUIP_BELOW_CAPTION_CLASS}>מערכת שטיפה אוטומטית לפאנלים</span>
                         </div>
                       )}
+                      {(generatedQuote.calculatedNumPanels || 0) > 0 && (
+                        <div className={QUOTE_EQUIPMENT_STRIP_CELL}>
+                          {generatedQuote.panelDatasheet ? (
+                            <button
+                              type="button"
+                              className={`${QUOTE_BRAND_CARD_COMPACT_CLASS} cursor-pointer transition-transform hover:scale-[1.02] hover:border-orange-400/35 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400/70`}
+                              onClick={() =>
+                                openQuoteDatasheet(
+                                  `מפרט טכני — פאנלים ${generatedQuote.panelPowerWatts}W`,
+                                  generatedQuote.panelDatasheet
+                                )
+                              }
+                            >
+                              <img
+                                src={quotePanelBrandLogoSrc}
+                                alt="SolarSpace"
+                                className={QUOTE_BRAND_LOGO_IMG_COMPACT_CLASS}
+                              />
+                              <span className="text-center text-xs font-bold leading-tight text-white/95 print:text-slate-900 md:text-sm">
+                                פאנלים {generatedQuote.panelPowerWatts}W
+                              </span>
+                              <span className="line-clamp-2 px-0.5 text-center text-xs font-semibold leading-snug text-slate-100 md:text-sm print:text-slate-600">
+                                דוצדדיים • מרשימת Tier 1
+                              </span>
+                            </button>
+                          ) : (
+                            <div className={QUOTE_BRAND_CARD_COMPACT_CLASS}>
+                              <img
+                                src={quotePanelBrandLogoSrc}
+                                alt="SolarSpace"
+                                className={QUOTE_BRAND_LOGO_IMG_COMPACT_CLASS}
+                              />
+                              <span className="text-center text-xs font-bold leading-tight text-white/95 print:text-slate-900 md:text-sm">
+                                פאנלים {generatedQuote.panelPowerWatts}W
+                              </span>
+                              <span className="line-clamp-2 px-0.5 text-center text-xs font-semibold leading-snug text-slate-100 md:text-sm print:text-slate-600">
+                                דוצדדיים • מרשימת Tier 1
+                              </span>
+                            </div>
+                          )}
+                          <span className={QUOTE_EQUIP_BELOW_CAPTION_CLASS}>
+                            פאנלים דוצדדיים מרשימת Tier 1 • בסט תפוקה מלאה • {generatedQuote.calculatedNumPanels} יח&apos;
+                            {generatedQuote.panelDatasheet && (
+                              <span className={QUOTE_EQUIP_BELOW_HINT_CLASS}>לחץ לצפייה במפרט</span>
+                            )}
+                          </span>
+                        </div>
+                      )}
                       {generatedQuote.feesPayer === 'company' && (
-                        <div className={QUOTE_EQUIPMENT_CELL_CLASS}>
+                        <div className={QUOTE_EQUIPMENT_STRIP_CELL}>
                           <div className={`${QUOTE_BRAND_CARD_AMBER_CLASS} gap-1.5 md:gap-2`}>
                             <ShieldCheck
                               className="h-12 w-12 shrink-0 text-amber-300 drop-shadow-md print:text-amber-700 md:h-14 md:w-14"
@@ -3540,7 +4223,7 @@ export default function App() {
                         </div>
                       )}
                       {quoteShowConstructionEquipment && (
-                        <div className={QUOTE_EQUIPMENT_CELL_CLASS}>
+                        <div className={QUOTE_EQUIPMENT_STRIP_CELL}>
                           {(() => {
                             const cLogo = normalizeDatasheet(generatedQuote.constructionLogo);
                             const cDs = normalizeDatasheet(generatedQuote.constructionDatasheet);
@@ -3550,7 +4233,7 @@ export default function App() {
                               <>
                                 {logoSrc ? (
                                   <div className="rounded-xl bg-white px-2 py-2 shadow-inner ring-1 ring-black/10 print:ring-slate-200 md:px-3 md:py-2.5">
-                                    <img src={logoSrc} alt="" className={QUOTE_BRAND_LOGO_IMG_CLASS} />
+                                    <img src={logoSrc} alt="" className={QUOTE_BRAND_LOGO_IMG_COMPACT_CLASS} />
                                   </div>
                                 ) : (
                                   <HardHat
@@ -3568,13 +4251,13 @@ export default function App() {
                                 {cDs ? (
                                   <button
                                     type="button"
-                                    className={`${QUOTE_BRAND_CARD_CLASS} cursor-pointer transition-transform hover:scale-[1.02] hover:border-sky-400/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/65`}
+                                    className={`${QUOTE_BRAND_CARD_COMPACT_CLASS} cursor-pointer transition-transform hover:scale-[1.02] hover:border-sky-400/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/65`}
                                     onClick={() => openQuoteDatasheet('מפרט טכני — קונסטרוקציה', cDs)}
                                   >
                                     {inner}
                                   </button>
                                 ) : (
-                                  <div className={QUOTE_BRAND_CARD_CLASS}>{inner}</div>
+                                  <div className={QUOTE_BRAND_CARD_COMPACT_CLASS}>{inner}</div>
                                 )}
                                 <span className={QUOTE_EQUIP_BELOW_CAPTION_CLASS}>
                                   תשתית וקונסטרוקציה
@@ -3586,225 +4269,30 @@ export default function App() {
                         </div>
                       )}
                     </div>
+                    {quoteBatteryStorageSummary && (
+                      <QuoteBatteryStorageSummary
+                        summary={quoteBatteryStorageSummary}
+                        onOpenDatasheet={openQuoteDatasheet}
+                      />
+                    )}
+                    {quoteCompanyPaysFees && (
+                      <div className="mx-auto mt-10 max-w-3xl rounded-2xl border-2 border-amber-400/50 bg-gradient-to-l from-amber-500/25 via-amber-500/10 to-transparent px-5 py-4 text-center shadow-lg print:border-amber-300 print:bg-amber-50">
+                        <div className="mb-2 flex items-center justify-center gap-2">
+                          <Gift className="h-6 w-6 shrink-0 text-amber-300 print:text-amber-600" aria-hidden />
+                          <span className="text-lg font-black text-amber-50 print:text-amber-900">אגרות חח&quot;י ורשויות — על חשבון החברה</span>
+                        </div>
+                        <p className="text-sm font-semibold leading-relaxed text-amber-50/95 print:text-slate-800 md:text-base">
+                          תשלום אגרות חח&quot;י והרשויות נכלל בהצעה במתנה — ללא חיוב נפרד ללקוח.
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </section>
                 )}
-
-                {generatedQuote.hasBatteries && generatedQuote.batteryDetailsList?.length > 0 && (
-                <section className="border-y border-slate-200 bg-slate-50 py-12 px-6 md:px-12">
-                  <div className="mx-auto max-w-5xl">
-                    <h3 className="mb-8 text-center text-xl font-black text-blue-900 md:text-2xl">סוללות אגירה בהצעה</h3>
-                    <div className="flex flex-wrap items-stretch justify-center gap-6 md:gap-10">
-                      {generatedQuote.batteryDetailsList.map((bat) => {
-                        const batLogoSrc = datasheetToSrc(normalizeDatasheet(bat.logo));
-                        const batThumb = batLogoSrc ? (
-                          <img
-                            src={batLogoSrc}
-                            alt=""
-                            className="h-14 w-14 rounded-2xl border border-blue-100 bg-white object-contain p-1 shadow-inner"
-                          />
-                        ) : (
-                          <BatteryCharging className="h-14 w-14 text-blue-600" />
-                        );
-                        const batThumbMuted = batLogoSrc ? (
-                          <img
-                            src={batLogoSrc}
-                            alt=""
-                            className="h-14 w-14 rounded-2xl border border-slate-200 bg-white object-contain p-1 shadow-inner opacity-95"
-                          />
-                        ) : (
-                          <BatteryCharging className="h-14 w-14 text-slate-400" />
-                        );
-                        return bat.datasheet ? (
-                          <button
-                            key={bat.id}
-                            type="button"
-                            onClick={() => openQuoteDatasheet(`מפרט טכני — ${bat.name}`, bat.datasheet)}
-                            className="flex w-[min(100%,260px)] flex-col items-center gap-3 rounded-3xl border border-blue-200 bg-white p-6 shadow-md transition-transform hover:scale-[1.02] hover:border-orange-400/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400"
-                          >
-                            {batThumb}
-                            <span className="text-center text-sm font-bold text-slate-800">{bat.name}</span>
-                            {bat.quantity > 1 && (
-                              <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-black text-blue-900">
-                                ×{bat.quantity}
-                              </span>
-                            )}
-                            <span className="text-[11px] font-semibold text-orange-600">לחץ לצפייה במפרט</span>
-                          </button>
-                        ) : (
-                          <div
-                            key={bat.id}
-                            className="flex w-[min(100%,260px)] flex-col items-center gap-3 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm opacity-90"
-                          >
-                            {batThumbMuted}
-                            <span className="text-center text-sm font-bold text-slate-700">{bat.name}</span>
-                            {bat.quantity > 1 && (
-                              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-700">
-                                ×{bat.quantity}
-                              </span>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </section>
-                )}
-
-                {/* --- PAGE 2: ABOUT US --- */}
-                <section className="py-10 px-4 sm:px-8 md:px-20 bg-slate-50 print:break-before-auto print:py-6">
-                   <div className="max-w-4xl mx-auto text-center mb-8">
-                     <h2 className="text-2xl md:text-3xl font-black text-blue-900 mb-3">מי אנחנו? המומחים שלכם באנרגיה סולארית</h2>
-                     <p className="text-base text-slate-600">אנו חברת בוטיק המתמחה בפתרונות אנרגיה מתקדמים — איכות, מקצועיות ושירות אישי.</p>
-                   </div>
-                   <div className="mx-auto mb-8 max-w-3xl">
-                     <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-xl ring-1 ring-slate-200/60">
-                       <img
-                         src={`${process.env.PUBLIC_URL}/team-building-about-us.png`}
-                         alt="משפחת מומחי אנרגיה סולארית — צילום צוות ביום גיבוש"
-                         className="quote-print-team-photo h-auto w-full object-contain"
-                       />
-                     </div>
-                     <p className="mt-4 text-center text-sm font-medium text-slate-500">הצוות שלנו ביום גיבוש — האנשים שמלווים אתכם בכל שלב בדרך לאנרגיה סולארית.</p>
-                   </div>
-                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                     <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200 text-center">
-                        <Award className="w-10 h-10 text-orange-500 mx-auto mb-3"/>
-                        <h3 className="text-xl font-bold text-blue-800 mb-2">איכות ללא פשרות</h3>
-                        <p className="text-slate-600 text-sm">אנו עובדים רק עם המותגים המובילים בעולם (Tier 1) כדי להבטיח אמינות ותפוקה מקסימלית לאורך עשרות שנים.</p>
-                     </div>
-                     <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200 text-center">
-                        <ShieldCheck className="w-10 h-10 text-blue-600 mx-auto mb-3"/>
-                        <h3 className="text-xl font-bold text-blue-800 mb-2">אחריות וביטחון</h3>
-                        <p className="text-slate-600 text-sm">שקט נפשי מלא. אנו מלווים אתכם גם לאחר ההתקנה עם מערכות ניטור מתקדמות ואחריות ארוכת טווח.</p>
-                     </div>
-                     <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200 text-center">
-                        <Wrench className="w-10 h-10 text-green-500 mx-auto mb-3"/>
-                        <h3 className="text-xl font-bold text-blue-800 mb-2">פתרון Turn-Key</h3>
-                        <p className="text-slate-600 text-sm">מא' ועד ת'. אנו מטפלים בכל הביורוקרטיה, הרישוי, התכנון וההתקנה - אתם רק נהנים מהחשמל.</p>
-                     </div>
-                   </div>
-                </section>
 
                 {/* --- PAGE 3: THE SYSTEM & FINANCIALS --- */}
                 <section className="py-8 px-4 sm:px-8 md:py-12 md:px-20 print:break-before-auto">
-                   <h2 className="mb-6 text-center text-2xl font-black text-blue-900 sm:text-3xl">המערכת ותחזית כלכלית</h2>
-
-                   {generatedQuote.hasUrbanPremium && (
-                     <div className="mx-auto mb-10 max-w-4xl rounded-2xl border border-emerald-300/90 bg-gradient-to-br from-emerald-50 via-white to-teal-50 px-6 py-5 text-center shadow-md">
-                       <div className="mb-2 flex items-center justify-center gap-2 text-emerald-800">
-                         <Award className="h-7 w-7 shrink-0" aria-hidden />
-                         <span className="text-xl font-black tracking-tight">ברכות!</span>
-                       </div>
-                       <p className="break-words px-1 text-base font-medium leading-relaxed text-slate-800 sm:px-2">
-                         {(generatedQuote.clientCity || '').trim()
-                           ? `על פי הנתונים ובהתאם לעיר ${(generatedQuote.clientCity || '').trim()}, בה עתידה להיות התקנת המערכת — אתם זכאים לפרמיה אורבנית מתעריף חברת החשמל, הכוללת תוספת של ${URBAN_PREMIUM_AGOROT_PER_KWH} אגורות לתעריף המשוקלל עד שנת ${URBAN_PREMIUM_VALID_UNTIL_YEAR}.`
-                           : `על פי הנתונים שהוזנו בהצעה זו — הפרויקט זכאי לפרמיה אורבנית מתעריף חברת החשמל, עם תוספת של ${URBAN_PREMIUM_AGOROT_PER_KWH} אגורות לתעריף המשוקלל עד שנת ${URBAN_PREMIUM_VALID_UNTIL_YEAR}.`}
-                       </p>
-                     </div>
-                   )}
-                   
-                   {/* Highlights — מובייל: עמודה אחת עד רוחב בינוני, כדי למנוע חפיפה של מספרים ויחידות */}
-                   <div className="mb-8 grid grid-cols-1 gap-3 min-[400px]:grid-cols-2 md:grid-cols-4 md:gap-3">
-                     
-                     {/* Card 1 */}
-                     <div className="flex h-full min-w-0 flex-col items-center overflow-hidden rounded-2xl border border-slate-700/50 bg-gradient-to-br from-slate-900 to-slate-800 p-4 text-center text-white shadow-lg sm:p-6">
-                        <Zap className="mb-2 h-8 w-8 shrink-0 text-orange-400 sm:mb-3"/>
-                        <p className="px-1 text-xs font-medium leading-snug text-slate-400 sm:text-sm">הספק המערכת (DC)</p>
-                        <div className="mt-2 flex w-full min-w-0 flex-col items-center gap-0.5">
-                          <span className="text-2xl font-black tabular-nums leading-none text-white sm:text-3xl">{generatedQuote.systemSizeKw}</span>
-                          <span className="text-xs font-bold text-slate-400 sm:text-lg">kWp</span>
-                        </div>
-                        <div className="mt-4 flex w-full min-w-0 flex-1 flex-col justify-evenly gap-2">
-                           <span className="block text-xs text-center text-blue-300 bg-slate-800/80 px-2 py-2 rounded-lg border border-slate-700">מערכת AC: {generatedQuote.systemSizeAcKw} kWp</span>
-                           <span className="block text-xs text-center text-slate-300 bg-slate-800/80 px-2 py-2 rounded-lg border border-slate-700">גודל חיבור נדרש: 3x{generatedQuote.requiredConnectionAmps}A</span>
-                        </div>
-                     </div>
-                     
-                     {/* Card 2 */}
-                     <div className="flex h-full min-w-0 flex-col items-center overflow-hidden rounded-2xl border border-slate-700/50 bg-gradient-to-br from-slate-900 to-slate-800 p-4 text-center text-white shadow-lg sm:p-6">
-                        <Activity className="mb-2 h-8 w-8 shrink-0 text-blue-400 sm:mb-3"/>
-                        <p className="px-1 text-xs font-medium leading-snug text-slate-400 sm:text-sm">ייצור שנתי משוער</p>
-                        <div className="mt-2 flex w-full min-w-0 flex-col items-center gap-0.5">
-                          <span className="max-w-full break-words text-xl font-black tabular-nums leading-tight text-white sm:text-2xl md:text-3xl">
-                            {Math.round(generatedQuote.estimatedYearlyProductionKwh).toLocaleString('en-US')}
-                          </span>
-                          <span className="text-xs font-bold text-slate-400 sm:text-lg">{'קוט"ש'}</span>
-                        </div>
-                        <div className="mt-4 flex w-full min-w-0 flex-1 flex-col justify-end space-y-1.5">
-                          <span className="block text-xs text-center font-medium text-slate-300 bg-slate-800/80 px-2 py-1.5 rounded-lg border border-slate-700">
-                            לפי {Math.round(generatedQuote.productionHoursValid)} שעות בממוצע
-                          </span>
-                          
-                          {generatedQuote.specifyOrientation && generatedQuote.orientationDetails && (
-                            <div className="text-[11px] text-slate-400 bg-slate-900/50 p-2.5 rounded-lg border border-slate-700/50 text-right space-y-1.5 mt-2">
-                              <p className="font-bold text-slate-500 mb-1 border-b border-slate-700/50 pb-1">פירוט שעות לפי כיוונים:</p>
-                              {generatedQuote.orientationDetails.pSouth > 0 && (
-                                <div className="flex justify-between items-center">
-                                  <span>דרום ({generatedQuote.orientationDetails.pSouth} יח'):</span> 
-                                  <span className="font-semibold text-slate-300">{Math.round(generatedQuote.orientationDetails.southHours)} שעות</span>
-                                </div>
-                              )}
-                              {generatedQuote.orientationDetails.pEW > 0 && (
-                                <div className="flex justify-between items-center">
-                                  <span>מזרח/מערב ({generatedQuote.orientationDetails.pEW} יח'):</span> 
-                                  <span className="font-semibold text-slate-300">{Math.round(generatedQuote.orientationDetails.ewHours)} שעות</span>
-                                </div>
-                              )}
-                              {generatedQuote.orientationDetails.pNorth > 0 && (
-                                <div className="flex justify-between items-center">
-                                  <span>צפון ({generatedQuote.orientationDetails.pNorth} יח'):</span> 
-                                  <span className="font-semibold text-slate-300">{Math.round(generatedQuote.orientationDetails.northHours)} שעות</span>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                     </div>
-                     
-                     {/* Card 3 */}
-                     <div className="flex h-full min-w-0 flex-col items-center overflow-hidden rounded-2xl border border-slate-700/50 bg-gradient-to-br from-slate-900 to-slate-800 p-4 text-center text-white shadow-lg sm:p-6">
-                        <DollarSign className="mb-2 h-8 w-8 shrink-0 text-green-400 sm:mb-3"/>
-                        <p className="px-1 text-xs font-medium leading-snug text-slate-400 sm:text-sm">הכנסה שנתית צפויה</p>
-                        <p className="mt-2 w-full min-w-0 max-w-full break-words text-center text-xl font-black tabular-nums leading-tight text-green-400 sm:text-2xl md:text-3xl">
-                          ₪{Math.round(generatedQuote.estimatedYearlySavings).toLocaleString('en-US')}
-                        </p>
-                        <div className="mt-4 flex w-full min-w-0 flex-1 flex-col justify-evenly gap-2">
-                          {generatedQuote.estimatedYearlySavings <= 27000 ? (
-                             <span className="block text-xs text-center text-green-300 bg-slate-800/80 px-2 py-2 rounded-lg border border-slate-700">פטור ממס</span>
-                          ) : generatedQuote.estimatedYearlySavings <= 100000 ? (
-                             <span className="block text-xs text-center text-amber-400 bg-slate-800/80 px-2 py-2 rounded-lg border border-slate-700">מס: 10%</span>
-                          ) : null}
-                          <span className="block text-xs text-center text-slate-300 bg-slate-800/80 px-2 py-2 rounded-lg border border-slate-700 leading-snug">
-                            תעריף חח&quot;י (משוקלל): {Number((generatedQuote.calculatedTariff > 0 ? generatedQuote.calculatedTariff * 100 : 0).toFixed(4))} אג&apos;
-                            {generatedQuote.hasUrbanPremium && generatedQuote.baseCalculatedTariff != null ? (
-                              <span className="mt-1 block text-[10px] font-semibold text-emerald-300/95">
-                                כולל {URBAN_PREMIUM_AGOROT_PER_KWH} אג&apos; פרמיה אורבנית עד {URBAN_PREMIUM_VALID_UNTIL_YEAR}
-                                <span className="mt-0.5 block font-normal text-slate-400">
-                                  (בסיס ללא פרמיה: {Number((generatedQuote.baseCalculatedTariff * 100).toFixed(4))} אג&apos;)
-                                </span>
-                              </span>
-                            ) : null}
-                          </span>
-                        </div>
-                     </div>
-                     
-                     {/* Card 4 */}
-                     <div className="flex h-full min-w-0 flex-col items-center overflow-hidden rounded-2xl border border-slate-700/50 bg-gradient-to-br from-slate-900 to-slate-800 p-4 text-center text-white shadow-lg sm:p-6">
-                        <Clock className="mb-2 h-8 w-8 shrink-0 text-blue-400 sm:mb-3"/>
-                        <p className="px-1 text-xs font-medium leading-snug text-slate-400 sm:text-sm">החזר השקעה (ROI)</p>
-                        <div className="mt-2 flex w-full min-w-0 flex-col items-center gap-0.5">
-                          <span className="text-2xl font-black tabular-nums leading-none text-white sm:text-3xl">
-                            {generatedQuote.roiYears > 0 && isFinite(generatedQuote.roiYears) ? generatedQuote.roiYears.toFixed(1) : '---'}
-                          </span>
-                          <span className="text-xs font-bold text-slate-400 sm:text-lg">שנים</span>
-                        </div>
-                        <div className="mt-4 flex w-full min-w-0 flex-1 flex-col justify-evenly gap-2">
-                          <span className="block text-xs text-center font-bold text-orange-400 bg-slate-800/80 px-2 py-2 rounded-lg border border-slate-700">תשואה שנתית: {generatedQuote.annualYield ? generatedQuote.annualYield.toFixed(1) : 0}%</span>
-                          <span className="block text-[11px] text-center text-slate-400 bg-slate-800/80 px-2 py-2 rounded-lg border border-slate-700">ללא התחשבות בפחת ומימון</span>
-                        </div>
-                     </div>
-                   </div>
+                   <h2 className="mb-6 text-center text-2xl font-black text-blue-900 sm:text-3xl">תחזית כלכלית מפורטת</h2>
 
                    {/* Custom Financial Chart (CSS Based) */}
                    <div className="bg-white border border-slate-200 rounded-2xl p-5 mb-8 shadow-md">
@@ -3860,6 +4348,7 @@ export default function App() {
                          ? `תשואה שנתית במערכת סולארית: ${generatedQuote.annualYield.toFixed(1)}%`
                          : null
                      }
+                     className="max-w-4xl"
                    >
                      <QuoteInvestmentYieldChart annualYield={generatedQuote.annualYield} />
                    </QuoteExpandableSection>
@@ -3930,18 +4419,52 @@ export default function App() {
 
                 </section>
 
-                {/* --- PAGE 4: INCLUSIONS & PRICING --- */}
-                <section className="py-10 px-4 sm:px-8 md:px-20 bg-slate-900 text-white print:break-before-auto print:bg-white print:text-slate-900 print:py-6">
-                  <h2 className="text-2xl md:text-3xl font-black mb-8 text-center text-white print:text-blue-900">ההשקעה שלך בפרויקט Turn-Key</h2>
+                {/* --- PAGE 2: ABOUT US --- */}
+                <section className="py-10 px-4 sm:px-8 md:px-20 bg-slate-50 print:break-before-auto print:py-6">
+                   <div className="max-w-4xl mx-auto text-center mb-8">
+                     <h2 className="text-2xl md:text-3xl font-black text-blue-900 mb-3">מי אנחנו? המומחים שלכם באנרגיה סולארית</h2>
+                     <p className="text-base text-slate-600">אנו חברת בוטיק המתמחה בפתרונות אנרגיה מתקדמים — איכות, מקצועיות ושירות אישי.</p>
+                   </div>
+                   <div className="mx-auto mb-8 max-w-3xl">
+                     <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-xl ring-1 ring-slate-200/60">
+                       <img
+                         src={`${process.env.PUBLIC_URL}/team-building-about-us.png`}
+                         alt="משפחת מומחי אנרגיה סולארית — צילום צוות ביום גיבוש"
+                         className="quote-print-team-photo h-auto w-full object-contain"
+                       />
+                     </div>
+                     <p className="mt-4 text-center text-sm font-medium text-slate-500">הצוות שלנו ביום גיבוש — האנשים שמלווים אתכם בכל שלב בדרך לאנרגיה סולארית.</p>
+                   </div>
+                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                     <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200 text-center">
+                        <Award className="w-10 h-10 text-orange-500 mx-auto mb-3"/>
+                        <h3 className="text-xl font-bold text-blue-800 mb-2">איכות ללא פשרות</h3>
+                        <p className="text-slate-600 text-sm">אנו עובדים רק עם המותגים המובילים בעולם (Tier 1) כדי להבטיח אמינות ותפוקה מקסימלית לאורך עשרות שנים.</p>
+                     </div>
+                     <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200 text-center">
+                        <ShieldCheck className="w-10 h-10 text-blue-600 mx-auto mb-3"/>
+                        <h3 className="text-xl font-bold text-blue-800 mb-2">אחריות וביטחון</h3>
+                        <p className="text-slate-600 text-sm">שקט נפשי מלא. אנו מלווים אתכם גם לאחר ההתקנה עם מערכות ניטור מתקדמות ואחריות ארוכת טווח.</p>
+                     </div>
+                     <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200 text-center">
+                        <Wrench className="w-10 h-10 text-green-500 mx-auto mb-3"/>
+                        <h3 className="text-xl font-bold text-blue-800 mb-2">פתרון Turn-Key</h3>
+                        <p className="text-slate-600 text-sm">מא' ועד ת'. אנו מטפלים בכל הביורוקרטיה, הרישוי, התכנון וההתקנה - אתם רק נהנים מהחשמל.</p>
+                     </div>
+                   </div>
+                </section>
+
+                {/* --- PAGE 4: INCLUSIONS --- */}
+                <section className="py-10 px-4 sm:px-8 md:px-20 bg-white border-t border-slate-200 print:break-before-auto print:py-6">
+                  <h2 className="text-2xl md:text-3xl font-black mb-8 text-center text-blue-900">מה כלול בפרויקט Turn-Key?</h2>
                   
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                     <div className="bg-slate-800 p-8 rounded-3xl print:bg-slate-50 print:border print:border-slate-200">
-                       <h3 className="text-2xl font-bold mb-6 text-blue-400 print:text-blue-800">מה כלול בהצעה?</h3>
+                  <div className="mx-auto max-w-3xl mb-8">
+                     <div className="rounded-3xl border border-slate-200 bg-slate-50 p-8 print:bg-white print:border-slate-200">
                        <div className="space-y-4">
-                         <div className="flex items-start gap-3"><CheckCircle className="w-5 h-5 text-green-500 shrink-0 mt-0.5"/><p className="text-slate-300 print:text-slate-700"><strong>הנדסה ורישוי:</strong> תכנון, קונסטרוקטור וטיפול מול חח"י.</p></div>
-                         <div className="flex items-start gap-3"><CheckCircle className="w-5 h-5 text-green-500 shrink-0 mt-0.5"/><p className="text-slate-300 print:text-slate-700"><strong>חשמל:</strong> כבלי AC/DC, לוחות מותאמים לחיבור 3x{generatedQuote.requiredConnectionAmps}A, חשמלאי מוסמך.</p></div>
-                         <div className="flex items-start gap-3"><CheckCircle className="w-5 h-5 text-green-500 shrink-0 mt-0.5"/><p className="text-slate-300 print:text-slate-700"><strong>התקנה:</strong> לוגיסטיקה, מנופים וצוות התקנה מקצועי.</p></div>
-                         <div className="flex items-start gap-3"><CheckCircle className="w-5 h-5 text-green-500 shrink-0 mt-0.5"/><p className="text-slate-300 print:text-slate-700"><strong>בדיקות:</strong> בודק פרטי מוסמך וחיבור למערכת ניטור.</p></div>
+                         <div className="flex items-start gap-3"><CheckCircle className="w-5 h-5 text-green-500 shrink-0 mt-0.5"/><p className="text-slate-700"><strong>הנדסה ורישוי:</strong> תכנון, קונסטרוקטור וטיפול מול חח"י.</p></div>
+                         <div className="flex items-start gap-3"><CheckCircle className="w-5 h-5 text-green-500 shrink-0 mt-0.5"/><p className="text-slate-700"><strong>חשמל:</strong> כבלי AC/DC, לוחות מותאמים לחיבור 3x{generatedQuote.requiredConnectionAmps}A, חשמלאי מוסמך.</p></div>
+                         <div className="flex items-start gap-3"><CheckCircle className="w-5 h-5 text-green-500 shrink-0 mt-0.5"/><p className="text-slate-700"><strong>התקנה:</strong> לוגיסטיקה, מנופים וצוות התקנה מקצועי.</p></div>
+                         <div className="flex items-start gap-3"><CheckCircle className="w-5 h-5 text-green-500 shrink-0 mt-0.5"/><p className="text-slate-700"><strong>בדיקות:</strong> בודק פרטי מוסמך וחיבור למערכת ניטור.</p></div>
                          {generatedQuote.includesOptimizers && (
                            <div className="flex items-start gap-3">
                              <CheckCircle className="w-5 h-5 text-green-500 shrink-0 mt-0.5" />
@@ -3956,53 +4479,31 @@ export default function App() {
                                  <span className="text-xs text-orange-300 print:hidden">(לחץ לצפייה במפרט)</span>
                                </button>
                              ) : (
-                               <p className="text-slate-300 print:text-slate-700">
+                               <p className="text-slate-700">
                                  <strong>אופטימייזרים:</strong> התקנת אופטימייזרים למיקסום תפוקה ({generatedQuote.optimizerDetails.type}).
                                </p>
                              )}
                            </div>
                          )}
-                         {generatedQuote.includesWashing && <div className="flex items-start gap-3"><CheckCircle className="w-5 h-5 text-green-500 shrink-0 mt-0.5"/><p className="text-slate-300 print:text-slate-700"><strong>שטיפה:</strong> מערכת ניקוי פאנלים אוטומטית.</p></div>}
-                         {generatedQuote.feesPayer === 'company' && <div className="flex items-start gap-3"><CheckCircle className="w-5 h-5 text-green-500 shrink-0 mt-0.5"/><p className="text-slate-300 print:text-slate-700"><strong>אגרות:</strong> תשלומים לרשויות כלולים.</p></div>}
+                         {generatedQuote.includesWashing && (
+                           <div className="flex items-start gap-3">
+                             <CheckCircle className="mt-0.5 h-5 w-5 shrink-0 text-green-500" />
+                             <p className="text-slate-700">
+                               <strong>שטיפה:</strong> מערכת ניקוי פאנלים אוטומטית.
+                             </p>
+                           </div>
+                         )}
+                         {generatedQuote.feesPayer === 'company' && (
+                           <div className="flex items-start gap-3 rounded-xl border border-amber-400/30 bg-amber-500/10 p-3 print:border-amber-200 print:bg-amber-50">
+                             <Gift className="mt-0.5 h-5 w-5 shrink-0 text-amber-400 print:text-amber-600" aria-hidden />
+                             <p className="text-slate-700">
+                               <strong className="text-amber-800">אגרות חח&quot;י ורשויות:</strong> תשלום על חשבון החברה — ללא חיוב נפרד ללקוח.
+                             </p>
+                           </div>
+                         )}
                        </div>
                      </div>
-                     
-                     <div className="flex flex-col justify-center bg-blue-900/30 border border-blue-500/30 p-8 rounded-3xl text-center print:bg-blue-50 print:border-blue-200">
-                        <p className="text-orange-400 text-lg font-bold mb-2 print:text-blue-800">השקעה כוללת בפרויקט</p>
-                        
-                        {generatedQuote.systemType === 'residential' ? (
-                          <>
-                            <div className="text-6xl font-black text-white mb-2 print:text-blue-900">₪{(generatedQuote.breakdown.finalPrice * (1 + adminPrices.vatRate / 100)).toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
-                            <p className="text-slate-400 text-sm mb-6 print:text-slate-500">סה"כ לתשלום (המחיר כולל מע"מ)</p>
-                            <div className="text-sm text-slate-300 print:text-blue-900 bg-slate-900/50 print:bg-white p-4 rounded-xl border border-slate-700 print:border-blue-200 mx-auto w-full max-w-sm shadow-sm">
-                              {generatedQuote.includesWashing && Number(generatedQuote.breakdown.washing) > 0 && (
-                                <div className="flex justify-between mb-3 pb-3 border-b border-slate-600 print:border-blue-200">
-                                  <span className="text-green-400 print:text-green-700 font-semibold">מערכת שטיפה אוטומטית (כלולה)</span>
-                                  <span className="font-bold text-white print:text-blue-900 tabular-nums">₪{Math.round(generatedQuote.breakdown.washing).toLocaleString()}</span>
-                                </div>
-                              )}
-                              <div className="flex justify-between mb-1"><span>לפני מע"מ:</span><span>₪{generatedQuote.breakdown.finalPrice.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span></div>
-                              <div className="flex justify-between"><span>מע"מ ({adminPrices.vatRate}%):</span><span>₪{(generatedQuote.breakdown.finalPrice * (adminPrices.vatRate / 100)).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span></div>
-                            </div>
-                          </>
-                        ) : (
-                          <>
-                            <div className="text-6xl font-black text-white mb-2 print:text-blue-900">₪{generatedQuote.breakdown.finalPrice.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
-                            <p className="text-slate-400 text-sm mb-6 print:text-slate-500">סה"כ לתשלום (לפני מע"מ)</p>
-                            <div className="text-sm text-slate-300 print:text-blue-900 bg-slate-900/50 print:bg-white p-4 rounded-xl border border-slate-700 print:border-blue-200 mx-auto w-full max-w-sm shadow-sm">
-                              {generatedQuote.includesWashing && Number(generatedQuote.breakdown.washing) > 0 && (
-                                <div className="flex justify-between mb-3 pb-3 border-b border-slate-600 print:border-blue-200">
-                                  <span className="text-green-400 print:text-green-700 font-semibold">מערכת שטיפה אוטומטית (כלולה)</span>
-                                  <span className="font-bold text-white print:text-blue-900 tabular-nums">₪{Math.round(generatedQuote.breakdown.washing).toLocaleString()}</span>
-                                </div>
-                              )}
-                              <div className="flex justify-between mb-1"><span>תוספת מע"מ ({adminPrices.vatRate}%):</span><span>₪{(generatedQuote.breakdown.finalPrice * (adminPrices.vatRate / 100)).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span></div>
-                              <div className="flex justify-between font-bold text-white print:text-blue-900 mt-2 pt-2 border-t border-slate-700 print:border-blue-200"><span>סה"כ כולל מע"מ:</span><span>₪{(generatedQuote.breakdown.finalPrice * (1 + adminPrices.vatRate / 100)).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span></div>
-                            </div>
-                          </>
-                        )}
-                     </div>
-                  </div>
+                   </div>
                 </section>
 
                 {/* --- PAGE 5: TECHNICAL SPECIFICATIONS — נפתח בלחיצה --- */}
@@ -4087,65 +4588,72 @@ export default function App() {
                 <section className="py-10 px-4 sm:px-8 md:px-20 bg-slate-50 print:break-before-auto print:py-6">
                    <h2 className="text-2xl md:text-3xl font-black text-blue-900 mb-8 text-center">תנאי תשלום ואחריות</h2>
                    
-                   <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+                   <div className="mx-auto grid max-w-5xl grid-cols-1 gap-6 md:grid-cols-2 md:items-stretch lg:gap-8">
                       
                       {/* Payment Terms */}
-                      <div className="bg-white rounded-3xl shadow-lg p-8 border border-slate-200 h-fit">
-                        <div className="flex items-center gap-3 mb-6 border-b-2 border-orange-500 pb-3 inline-flex">
-                           <DollarSign className="w-6 h-6 text-blue-600" />
-                           <h3 className="text-2xl font-bold text-slate-800">תנאי תשלום:</h3>
+                      <div className="flex h-full flex-col rounded-3xl border border-slate-200 bg-white p-6 shadow-lg sm:p-8">
+                        <div className="mb-5 flex w-full items-center gap-3 border-b-2 border-orange-500 pb-3">
+                          <ShekelIcon className="text-2xl text-blue-600" />
+                          <h3 className="text-xl font-bold text-slate-800 sm:text-2xl">תנאי תשלום</h3>
                         </div>
-                        <table className="w-full text-right text-slate-700 text-lg">
-                          <tbody>
-                            <tr className="border-b border-slate-100">
-                              <td className="py-4 font-medium">בתחילת הדרך</td>
-                              <td className="py-4 font-black text-blue-600 text-left">5%</td>
-                            </tr>
-                            <tr className="border-b border-slate-100">
-                              <td className="py-4 font-medium">עם קבלת אישור PV</td>
-                              <td className="py-4 font-black text-blue-600 text-left">10%</td>
-                            </tr>
-                            <tr className="border-b border-slate-100">
-                              <td className="py-4 font-medium">ביום הזמנת קונסטרוקציה לאתר הלקוח</td>
-                              <td className="py-4 font-black text-blue-600 text-left">35%</td>
-                            </tr>
-                            <tr className="border-b border-slate-100">
-                              <td className="py-4 font-medium">ביום הזמנת פאנלים לאתר הלקוח</td>
-                              <td className="py-4 font-black text-blue-600 text-left">45%</td>
-                            </tr>
-                            <tr>
-                              <td className="py-4 font-medium">ביום חיבור המתקן לרשת חברת החשמל</td>
-                              <td className="py-4 font-black text-blue-600 text-left">יתרה</td>
-                            </tr>
-                          </tbody>
-                        </table>
+                        <ul className="flex flex-1 flex-col justify-between divide-y divide-slate-100 text-[15px] leading-snug sm:text-base sm:leading-relaxed">
+                          {[
+                            ['בתחילת הדרך', '5%'],
+                            ['עם קבלת אישור PV', '10%'],
+                            ['ביום הזמנת קונסטרוקציה לאתר הלקוח', '35%'],
+                            ['ביום הזמנת פאנלים לאתר הלקוח', '45%'],
+                            ['ביום חיבור המתקן לרשת חברת החשמל', 'יתרה'],
+                          ].map(([label, value]) => (
+                            <li
+                              key={label}
+                              className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0 sm:py-3.5"
+                            >
+                              <span className="min-w-0 flex-1 text-right font-medium text-slate-700">{label}</span>
+                              <span className="shrink-0 text-left text-lg font-black tabular-nums text-blue-600 sm:text-xl">
+                                {value}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
                       </div>
 
                       {/* Warranty */}
-                      <div className="bg-white rounded-3xl shadow-lg p-8 border border-slate-200 h-fit">
-                        <div className="flex items-center gap-3 mb-6 border-b-2 border-orange-500 pb-3 inline-flex">
-                           <ShieldCheck className="w-6 h-6 text-blue-600" />
-                           <h3 className="text-2xl font-bold text-slate-800">עיקרי האחריות:</h3>
+                      <div className="flex h-full flex-col rounded-3xl border border-slate-200 bg-white p-6 shadow-lg sm:p-8">
+                        <div className="mb-5 flex w-full items-center gap-3 border-b-2 border-orange-500 pb-3">
+                          <ShieldCheck className="h-6 w-6 shrink-0 text-blue-600" />
+                          <h3 className="text-xl font-bold text-slate-800 sm:text-2xl">עיקרי האחריות</h3>
                         </div>
-                        <ul className="space-y-5 text-lg">
-                           <li className="flex items-start gap-4">
-                              <CheckCircle className="w-6 h-6 text-green-500 shrink-0 mt-0.5"/> 
-                              <span className="text-slate-700">אחריות להספק ביצוע הפנלים לתקופה של <strong>25-30 שנה</strong>, על פי הוראות יצרן.</span>
-                           </li>
-                           <li className="flex items-start gap-4">
-                              <CheckCircle className="w-6 h-6 text-green-500 shrink-0 mt-0.5"/> 
-                              <span className="text-slate-700">אחריות לממיר מתח <strong>{generatedQuote.hasSolarEdgeQuote ? '12' : '10'} שנה</strong> על פי הוראות יצרן.</span>
-                           </li>
-                           {generatedQuote.includesOptimizers && (
-                              <li className="flex items-start gap-4">
-                                 <CheckCircle className="w-6 h-6 text-green-500 shrink-0 mt-0.5"/> 
-                                 <span className="text-slate-700">אחריות לאופטימייזרים <strong>25 שנה</strong> על פי הוראות יצרן.</span>
-                              </li>
-                           )}
-                           <li className="flex items-start gap-4">
-                              <CheckCircle className="w-6 h-6 text-green-500 shrink-0 mt-0.5"/> 
-                              <span className="text-slate-700">אחריות התקנה <strong>36 חודשים</strong>.</span>
-                           </li>
+                        <ul className="flex flex-1 flex-col justify-evenly gap-5 py-1 text-lg font-medium leading-relaxed text-slate-700 sm:gap-6 sm:py-2 sm:text-xl sm:leading-loose">
+                          <li className="flex items-start gap-4">
+                            <CheckCircle className="mt-1 h-6 w-6 shrink-0 text-green-500 sm:h-7 sm:w-7" />
+                            <span>
+                              אחריות להספק ביצוע הפנלים לתקופה של <strong className="font-black text-slate-900">25–30 שנה</strong>, על פי הוראות יצרן.
+                            </span>
+                          </li>
+                          <li className="flex items-start gap-4">
+                            <CheckCircle className="mt-1 h-6 w-6 shrink-0 text-green-500 sm:h-7 sm:w-7" />
+                            <span>
+                              אחריות לממיר מתח{' '}
+                              <strong className="font-black text-slate-900">
+                                {generatedQuote.hasSolarEdgeQuote ? '12' : '10'} שנה
+                              </strong>{' '}
+                              על פי הוראות יצרן.
+                            </span>
+                          </li>
+                          {generatedQuote.includesOptimizers && (
+                            <li className="flex items-start gap-4">
+                              <CheckCircle className="mt-1 h-6 w-6 shrink-0 text-green-500 sm:h-7 sm:w-7" />
+                              <span>
+                                אחריות לאופטימייזרים <strong className="font-black text-slate-900">25 שנה</strong> על פי הוראות יצרן.
+                              </span>
+                            </li>
+                          )}
+                          <li className="flex items-start gap-4">
+                            <CheckCircle className="mt-1 h-6 w-6 shrink-0 text-green-500 sm:h-7 sm:w-7" />
+                            <span>
+                              אחריות התקנה <strong className="font-black text-slate-900">36 חודשים</strong>.
+                            </span>
+                          </li>
                         </ul>
                       </div>
                       
@@ -4172,7 +4680,7 @@ export default function App() {
                     title="דוגמאות מפרויקטים שלנו"
                     subtitle="התקנות אמיתיות ברחבי הארץ"
                     teaser={`${QUOTE_PROJECT_EXAMPLE_IMAGES.length} תמונות · סליידר`}
-                    className="max-w-md"
+                    className="!max-w-5xl w-full"
                   >
                     <QuoteProjectSlider images={QUOTE_PROJECT_EXAMPLE_IMAGES} />
                   </QuoteExpandableSection>
@@ -4186,101 +4694,8 @@ export default function App() {
                      teaser="לחצו לפתיחת המפה"
                      className="max-w-4xl"
                    >
-                   <div className="w-full rounded-2xl overflow-hidden shadow-lg border border-slate-200 relative" style={{ height: 'min(360px, 55vh)' }}>
-                      {/* מסכת כיסוי חכמה לכותרת של גוגל (מסתיר את השם ומציג רק את שם החברה בעיצוב תואם) */}
-                      <div className="absolute top-0 left-0 w-full h-[58px] bg-blue-900 flex items-center px-6 z-10 shadow-md">
-                        <MapPin className="w-5 h-5 text-orange-400 ml-3" />
-                        <span className="font-bold text-white text-lg tracking-wide">פרויקטים של מומחי אנרגיה סולארית</span>
-                      </div>
-                      
-                      <iframe 
-                        src="https://www.google.com/maps/d/embed?mid=1gmzO7k_SBVucywFFtwSgYE35ltMabc0&ll=31.93778024868962%2C35.098651000000025&z=8" 
-                        width="100%" 
-                        height="100%" 
-                        frameBorder="0"
-                        style={{ border: 0 }}
-                        allowFullScreen=""
-                        aria-hidden="false"
-                        tabIndex="0"
-                        title="לקוחות ממליצים"
-                      ></iframe>
-                   </div>
+                   <QuoteProjectsMap clientCity={generatedQuote?.clientCity} />
                    </QuoteExpandableSection>
-                </section>
-
-                {/* --- LIMITED TIME OFFER BANNER --- */}
-                <section className="pb-10 pt-6 px-4 sm:px-8 md:px-20 bg-white">
-                  <div className="max-w-4xl mx-auto">
-                    {/* לתצוגת ווב (טיימר חי וכפתור) */}
-                    {!timeLeft.expired ? (
-                      <div className="print:hidden bg-gradient-to-r from-orange-500 to-yellow-500 rounded-3xl p-8 md:p-10 shadow-xl text-slate-900 flex flex-col md:flex-row items-center justify-between gap-8 transform hover:scale-[1.01] transition-transform">
-                         <div className="flex-1 text-center md:text-right">
-                           <div className="flex items-center justify-center md:justify-start gap-3 mb-3">
-                             <Gift className="w-8 h-8 text-white animate-pulse" />
-                             <h3 className="text-2xl md:text-3xl font-black text-white">הטבה לזמן מוגבל!</h3>
-                           </div>
-                           <p className="text-lg text-orange-50 font-medium leading-relaxed">
-                             אשרו את הצעת המחיר ב-7 הימים הקרובים, וקבלו <strong className="text-slate-900 bg-white/90 px-2 py-0.5 rounded shadow-sm">{limitedOfferHighlightShort}</strong> במתנה עלינו!
-                           </p>
-                         </div>
-                         
-                         <div className="flex flex-col items-center gap-4">
-                           <div className="flex gap-3 text-center" dir="ltr">
-                             <div className="bg-slate-900/10 backdrop-blur-sm rounded-xl p-3 w-16 shadow-inner border border-white/20">
-                               <div className="text-2xl font-black tabular-nums leading-none text-white">{String(timeLeft.days).padStart(2, '0')}</div>
-                               <div className="text-[10px] text-white/80 mt-1 uppercase tracking-wider font-bold">Days</div>
-                             </div>
-                             <div className="text-2xl font-black text-white mt-2">:</div>
-                             <div className="bg-slate-900/10 backdrop-blur-sm rounded-xl p-3 w-16 shadow-inner border border-white/20">
-                               <div className="text-2xl font-black tabular-nums leading-none text-white">{String(timeLeft.hours).padStart(2, '0')}</div>
-                               <div className="text-[10px] text-white/80 mt-1 uppercase tracking-wider font-bold">Hrs</div>
-                             </div>
-                             <div className="text-2xl font-black text-white mt-2">:</div>
-                             <div className="bg-slate-900/10 backdrop-blur-sm rounded-xl p-3 w-16 shadow-inner border border-white/20">
-                               <div className="text-2xl font-black tabular-nums leading-none text-white">{String(timeLeft.minutes).padStart(2, '0')}</div>
-                               <div className="text-[10px] text-white/80 mt-1 uppercase tracking-wider font-bold">Min</div>
-                             </div>
-                             <div className="text-2xl font-black text-white mt-2">:</div>
-                             <div className="bg-slate-900/10 backdrop-blur-sm rounded-xl p-3 w-16 shadow-inner border border-white/20">
-                               <div className="text-2xl font-black tabular-nums leading-none text-white">{String(timeLeft.seconds).padStart(2, '0')}</div>
-                               <div className="text-[10px] text-white/80 mt-1 uppercase tracking-wider font-bold">Sec</div>
-                             </div>
-                           </div>
-                           <a 
-                             href={whatsappLink} 
-                             target="_blank" 
-                             rel="noopener noreferrer"
-                             className="bg-white text-orange-600 hover:bg-slate-50 w-full py-3 px-6 rounded-xl font-black text-lg text-center shadow-lg transition-colors flex items-center justify-center gap-2"
-                           >
-                             אני רוצה את ההטבה!
-                           </a>
-                         </div>
-                      </div>
-                    ) : (
-                      <div className="print:hidden bg-blue-50 border border-blue-200 rounded-3xl p-8 shadow-sm flex flex-col md:flex-row items-center justify-between gap-6">
-                        <div className="text-center md:text-right">
-                          <h3 className="text-xl font-bold text-blue-900 mb-1">הצעה זו בתוקף</h3>
-                          <p className="text-slate-600">אנו זמינים לכל שאלה. לחצו לאישור ההצעה והתחלת הפרויקט.</p>
-                        </div>
-                        <a 
-                           href={`https://wa.me/${cleanPhone}?text=${encodeURIComponent(`שלום, אני ${generatedQuote?.clientName ? generatedQuote.clientName : ''} ${generatedQuote?.clientCity ? `מ${generatedQuote.clientCity}` : ''}. עברתי על הצעת המחיר למערכת סולארית ואני מעוניין/ת לאשר את ההצעה ולהתקדם. אשמח שתיצרו איתי קשר.`)}`}
-                           target="_blank" 
-                           rel="noopener noreferrer"
-                           className="bg-gradient-to-r from-blue-700 to-blue-500 text-white hover:from-blue-600 hover:to-blue-400 px-8 py-3 rounded-xl font-bold text-lg shadow-lg transition-transform transform hover:scale-105"
-                        >
-                           לאשר הצעה
-                        </a>
-                      </div>
-                    )}
-                    
-                    {/* לתצוגת PDF (טקסט סטטי) */}
-                    <div className="hidden print:block bg-amber-50 border border-amber-200 rounded-2xl p-6 text-center mt-8">
-                       <h3 className="text-xl font-bold text-amber-600 mb-2 flex items-center justify-center gap-2">
-                         <Gift className="w-5 h-5" /> הטבה מיוחדת
-                       </h3>
-                       <p className="text-slate-700">אשרו את הצעת המחיר בתוך 7 ימים מתאריך ההפקה, וקבלו {limitedOfferHighlightShort} במתנה!</p>
-                    </div>
-                    </div>
                 </section>
 
                 {/* --- PAGE 6.5: DIGITAL SIGNATURE (PRINCIPLE APPROVAL) — אחרי המפה והמבצע --- */}
@@ -4357,6 +4772,7 @@ export default function App() {
                       <span className="flex items-center gap-2"><Phone className="w-5 h-5 text-blue-600"/> {adminPrices.companyPhone}</span>
                     )}
                     <span className="flex items-center gap-2"><MapPin className="w-5 h-5 text-blue-600"/> עין יעקב</span>
+                    <CompanySocialLinks className="w-full md:w-auto" />
                   </div>
                   <div className="flex items-center gap-3 font-bold text-slate-800 text-xl">
                      <BrandLogo className="h-10 w-10 object-contain" />
