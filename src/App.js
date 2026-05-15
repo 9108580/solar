@@ -67,6 +67,12 @@ const QUOTE_BRAND_LOGO_IMG_CLASS =
 /** תמונת מערכת שטיפה בהצעה */
 const QUOTE_WASHING_SYSTEM_IMG = `${process.env.PUBLIC_URL}/equipment/panel-washing.png`;
 
+/** דוגמאות פרויקטים מהתקנות (מקור: תמונות של פרויקטים.docx) */
+const QUOTE_PROJECT_EXAMPLE_IMAGES = Array.from({ length: 14 }, (_, i) => {
+  const n = String(i + 1).padStart(2, '0');
+  return `${process.env.PUBLIC_URL}/project-examples/project-${n}.jpg`;
+});
+
 const BrandLogoSvg = ({ className }) => (
   <svg viewBox="0 0 100 100" className={className} fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
     <circle cx="50" cy="45" r="35" fill="url(#sun-grad)"/>
@@ -4067,6 +4073,34 @@ export default function App() {
                      </div>
                   </section>
                 )}
+
+                {/* --- PROJECT EXAMPLES GALLERY --- */}
+                <section className="py-16 px-8 md:px-20 bg-slate-50 border-t border-slate-200 print:bg-white print:py-10">
+                  <div className="max-w-6xl mx-auto">
+                    <h2 className="text-3xl md:text-4xl font-black text-blue-900 mb-3 text-center flex items-center justify-center gap-3">
+                      <Home className="w-9 h-9 text-orange-500 shrink-0" aria-hidden />
+                      דוגמאות מפרויקטים שלנו
+                    </h2>
+                    <p className="text-center text-slate-600 text-lg mb-10 max-w-2xl mx-auto">
+                      מבחר התקנות אמיתיות שביצענו — בתים פרטיים, מבני ציבור ועסקים ברחבי הארץ.
+                    </p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
+                      {QUOTE_PROJECT_EXAMPLE_IMAGES.map((src, idx) => (
+                        <div
+                          key={src}
+                          className="group relative aspect-[4/3] overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-md print:shadow-sm print:break-inside-avoid"
+                        >
+                          <img
+                            src={src}
+                            alt={`דוגמת פרויקט סולארי ${idx + 1}`}
+                            loading="lazy"
+                            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105 print:group-hover:scale-100"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </section>
 
                 {/* --- PAGE 7: INTERACTIVE MAP (CLIENTS) — מעל החתימה והפוטר --- */}
                 <section className="py-20 px-8 md:px-20 bg-white print:hidden border-t border-slate-100">
