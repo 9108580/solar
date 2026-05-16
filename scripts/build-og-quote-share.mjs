@@ -1,6 +1,5 @@
 /**
- * תמונת שיתוף לוואטסאפ: רקע סולאר (1200×630 סטנדרט OG) + לוגו שקוף במרכז‑עליון
- * + הילה כהה חזקה יותר (נראות גם בממוזער).
+ * תמונת שיתוף לוואטסאפ: רקע סולאר (1200×630) + לוגו שקוף בלבד — ללא עיגול/הילה כהה מאחור.
  * הרצה: node scripts/build-og-quote-share.mjs
  */
 import fs from 'fs/promises';
@@ -23,15 +22,6 @@ const logoSize = Math.round(Math.min(W, H) * 0.38);
 const marginTop = Math.round(H * 0.045);
 const logoLeft = Math.round((W - logoSize) / 2);
 const logoTop = marginTop;
-const cx = logoLeft + logoSize / 2;
-const cy = logoTop + logoSize / 2;
-const haloR = logoSize * 0.62;
-
-const haloSvg = Buffer.from(
-  `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
-    <ellipse cx="${cx}" cy="${cy}" rx="${haloR}" ry="${haloR}" fill="rgba(0,0,0,0.58)"/>
-  </svg>`
-);
 
 const logo = await sharp(logoPath)
   .ensureAlpha()
@@ -43,12 +33,9 @@ const logo = await sharp(logoPath)
   .toBuffer();
 
 const out = await sharp(hero)
-  .composite([
-    { input: haloSvg, top: 0, left: 0 },
-    { input: logo, top: logoTop, left: logoLeft },
-  ])
+  .composite([{ input: logo, top: logoTop, left: logoLeft }])
   .png({ compressionLevel: 9, effort: 10 })
   .toBuffer();
 
 await fs.writeFile(outPath, out);
-console.log(`Wrote ${outPath} (${W}x${H}) ${out.length} bytes — logo center-top`);
+console.log(`Wrote ${outPath} (${W}x${H}) ${out.length} bytes — logo only (no halo)`);

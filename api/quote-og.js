@@ -1,6 +1,6 @@
 /** תצוגת קישור לוואטסאפ / פייסבוק — HTML עם OG tags (בלי React) */
 const SITE = 'https://www.mes.bet';
-const OG_IMAGE = `${SITE}/og-quote-share.png?v=5`;
+const OG_IMAGE = `${SITE}/og-quote-share.png?v=6`;
 const TITLE = 'הצעת מחיר — מומחי אנרגיה סולארית';
 const DESCRIPTION =
   'הצעת מחיר אישית למערכת סולארית. לחצו לצפייה בהצעה המלאה.';
