@@ -1,6 +1,6 @@
 /** תצוגת קישור לוואטסאפ / פייסבוק — HTML עם OG tags (בלי React) */
 const SITE = 'https://www.mes.bet';
-const OG_IMAGE = `${SITE}/og-quote-share.png?v=4`;
+const OG_IMAGE = `${SITE}/og-quote-share.png?v=5`;
 const TITLE = 'הצעת מחיר — מומחי אנרגיה סולארית';
 const DESCRIPTION =
   'הצעת מחיר אישית למערכת סולארית. לחצו לצפייה בהצעה המלאה.';
@@ -31,8 +31,8 @@ module.exports = (req, res) => {
 <meta property="og:image" content="${OG_IMAGE}"/>
 <meta property="og:image:secure_url" content="${OG_IMAGE}"/>
 <meta property="og:image:type" content="image/png"/>
-<meta property="og:image:width" content="1024"/>
-<meta property="og:image:height" content="576"/>
+<meta property="og:image:width" content="1200"/>
+<meta property="og:image:height" content="630"/>
 <meta property="og:locale" content="he_IL"/>
 <meta name="twitter:card" content="summary_large_image"/>
 <meta name="twitter:title" content="${escapeHtml(TITLE)}"/>
