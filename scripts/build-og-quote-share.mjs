@@ -1,5 +1,6 @@
 /**
- * בונה public/og-quote-share.png — תמונת הגג המקורית + לוגו שקוף מעל (בלי רקע לבן).
+ * בונה public/og-quote-share.png — תמונת הגג + לוגו שקוף (גדול יותר, פינה עליונה‑ימנית
+ * כדי שלא ייחתך בתצוגת קישור בוואטסאפ) + הילה כהה עדינה מאחורי הלוגו בלבד.
  * הרצה: node scripts/build-og-quote-share.mjs
  */
 import fs from 'fs/promises';
@@ -17,8 +18,19 @@ const heroMeta = await sharp(heroPath).metadata();
 const W = heroMeta.width || 1024;
 const H = heroMeta.height || 576;
 
-const logoSize = Math.round(Math.min(W, H) * 0.2);
-const margin = Math.round(Math.min(W, H) * 0.035);
+const logoSize = Math.round(Math.min(W, H) * 0.32);
+const margin = Math.round(Math.min(W, H) * 0.04);
+const logoLeft = W - logoSize - margin;
+const logoTop = margin;
+const cx = logoLeft + logoSize / 2;
+const cy = logoTop + logoSize / 2;
+const haloR = logoSize * 0.58;
+
+const haloSvg = Buffer.from(
+  `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">
+    <ellipse cx="${cx}" cy="${cy}" rx="${haloR}" ry="${haloR}" fill="rgba(0,0,0,0.42)"/>
+  </svg>`
+);
 
 const logo = await sharp(logoPath)
   .ensureAlpha()
@@ -30,9 +42,12 @@ const logo = await sharp(logoPath)
   .toBuffer();
 
 const out = await sharp(heroPath)
-  .composite([{ input: logo, top: margin, left: margin }])
+  .composite([
+    { input: haloSvg, top: 0, left: 0 },
+    { input: logo, top: logoTop, left: logoLeft },
+  ])
   .png({ compressionLevel: 9, effort: 10 })
   .toBuffer();
 
 await fs.writeFile(outPath, out);
-console.log(`Wrote ${outPath} (${W}x${H}) ${out.length} bytes`);
+console.log(`Wrote ${outPath} (${W}x${H}) ${out.length} bytes — logo top-right`);
