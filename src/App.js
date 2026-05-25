@@ -4722,7 +4722,7 @@ export default function App() {
                           {generatedQuote.panelDatasheet ? (
                             <button
                               type="button"
-                              className={`${QUOTE_BRAND_CARD_COMPACT_CLASS} !gap-1 !p-1 md:!p-1.5 cursor-pointer transition-transform hover:scale-[1.02] hover:border-orange-400/35 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400/70`}
+                              className={`${QUOTE_BRAND_CARD_LOGO_ONLY_CLASS} cursor-pointer overflow-hidden !bg-white ring-1 ring-black/10 transition-transform hover:scale-[1.02] hover:border-orange-400/35 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400/70 print:ring-slate-200`}
                               onClick={() =>
                                 openQuoteDatasheet(
                                   `מפרט טכני — פאנלים ${generatedQuote.panelPowerWatts}W`,
@@ -4730,29 +4730,19 @@ export default function App() {
                                 )
                               }
                             >
-                              <div className="flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden rounded-lg bg-white p-0.5 ring-1 ring-black/10 print:ring-slate-200">
-                                <img
-                                  src={quotePanelBrandLogoSrc}
-                                  alt="SolarSpace"
-                                  className={QUOTE_BRAND_LOGO_IMG_FILL_CLASS}
-                                />
-                              </div>
-                              <span className="shrink-0 text-center text-xs font-bold leading-tight text-white/95 print:text-slate-900 md:text-sm">
-                                פאנלים {generatedQuote.panelPowerWatts}W
-                              </span>
+                              <img
+                                src={quotePanelBrandLogoSrc}
+                                alt="SolarSpace"
+                                className={QUOTE_BRAND_LOGO_IMG_FILL_CLASS}
+                              />
                             </button>
                           ) : (
-                            <div className={`${QUOTE_BRAND_CARD_COMPACT_CLASS} !gap-1 !p-1 md:!p-1.5`}>
-                              <div className="flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden rounded-lg bg-white p-0.5 ring-1 ring-black/10 print:ring-slate-200">
-                                <img
-                                  src={quotePanelBrandLogoSrc}
-                                  alt="SolarSpace"
-                                  className={QUOTE_BRAND_LOGO_IMG_FILL_CLASS}
-                                />
-                              </div>
-                              <span className="shrink-0 text-center text-xs font-bold leading-tight text-white/95 print:text-slate-900 md:text-sm">
-                                פאנלים {generatedQuote.panelPowerWatts}W
-                              </span>
+                            <div className={`${QUOTE_BRAND_CARD_LOGO_ONLY_CLASS} overflow-hidden !bg-white ring-1 ring-black/10 print:ring-slate-200`}>
+                              <img
+                                src={quotePanelBrandLogoSrc}
+                                alt="SolarSpace"
+                                className={QUOTE_BRAND_LOGO_IMG_FILL_CLASS}
+                              />
                             </div>
                           )}
                           <span className={QUOTE_EQUIP_BELOW_CAPTION_CLASS}>
