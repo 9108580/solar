@@ -1234,6 +1234,27 @@ function datasheetToSrc(ds) {
   return `data:${n.mimeType};base64,${n.dataBase64}`;
 }
 
+function isDatasheetViewable(ds) {
+  return Boolean(datasheetToSrc(ds));
+}
+
+/** כיתוב + «לחץ לצפייה במפרט» — כפתור שלם (גם בנייד, לא רק על הלוגו) */
+function QuoteEquipDatasheetCaption({ datasheet, datasheetTitle, onOpen, children }) {
+  if (!isDatasheetViewable(datasheet)) {
+    return <span className={QUOTE_EQUIP_BELOW_CAPTION_CLASS}>{children}</span>;
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(datasheetTitle, datasheet)}
+      className={`${QUOTE_EQUIP_BELOW_CAPTION_CLASS} w-full max-w-full cursor-pointer rounded-lg border-0 bg-transparent p-0 text-inherit transition-colors hover:text-orange-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400/60 active:text-orange-300`}
+    >
+      {children}
+      <span className={QUOTE_EQUIP_BELOW_HINT_CLASS}>לחץ לצפייה במפרט</span>
+    </button>
+  );
+}
+
 function aggregateInverterLogosForQuote(inverterDetailsList) {
   const map = new Map();
   (inverterDetailsList || []).forEach((row) => {
@@ -1266,7 +1287,7 @@ function aggregateInverterLogosForQuote(inverterDetailsList) {
         imageSrc,
         quantity: qty,
         displayName: row.name,
-        datasheet: row.datasheet || null,
+        datasheet: normalizeDatasheet(row.datasheet),
       });
     }
   });
@@ -1464,10 +1485,25 @@ function StaticPdfViewer({ open, title, prominentSource, url, downloadFileName, 
 function QuoteDatasheetViewer({ open, title, datasheet, onClose }) {
   const src = datasheet ? datasheetToSrc(datasheet) : null;
   const isPdf = datasheet?.mimeType?.includes('pdf');
-  if (!open || !src) return null;
+  if (!open) return null;
+  if (!src) {
+    return (
+      <div className="fixed inset-0 z-[220] flex flex-col bg-slate-950 text-white print:hidden" dir="rtl" role="dialog" aria-modal="true">
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 bg-slate-900 px-4 py-3">
+          <button type="button" onClick={onClose} className="rounded-xl border border-white/20 bg-white/10 px-4 py-2.5 text-sm font-bold">
+            חזרה
+          </button>
+          <span className="text-sm font-bold text-red-200">לא ניתן לטעון את המפרט</span>
+        </div>
+        <p className="p-6 text-center text-sm text-slate-300">
+          הקובץ חסר או לא נגיש. העלו שוב את המפרט בהגדרות אדמין ושמרו לענן.
+        </p>
+      </div>
+    );
+  }
   return (
     <div className="fixed inset-0 z-[220] flex flex-col bg-slate-950 text-white print:hidden" dir="rtl" role="dialog" aria-modal="true" aria-label="מפרט טכני">
-      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 bg-slate-900 px-4 py-3 shadow-lg">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-white/10 bg-slate-900 px-4 py-3 shadow-lg">
         <button
           type="button"
           onClick={onClose}
@@ -1476,19 +1512,33 @@ function QuoteDatasheetViewer({ open, title, datasheet, onClose }) {
           חזרה
         </button>
         <span className="min-w-0 flex-1 truncate text-center text-sm font-bold text-slate-100">{title}</span>
-        <a
-          href={src}
-          download={datasheet.fileName || 'datasheet'}
-          className="shrink-0 rounded-xl border border-emerald-500/40 bg-emerald-600/20 px-3 py-2 text-xs font-bold text-emerald-200 hover:bg-emerald-600/30"
-        >
-          הורדה
-        </a>
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          {isPdf && (
+            <a
+              href={src}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-xl border border-blue-400/50 bg-blue-600/25 px-3 py-2 text-xs font-bold text-blue-100 hover:bg-blue-600/40"
+            >
+              פתיחה בחלון חדש
+            </a>
+          )}
+          <a
+            href={src}
+            download={datasheet.fileName || 'datasheet'}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="shrink-0 rounded-xl border border-emerald-500/40 bg-emerald-600/20 px-3 py-2 text-xs font-bold text-emerald-200 hover:bg-emerald-600/30"
+          >
+            הורדה
+          </a>
+        </div>
       </div>
       <div className="min-h-0 flex-1 bg-slate-900 p-2">
         {isPdf ? (
-          <iframe title={title} src={src} className="h-full w-full rounded-lg border-0 bg-white" />
+          <iframe title={title} src={src} className="h-full min-h-[50vh] w-full rounded-lg border-0 bg-white" />
         ) : (
-          <div className="flex h-full items-center justify-center overflow-auto rounded-lg bg-black/40 p-4">
+          <div className="flex h-full min-h-[50vh] items-center justify-center overflow-auto rounded-lg bg-black/40 p-4">
             <img src={src} alt="" className="max-h-full max-w-full object-contain" />
           </div>
         )}
@@ -2472,7 +2522,12 @@ export default function App() {
 
   const openQuoteDatasheet = (title, ds) => {
     const n = normalizeDatasheet(ds);
-    if (!n) return;
+    if (!n || !datasheetToSrc(n)) {
+      window.alert(
+        'לא ניתן לפתוח את המפרט הטכני. ודאו שהקובץ הועלה בהגדרות אדמין, שמרו לענן (כפתור שמירה לענן), והפיקו את ההצעה מחדש.'
+      );
+      return;
+    }
     setQuoteDatasheetViewer({ title, datasheet: n });
   };
 
@@ -4556,7 +4611,7 @@ export default function App() {
                           key={row.aggregateKey}
                           className={QUOTE_EQUIPMENT_STRIP_CELL}
                         >
-                          {row.datasheet ? (
+                          {isDatasheetViewable(row.datasheet) ? (
                             <button
                               type="button"
                               className={`${QUOTE_BRAND_CARD_LOGO_ONLY_CLASS} cursor-pointer transition-transform hover:scale-[1.02] hover:border-orange-400/35 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400/70`}
@@ -4574,10 +4629,13 @@ export default function App() {
                               ×{row.quantity}
                             </span>
                           )}
-                          <span className={QUOTE_EQUIP_BELOW_CAPTION_CLASS}>
+                          <QuoteEquipDatasheetCaption
+                            datasheet={row.datasheet}
+                            datasheetTitle={`מפרט טכני — ${row.displayName}`}
+                            onOpen={openQuoteDatasheet}
+                          >
                             {row.displayName}
-                            {row.datasheet && <span className={QUOTE_EQUIP_BELOW_HINT_CLASS}>לחץ לצפייה במפרט</span>}
-                          </span>
+                          </QuoteEquipDatasheetCaption>
                         </div>
                         );
                       })}
@@ -4595,7 +4653,7 @@ export default function App() {
                             key={`inv-plain-${inv.id}`}
                             className={QUOTE_EQUIPMENT_STRIP_CELL}
                           >
-                            {inv.datasheet ? (
+                            {isDatasheetViewable(inv.datasheet) ? (
                               <button
                                 type="button"
                                 className={`${QUOTE_PLAIN_EQUIP_CARD_COMPACT_CLASS} cursor-pointer transition-transform hover:scale-[1.02] hover:border-orange-400/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400/60`}
@@ -4611,12 +4669,13 @@ export default function App() {
                                 ×{inv.quantity}
                               </span>
                             )}
-                            <span className={QUOTE_EQUIP_BELOW_CAPTION_CLASS}>
+                            <QuoteEquipDatasheetCaption
+                              datasheet={inv.datasheet}
+                              datasheetTitle={`מפרט טכני — ${inv.name}`}
+                              onOpen={openQuoteDatasheet}
+                            >
                               ממיר • {inv.quantity} יח&apos;
-                              {inv.datasheet && (
-                                <span className={QUOTE_EQUIP_BELOW_HINT_CLASS}>לחץ לצפייה במפרט</span>
-                              )}
-                            </span>
+                            </QuoteEquipDatasheetCaption>
                           </div>
                         );
                       })}
@@ -4624,7 +4683,7 @@ export default function App() {
                         <div className={QUOTE_EQUIPMENT_STRIP_CELL}>
                           {quoteOptimizerQuoteCard.variant === 'tigo' && (
                             <>
-                              {quoteOptimizerQuoteCard.datasheet ? (
+                              {isDatasheetViewable(quoteOptimizerQuoteCard.datasheet) ? (
                                 <button
                                   type="button"
                                   className={`${QUOTE_BRAND_CARD_LOGO_ONLY_EMERALD_CLASS} cursor-pointer transition-transform hover:scale-[1.02] hover:border-emerald-300/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70`}
@@ -4647,17 +4706,18 @@ export default function App() {
                                   />
                                 </div>
                               )}
-                              <span className={QUOTE_EQUIP_BELOW_CAPTION_CLASS}>
+                              <QuoteEquipDatasheetCaption
+                                datasheet={quoteOptimizerQuoteCard.datasheet}
+                                datasheetTitle="מפרט טכני — אופטימייזרים Tigo"
+                                onOpen={openQuoteDatasheet}
+                              >
                                 {quoteOptimizerQuoteCard.captionHe}
-                                {quoteOptimizerQuoteCard.datasheet && (
-                                  <span className={QUOTE_EQUIP_BELOW_HINT_CLASS}>לחץ לצפייה במפרט</span>
-                                )}
-                              </span>
+                              </QuoteEquipDatasheetCaption>
                             </>
                           )}
                           {quoteOptimizerQuoteCard.variant === 'sungrow' && quoteOptimizerQuoteCard.logoSrc && (
                             <>
-                              {quoteOptimizerQuoteCard.datasheet ? (
+                              {isDatasheetViewable(quoteOptimizerQuoteCard.datasheet) ? (
                                 <button
                                   type="button"
                                   className={`${QUOTE_BRAND_CARD_LOGO_ONLY_CLASS} cursor-pointer transition-transform hover:scale-[1.02] hover:border-orange-400/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400/70`}
@@ -4680,17 +4740,18 @@ export default function App() {
                                   />
                                 </div>
                               )}
-                              <span className={QUOTE_EQUIP_BELOW_CAPTION_CLASS}>
+                              <QuoteEquipDatasheetCaption
+                                datasheet={quoteOptimizerQuoteCard.datasheet}
+                                datasheetTitle="מפרט טכני — אופטימייזרים Sungrow"
+                                onOpen={openQuoteDatasheet}
+                              >
                                 {quoteOptimizerQuoteCard.captionHe}
-                                {quoteOptimizerQuoteCard.datasheet && (
-                                  <span className={QUOTE_EQUIP_BELOW_HINT_CLASS}>לחץ לצפייה במפרט</span>
-                                )}
-                              </span>
+                              </QuoteEquipDatasheetCaption>
                             </>
                           )}
                           {quoteOptimizerQuoteCard.variant === 'solaredge' && quoteOptimizerQuoteCard.logoSrc && (
                             <>
-                              {quoteOptimizerQuoteCard.datasheet ? (
+                              {isDatasheetViewable(quoteOptimizerQuoteCard.datasheet) ? (
                                 <button
                                   type="button"
                                   className={`${QUOTE_BRAND_CARD_LOGO_ONLY_BLUE_CLASS} cursor-pointer transition-transform hover:scale-[1.02] hover:border-blue-400/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/70`}
@@ -4716,17 +4777,18 @@ export default function App() {
                                   />
                                 </div>
                               )}
-                              <span className={QUOTE_EQUIP_BELOW_CAPTION_CLASS}>
+                              <QuoteEquipDatasheetCaption
+                                datasheet={quoteOptimizerQuoteCard.datasheet}
+                                datasheetTitle={`מפרט טכני — אופטימייזרים (${generatedQuote.optimizerDetails.type})`}
+                                onOpen={openQuoteDatasheet}
+                              >
                                 {quoteOptimizerQuoteCard.captionHe}
-                                {quoteOptimizerQuoteCard.datasheet && (
-                                  <span className={QUOTE_EQUIP_BELOW_HINT_CLASS}>לחץ לצפייה במפרט</span>
-                                )}
-                              </span>
+                              </QuoteEquipDatasheetCaption>
                             </>
                           )}
                           {quoteOptimizerQuoteCard.variant === 'generic' && (
                             <>
-                              {quoteOptimizerQuoteCard.datasheet ? (
+                              {isDatasheetViewable(quoteOptimizerQuoteCard.datasheet) ? (
                                 <button
                                   type="button"
                                   className={`${QUOTE_PLAIN_EQUIP_CARD_COMPACT_CLASS} cursor-pointer transition-transform hover:scale-[1.02] hover:border-orange-400/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400/60`}
@@ -4750,12 +4812,13 @@ export default function App() {
                                   </span>
                                 </div>
                               )}
-                              <span className={QUOTE_EQUIP_BELOW_CAPTION_CLASS}>
+                              <QuoteEquipDatasheetCaption
+                                datasheet={quoteOptimizerQuoteCard.datasheet}
+                                datasheetTitle={`מפרט טכני — אופטימייזרים (${generatedQuote.optimizerDetails.type})`}
+                                onOpen={openQuoteDatasheet}
+                              >
                                 {quoteOptimizerQuoteCard.captionHe}
-                                {quoteOptimizerQuoteCard.datasheet && (
-                                  <span className={QUOTE_EQUIP_BELOW_HINT_CLASS}>לחץ לצפייה במפרט</span>
-                                )}
-                              </span>
+                              </QuoteEquipDatasheetCaption>
                             </>
                           )}
                         </div>
@@ -4774,7 +4837,7 @@ export default function App() {
                       )}
                       {(generatedQuote.calculatedNumPanels || 0) > 0 && (
                         <div className={QUOTE_EQUIPMENT_STRIP_CELL}>
-                          {generatedQuote.panelDatasheet ? (
+                          {isDatasheetViewable(generatedQuote.panelDatasheet) ? (
                             <button
                               type="button"
                               className={`${QUOTE_BRAND_CARD_LOGO_ONLY_CLASS} cursor-pointer overflow-hidden !bg-white ring-1 ring-black/10 transition-transform hover:scale-[1.02] hover:border-orange-400/35 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400/70 print:ring-slate-200`}
@@ -4800,12 +4863,13 @@ export default function App() {
                               />
                             </div>
                           )}
-                          <span className={QUOTE_EQUIP_BELOW_CAPTION_CLASS}>
+                          <QuoteEquipDatasheetCaption
+                            datasheet={generatedQuote.panelDatasheet}
+                            datasheetTitle={`מפרט טכני — פאנלים ${generatedQuote.panelPowerWatts}W`}
+                            onOpen={openQuoteDatasheet}
+                          >
                             פאנלים דו צדדיים SolarSpace {generatedQuote.panelPowerWatts}W מרשימת Tier1
-                            {generatedQuote.panelDatasheet && (
-                              <span className={QUOTE_EQUIP_BELOW_HINT_CLASS}>לחץ לצפייה במפרט</span>
-                            )}
-                          </span>
+                          </QuoteEquipDatasheetCaption>
                         </div>
                       )}
                       {generatedQuote.feesPayer === 'company' && (
@@ -4853,21 +4917,24 @@ export default function App() {
                             );
                             return (
                               <>
-                                {cDs ? (
+                                {isDatasheetViewable(generatedQuote.constructionDatasheet) ? (
                                   <button
                                     type="button"
                                     className={`${QUOTE_BRAND_CARD_COMPACT_CLASS} cursor-pointer transition-transform hover:scale-[1.02] hover:border-sky-400/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/65`}
-                                    onClick={() => openQuoteDatasheet('מפרט טכני — קונסטרוקציה', cDs)}
+                                    onClick={() => openQuoteDatasheet('מפרט טכני — קונסטרוקציה', generatedQuote.constructionDatasheet)}
                                   >
                                     {inner}
                                   </button>
                                 ) : (
                                   <div className={QUOTE_BRAND_CARD_COMPACT_CLASS}>{inner}</div>
                                 )}
-                                <span className={QUOTE_EQUIP_BELOW_CAPTION_CLASS}>
+                                <QuoteEquipDatasheetCaption
+                                  datasheet={generatedQuote.constructionDatasheet}
+                                  datasheetTitle="מפרט טכני — קונסטרוקציה"
+                                  onOpen={openQuoteDatasheet}
+                                >
                                   תשתית וקונסטרוקציה
-                                  {cDs && <span className={QUOTE_EQUIP_BELOW_HINT_CLASS}>לחץ לצפייה במפרט</span>}
-                                </span>
+                                </QuoteEquipDatasheetCaption>
                               </>
                             );
                           })()}
