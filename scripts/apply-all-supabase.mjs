@@ -1,13 +1,16 @@
 /**
  * מריץ את כל קבצי ה-SQL הנדרשים לפרויקט הצעות מחיר (סכימה, Storage, ניקוי טריגרים).
  *
- * דרישה: DATABASE_URL או SUPABASE_DB_PASSWORD + REACT_APP_SUPABASE_URL ב-.env.local
+ * סדר עדיפות:
+ *   1) DATABASE_URL / SUPABASE_DB_PASSWORD + REACT_APP_SUPABASE_URL (pg)
+ *   2) Supabase CLI מקושר: npx supabase db query --linked -f …
  *
  * שימוש: npm run db:apply:all
  */
 
 import fs from 'fs';
 import path from 'path';
+import { spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import pg from 'pg';
 
@@ -58,25 +61,50 @@ function resolveDatabaseUrl() {
   return `postgresql://postgres:${encoded}@db.${ref}.supabase.co:5432/postgres`;
 }
 
-const databaseUrl = resolveDatabaseUrl();
-if (!databaseUrl) {
-  console.error(`
-לא נמצא חיבור למסד הנתונים.
-
-הוסיפו ל-.env.local:
-  DATABASE_URL=<מ-Supabase → Settings → Database → URI>
-  או
-  SUPABASE_DB_PASSWORD=<סיסמת postgres>
-`);
-  process.exit(1);
-}
-
 const SQL_FILES = [
   'schema.sql',
   'shared_quotes.sql',
   'admin_assets_storage.sql',
+  'urban_premium_cities.sql',
   'remove_admin_settings_history.sql',
 ];
+
+function runViaSupabaseCli(file) {
+  const sqlPath = path.join(root, 'supabase', file);
+  const r = spawnSync(
+    'npx',
+    ['--yes', 'supabase@2', 'db', 'query', '--linked', '-f', sqlPath],
+    { cwd: root, stdio: 'pipe', encoding: 'utf8', shell: true }
+  );
+  if (r.status !== 0) {
+    const err = (r.stderr || r.stdout || '').trim();
+    throw new Error(err || `supabase db query failed for ${file}`);
+  }
+}
+
+const databaseUrl = resolveDatabaseUrl();
+
+if (!databaseUrl) {
+  console.log('→ אין DATABASE_URL — מריצים דרך Supabase CLI (פרויקט מקושר)…\n');
+  try {
+    for (const file of SQL_FILES) {
+      const sqlPath = path.join(root, 'supabase', file);
+      if (!fs.existsSync(sqlPath)) {
+        console.warn(`⚠ דילוג — חסר: ${file}`);
+        continue;
+      }
+      process.stdout.write(`→ ${file} … `);
+      runViaSupabaseCli(file);
+      console.log('✓');
+    }
+    console.log('\n✓ כל מיגרציות Supabase הושלמו (CLI).');
+  } catch (e) {
+    console.error('\n✗ שגיאה:', e.message || e);
+    console.error('  ודאו: npx supabase login && npx supabase link --project-ref <ref>');
+    process.exit(1);
+  }
+  process.exit(0);
+}
 
 const client = new pg.Client({
   connectionString: databaseUrl,

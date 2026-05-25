@@ -2,6 +2,10 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { getSupabase } from './supabaseClient';
 import { prepareAdminPricesForCloud, publicAdminAssetUrl } from './adminCloudPayload';
+import {
+  DEFAULT_URBAN_PREMIUM_CITIES,
+  resolveUrbanPremiumFromCity,
+} from './urbanPremiumCities';
 import { 
   Calculator, Settings, Sun, User, FileText, CheckCircle, Zap, DollarSign, 
   Trash2, Plus, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, HardHat, BatteryCharging, ExternalLink, 
@@ -106,6 +110,14 @@ const QUOTE_PLAIN_EQUIP_CARD_COMPACT_CLASS =
 
 const QUOTE_BRAND_LOGO_IMG_COMPACT_CLASS =
   'max-h-[3.25rem] w-auto max-w-[88%] object-contain md:max-h-[3.5rem]';
+
+/** כרטיס ממיר/אופטימייזר — לוגו בלבד, ממלא את כל שטח הריבוע */
+const QUOTE_BRAND_CARD_LOGO_ONLY_SUFFIX = '!gap-0 !p-1 md:!p-1.5';
+const QUOTE_BRAND_CARD_LOGO_ONLY_CLASS = `${QUOTE_BRAND_CARD_COMPACT_CLASS} ${QUOTE_BRAND_CARD_LOGO_ONLY_SUFFIX}`;
+const QUOTE_BRAND_CARD_LOGO_ONLY_EMERALD_CLASS = `${QUOTE_BRAND_CARD_COMPACT_EMERALD_CLASS} ${QUOTE_BRAND_CARD_LOGO_ONLY_SUFFIX}`;
+const QUOTE_BRAND_CARD_LOGO_ONLY_BLUE_CLASS = `${QUOTE_BRAND_CARD_COMPACT_BLUE_CLASS} ${QUOTE_BRAND_CARD_LOGO_ONLY_SUFFIX}`;
+const QUOTE_BRAND_LOGO_IMG_FILL_CLASS =
+  'h-full w-full min-h-0 flex-1 object-contain object-center';
 
 /** כיתוב מתחת לכרטיס — ללא רקע; הדגשה עם צל כהה לקריאות על גרדיאנט */
 const QUOTE_EQUIP_BELOW_CAPTION_CLASS =
@@ -622,18 +634,141 @@ function QuoteFinancialHighlights({ quote }) {
   );
 }
 
+function getVatRatePercent(adminPrices) {
+  return Number(adminPrices?.vatRate) || 18;
+}
+
+function isResidentialQuote(quote) {
+  return quote?.systemType === 'residential';
+}
+
+/** סכום מומלץ ללקוח: ביתי כולל מע״מ, מסחרי לפני מע״מ */
+function getCalculatedClientOfferPrice(quote, adminPrices) {
+  const beforeVat = Number(quote?.breakdown?.finalPrice) || 0;
+  if (!isResidentialQuote(quote)) return Math.round(beforeVat);
+  const vat = getVatRatePercent(adminPrices);
+  return Math.round(beforeVat * (1 + vat / 100));
+}
+
+function getQuoteIncomeGetters(quote) {
+  const degradationRate = 0.0033;
+  const baseTariff = quote.baseCalculatedTariff;
+  const hasUrbanPremium = quote.hasUrbanPremium;
+  const projectionStartYear = quote.projectionStartYear;
+  const year1Production = quote.estimatedYearlyProductionKwh;
+
+  const getTariffForModelYear = (modelYear) =>
+    getEffectiveTariffForCalendarYear(
+      baseTariff,
+      hasUrbanPremium,
+      projectionStartYear + modelYear - 1
+    );
+  const getYearlyProductionKwh = (modelYear) =>
+    year1Production * Math.pow(1 - degradationRate, modelYear - 1);
+  const getYearlyEstimatedIncome = (modelYear) =>
+    getYearlyProductionKwh(modelYear) * getTariffForModelYear(modelYear);
+
+  return { getYearlyEstimatedIncome };
+}
+
+function recomputeInvestmentMetrics(quote, initialInvestment, adminPrices) {
+  const { getYearlyEstimatedIncome } = getQuoteIncomeGetters(quote);
+  const estimatedYearlySavingsYear1 = getYearlyEstimatedIncome(1);
+
+  let roiYears = 0;
+  let annualYield = 0;
+  if (estimatedYearlySavingsYear1 > 0 && initialInvestment > 0) {
+    annualYield = (estimatedYearlySavingsYear1 / initialInvestment) * 100;
+    let cumulativeSavings = 0;
+    for (let y = 1; y <= 25; y++) {
+      const yearIncome = getYearlyEstimatedIncome(y);
+      if (yearIncome <= 0) continue;
+      const prevCumulative = cumulativeSavings;
+      cumulativeSavings += yearIncome;
+      if (cumulativeSavings >= initialInvestment) {
+        roiYears = y - 1 + (initialInvestment - prevCumulative) / yearIncome;
+        break;
+      }
+    }
+  }
+
+  const primeRate = quote.loanSettings?.primeRate ?? (Number(adminPrices.primeRate) || 6);
+  const loanMargin = quote.loanSettings?.loanMargin ?? (Number(adminPrices.loanMargin) || 4);
+  const annualInterestRate = (primeRate + loanMargin) / 100;
+
+  let remainingDebt = initialInvestment;
+  const loanSimulation = [];
+  for (let year = 1; year <= 25; year++) {
+    const currentYearIncome = getYearlyEstimatedIncome(year);
+    let yearlyRepaymentAccumulator = 0;
+    const monthlyIncome = currentYearIncome / 12;
+    for (let m = 0; m < 12; m++) {
+      if (remainingDebt > 0) {
+        const interestAccrued = remainingDebt * (annualInterestRate / 12);
+        remainingDebt += interestAccrued;
+        if (monthlyIncome >= remainingDebt) {
+          yearlyRepaymentAccumulator += remainingDebt;
+          remainingDebt = 0;
+        } else {
+          yearlyRepaymentAccumulator += monthlyIncome;
+          remainingDebt -= monthlyIncome;
+        }
+      }
+    }
+    loanSimulation.push({
+      year,
+      income: currentYearIncome,
+      repayment: yearlyRepaymentAccumulator,
+      netProfit: currentYearIncome - yearlyRepaymentAccumulator,
+    });
+  }
+
+  const getCumulativeIncomeWithDegradation = (years) => {
+    let total = 0;
+    for (let i = 1; i <= years; i++) total += getYearlyEstimatedIncome(i);
+    return total;
+  };
+
+  const graphData = [
+    { year: 0, flow: -initialInvestment },
+    { year: 5, flow: getCumulativeIncomeWithDegradation(5) - initialInvestment },
+    { year: 10, flow: getCumulativeIncomeWithDegradation(10) - initialInvestment },
+    { year: 15, flow: getCumulativeIncomeWithDegradation(15) - initialInvestment },
+    { year: 20, flow: getCumulativeIncomeWithDegradation(20) - initialInvestment },
+    { year: 25, flow: getCumulativeIncomeWithDegradation(25) - initialInvestment },
+  ];
+  const maxProfit = Math.max(1, ...graphData.map((d) => d.flow || 0));
+  const minLoss = Math.min(0, ...graphData.map((d) => d.flow || 0));
+
+  return {
+    estimatedYearlySavings: estimatedYearlySavingsYear1,
+    roiYears,
+    annualYield,
+    loanSimulation,
+    graphData,
+    maxProfit,
+    minLoss,
+  };
+}
+
 function QuotePricingSummary({ quote, adminPrices, companyPaysFees }) {
   if (!quote?.breakdown) return null;
-  const vatRate = Number(adminPrices.vatRate) || 18;
-  const isResidential = quote.systemType === 'residential';
+  const vatRate = getVatRatePercent(adminPrices);
+  const isResidential = isResidentialQuote(quote);
   const finalPrice = quote.breakdown.finalPrice;
   const totalWithVat = finalPrice * (1 + vatRate / 100);
+  const displayPrice =
+    quote.clientOfferPrice != null
+      ? quote.clientOfferPrice
+      : isResidential
+        ? totalWithVat
+        : finalPrice;
 
   return (
     <div className="flex h-full flex-col justify-center rounded-2xl border border-blue-500/30 bg-gradient-to-br from-slate-900 to-blue-950 p-6 text-center shadow-lg print:border-blue-200 print:bg-blue-50 print:shadow-none">
       <p className="mb-1 text-base font-bold text-orange-400 print:text-blue-800">השקעה כוללת בפרויקט</p>
       <p className="text-5xl font-black tabular-nums text-white print:text-blue-900 sm:text-6xl">
-        ₪{(isResidential ? totalWithVat : finalPrice).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+        ₪{displayPrice.toLocaleString(undefined, { maximumFractionDigits: 0 })}
       </p>
       <p className="mb-4 text-sm text-slate-400 print:text-slate-500">
         {isResidential ? 'סה״כ לתשלום (כולל מע״מ)' : 'לפני מע״מ'}
@@ -655,11 +790,25 @@ function QuotePricingSummary({ quote, adminPrices, companyPaysFees }) {
           <>
             <div className="flex justify-between">
               <span>לפני מע״מ</span>
-              <span className="tabular-nums">₪{finalPrice.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+              <span className="tabular-nums">
+                ₪
+                {(
+                  quote.clientOfferPrice != null
+                    ? Math.round(quote.clientOfferPrice / (1 + vatRate / 100))
+                    : finalPrice
+                ).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+              </span>
             </div>
             <div className="flex justify-between">
               <span>מע״מ ({vatRate}%)</span>
-              <span className="tabular-nums">₪{(finalPrice * (vatRate / 100)).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+              <span className="tabular-nums">
+                ₪
+                {(
+                  quote.clientOfferPrice != null
+                    ? quote.clientOfferPrice - Math.round(quote.clientOfferPrice / (1 + vatRate / 100))
+                    : finalPrice * (vatRate / 100)
+                ).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+              </span>
             </div>
           </>
         ) : (
@@ -670,10 +819,179 @@ function QuotePricingSummary({ quote, adminPrices, companyPaysFees }) {
             </div>
             <div className="mt-2 flex justify-between border-t border-slate-700 pt-2 font-bold print:border-blue-200">
               <span>סה״כ כולל מע״מ</span>
-              <span className="tabular-nums">₪{totalWithVat.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+              <span className="tabular-nums">
+                ₪
+                {(
+                  quote.clientOfferPrice != null
+                    ? Math.round(quote.clientOfferPrice * (1 + vatRate / 100))
+                    : totalWithVat
+                ).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+              </span>
             </div>
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+function QuotePriceConfirmPanel({
+  quoteDraft,
+  adminPrices,
+  offerPriceInput,
+  onOfferPriceInputChange,
+  onConfirm,
+  onBack,
+  errorMsg,
+  showInternalCosts = false,
+}) {
+  if (!quoteDraft?.breakdown) return null;
+  const vatRate = getVatRatePercent(adminPrices);
+  const isResidential = isResidentialQuote(quoteDraft);
+  const b = quoteDraft.breakdown;
+  const beforeVat = Number(b.finalPrice) || 0;
+  const vatAmount = beforeVat * (vatRate / 100);
+  const recommended = getCalculatedClientOfferPrice(quoteDraft, adminPrices);
+  const priceLabel = isResidential ? 'כולל מע״מ' : 'לפני מע״מ';
+
+  const breakdownRows = showInternalCosts
+    ? [
+        { label: 'פאנלים', value: b.panels },
+        { label: 'קונסטרוקציה', value: b.construction },
+        { label: 'ממירים', value: b.inverter },
+        { label: 'סוללות', value: b.batteries },
+        { label: 'אופטימייזרים', value: b.optimizers },
+        { label: 'לוגיסטיקה', value: b.logistics },
+        { label: 'עבודה', value: b.labor },
+        { label: 'הנדסה', value: b.engineering },
+        { label: 'חשמלאי ובדיקות', value: b.electricianAndChecks },
+        { label: 'לוחות חשמל', value: b.electricalBoxes },
+        { label: 'אביזרים', value: b.accessories },
+        { label: 'שטיפה', value: b.washing },
+        { label: 'אגרות', value: b.fees },
+      ].filter((row) => row.value > 0)
+    : [];
+
+  const clientPriceCard = (
+    <div
+      className={`rounded-2xl border border-orange-500/35 bg-gradient-to-br from-orange-950/30 to-slate-900/50 p-6 ${
+        showInternalCosts ? '' : 'mx-auto max-w-xl'
+      }`}
+    >
+          <p className="text-sm font-semibold text-orange-200">סכום מומלץ ללקוח ({priceLabel})</p>
+          <p className="mt-2 text-4xl font-black tabular-nums text-white">
+            ₪{recommended.toLocaleString('he-IL')}
+          </p>
+          <label className="mt-6 block text-sm font-bold text-slate-200">
+            איזה מחיר להציע ללקוח בהצעה? ({priceLabel})
+          </label>
+          <div className="mt-2 flex flex-wrap items-center gap-3">
+            <span className="text-2xl font-black text-orange-400">₪</span>
+            <input
+              type="number"
+              min="1"
+              step="100"
+              value={offerPriceInput}
+              onChange={(e) => onOfferPriceInputChange(e.target.value)}
+              className="min-w-[12rem] flex-1 rounded-xl border border-orange-400/40 bg-black/30 px-4 py-3 text-2xl font-black tabular-nums text-white outline-none focus:border-orange-400"
+            />
+          </div>
+      <p className="mt-3 text-xs text-slate-400">
+        ניתן להוריד או להעלות לפי שיקול דעתכם — המחיר שתאשרו יופיע בהצעה הסופית (תשואה, מימון וכו׳ יחושבו מחדש לפי הסכום).
+      </p>
+    </div>
+  );
+
+  return (
+    <div className="animation-fade-in space-y-6">
+      <div className="rounded-2xl border border-white/10 bg-white/5 p-6 shadow-xl">
+        <h2 className="text-2xl font-black text-white">סיכום מחיר לפני הצעה ללקוח</h2>
+        <p className="mt-2 text-sm text-slate-400">
+          {showInternalCosts
+            ? 'המערכת חישבה עלויות, רווח ומע״מ (אם רלוונטי). בדקו את הסכום המומלץ, והזינו את המחיר שתציעו ללקוח בהצעה.'
+            : 'המערכת חישבה את הסכום המומלץ ללקוח. בדקו והזינו את המחיר שתציעו בהצעה.'}
+        </p>
+        <p className="mt-1 text-xs text-blue-300/90">
+          {isResidential ? 'מערכת ביתית — הסכום ללקוח כולל מע״מ' : 'מערכת מסחרית — הסכום ללקוח לפני מע״מ'}
+        </p>
+      </div>
+
+      {showInternalCosts ? (
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <div className="rounded-2xl border border-white/10 bg-slate-900/40 p-5">
+            <h3 className="mb-4 text-lg font-bold text-blue-200">פירוט עלויות ורווח (מנהל בלבד)</h3>
+            <ul className="space-y-2 text-sm">
+              {breakdownRows.map((row) => (
+                <li key={row.label} className="flex justify-between gap-4 border-b border-white/5 pb-2">
+                  <span className="text-slate-400">{row.label}</span>
+                  <span className="font-semibold tabular-nums text-slate-200">
+                    ₪{Math.round(row.value).toLocaleString('he-IL')}
+                  </span>
+                </li>
+              ))}
+              <li className="flex justify-between gap-4 border-b border-white/10 pb-2 pt-1">
+                <span className="text-slate-300">סה״כ עלות (לפני רווח)</span>
+                <span className="font-bold tabular-nums text-slate-100">
+                  ₪{Math.round(b.totalCost).toLocaleString('he-IL')}
+                </span>
+              </li>
+              <li className="flex justify-between gap-4 border-b border-white/10 pb-2">
+                <span className="text-emerald-400/90">רווח החברה</span>
+                <span className="font-bold tabular-nums text-emerald-300">
+                  ₪{Math.round(b.marginValue).toLocaleString('he-IL')}
+                </span>
+              </li>
+              <li className="flex justify-between gap-4 pb-2">
+                <span className="text-slate-300">מחיר לפני מע״מ</span>
+                <span className="font-bold tabular-nums text-white">
+                  ₪{Math.round(beforeVat).toLocaleString('he-IL')}
+                </span>
+              </li>
+              {isResidential ? (
+                <li className="flex justify-between gap-4">
+                  <span className="text-slate-400">מע״מ ({vatRate}%)</span>
+                  <span className="font-semibold tabular-nums text-slate-200">
+                    ₪{Math.round(vatAmount).toLocaleString('he-IL')}
+                  </span>
+                </li>
+              ) : (
+                <li className="flex justify-between gap-4 text-xs text-slate-500">
+                  <span>מע״מ ({vatRate}%) — לא נכלל בסכום ללקוח</span>
+                  <span className="tabular-nums">₪{Math.round(vatAmount).toLocaleString('he-IL')}</span>
+                </li>
+              )}
+            </ul>
+          </div>
+          {clientPriceCard}
+        </div>
+      ) : (
+        clientPriceCard
+      )}
+
+      {errorMsg ? (
+        <div className="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-200">
+          {errorMsg}
+        </div>
+      ) : null}
+
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <button
+          type="button"
+          onClick={onBack}
+          className="rounded-xl border border-white/15 px-5 py-3 text-sm font-semibold text-slate-300 transition-colors hover:bg-white/5"
+        >
+          חזרה לעריכת הנתונים
+        </button>
+        <button
+          type="button"
+          onClick={onConfirm}
+          className="rounded-2xl px-8 py-4 text-lg font-black text-slate-900 shadow-xl transition-transform hover:scale-[1.02] active:scale-[0.98]"
+          style={{
+            background: 'linear-gradient(135deg, #f97316 0%, #fbbf24 50%, #f97316 100%)',
+          }}
+        >
+          אשר מחיר והפק הצעה ללקוח
+        </button>
       </div>
     </div>
   );
@@ -1296,6 +1614,8 @@ const SignaturePad = ({ onSave }) => {
 
 /** מפתחות localStorage — תיקיית הפרויקט: הצעות מחיר (לשעבר solar-final) */
 const APP_STORAGE_PREFIX = 'hatzaot-mechir';
+/** קוד כניסה למנהל (שדה ההתחברות) */
+const ADMIN_LOGIN = 'coca';
 const ADMIN_SETTINGS_STORAGE_KEY = `${APP_STORAGE_PREFIX}-admin-settings-v1`;
 const LOGIN_INPUT_STORAGE_KEY = `${APP_STORAGE_PREFIX}-last-login-input`;
 const REMEMBER_LOGIN_STORAGE_KEY = `${APP_STORAGE_PREFIX}-remember-login`;
@@ -1557,6 +1877,7 @@ export default function App() {
   const [openAdminSection, setOpenAdminSection] = useState('panels'); 
   
   const [adminPrices, setAdminPrices] = useState(loadAdminSettingsFromStorage);
+  const [urbanPremiumCities, setUrbanPremiumCities] = useState(DEFAULT_URBAN_PREMIUM_CITIES);
 
   const supabase = useMemo(() => getSupabase(), []);
   const skipNextSupabasePersist = useRef(false);
@@ -1688,6 +2009,26 @@ export default function App() {
     return () => clearTimeout(cloudPersistTimerRef.current);
   }, [supabase, adminPrices]);
 
+  /** רשימת יישובים לפרמיה אורבנית — מ-Supabase (גיבוי מקומי אם אין חיבור) */
+  useEffect(() => {
+    if (!supabase) return undefined;
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from('urban_premium_cities')
+        .select('name_he')
+        .order('sort_order', { ascending: true });
+      if (cancelled) return;
+      if (error) {
+        console.warn('urban_premium_cities load:', error.message);
+        return;
+      }
+      const names = (data || []).map((row) => String(row.name_he || '').trim()).filter(Boolean);
+      if (names.length > 0) setUrbanPremiumCities(names);
+    })();
+    return () => { cancelled = true; };
+  }, [supabase]);
+
   const [quoteForm, setQuoteForm] = useState({
     systemType: 'residential', 
     clientName: '',
@@ -1720,7 +2061,8 @@ export default function App() {
     tigoQuantity: 0,
     sungrowQuantity: 0,
     includesWashing: false,
-    showLoanSimulation: true, 
+    showLoanSimulation: true,
+    showLimitedOffer: false,
     feesPayer: 'client', 
     
     specifyOrientation: false,
@@ -1733,11 +2075,12 @@ export default function App() {
     showTigoLogoOnQuote: true,
     /** לוגו Sungrow בהצעה — כשממיר Sungrow ואופטימייזרים */
     showSungrowLogoOnQuote: true,
-    /** פרמיה אורבנית חח"י — בתחשיב מתווספות 6 אגורות לשנים קלנדריות עד 2042 כולל */
-    hasUrbanPremium: false,
   });
 
   const [generatedQuote, setGeneratedQuote] = useState(null);
+  /** טיוטת הצעה אחרי חישוב — לפני אישור מחיר ללקוח */
+  const [quoteDraft, setQuoteDraft] = useState(null);
+  const [agentOfferPriceInput, setAgentOfferPriceInput] = useState('');
   const [errorMsg, setErrorMsg] = useState(''); 
   const [currentTime, setCurrentTime] = useState(Date.now()); 
   const [clientSignature, setClientSignature] = useState(null); // סטייט לשמירת החתימה הדיגיטלית
@@ -1982,7 +2325,7 @@ export default function App() {
   const handleLogin = (e) => {
     e.preventDefault();
     const rawLogin = String(loginInput ?? '').trim();
-    if (rawLogin === 'admin') {
+    if (rawLogin === ADMIN_LOGIN) {
       setCurrentUser({ role: 'admin', data: null });
       setActiveTab('sales');
       setLoginInput('');
@@ -2003,6 +2346,8 @@ export default function App() {
   const handleLogout = () => {
     setCurrentUser(null);
     setGeneratedQuote(null);
+    setQuoteDraft(null);
+    setAgentOfferPriceInput('');
     setLoginInput('');
     setShareQuoteLoad({ phase: 'idle', message: '', waHref: null });
     if (shareQuoteId) {
@@ -2434,7 +2779,11 @@ export default function App() {
     const finalPrice = (totalBaseCost + profitValue) || 0;
 
     const baseCalculatedTariff = calculateTariff(acKw);
-    const hasUrbanPremium = Boolean(quoteForm.hasUrbanPremium);
+    const urbanPremiumMatch = resolveUrbanPremiumFromCity(
+      quoteForm.clientCity,
+      urbanPremiumCities
+    );
+    const hasUrbanPremium = urbanPremiumMatch.eligible;
     const projectionStartYear = new Date().getFullYear();
     const baseProductionHours = Number(adminPrices.productionHours) > 0 ? Number(adminPrices.productionHours) : 1700;
     let productionHoursValid = baseProductionHours;
@@ -2561,10 +2910,10 @@ export default function App() {
     const maxProfit = Math.max(1, ...graphData.map(d => d.flow || 0));
     const minLoss = Math.min(0, ...graphData.map(d => d.flow || 0));
 
-    // הגדרת זמן תפוגה להטבה (7 ימים מהפקת ההצעה)
-    const offerExpiresAt = Date.now() + (7 * 24 * 60 * 60 * 1000);
+    const showLimitedOffer = Boolean(quoteForm.showLimitedOffer);
+    const offerExpiresAt = showLimitedOffer ? Date.now() + 7 * 24 * 60 * 60 * 1000 : null;
 
-    setGeneratedQuote({
+    const quotePayload = {
       ...quoteForm,
       calculatedNumPanels: numPanels,
       panelPowerWatts: adminPrices.panelPowerWatts,
@@ -2583,6 +2932,8 @@ export default function App() {
       hasBatteries,
       baseCalculatedTariff,
       calculatedTariff,
+      hasUrbanPremium,
+      urbanPremiumMatchedCity: urbanPremiumMatch.matchedCity,
       urbanPremiumAgorotPerKwh: hasUrbanPremium ? URBAN_PREMIUM_AGOROT_PER_KWH : 0,
       urbanPremiumValidUntilYear: hasUrbanPremium ? URBAN_PREMIUM_VALID_UNTIL_YEAR : null,
       projectionStartYear,
@@ -2603,7 +2954,8 @@ export default function App() {
         washing: washingCost, fees: feesCost, totalCost: totalBaseCost, marginValue: profitValue, finalPrice: finalPrice
       },
       hasSolarEdgeQuote: inverterDetailsList.some(inv => inv.isSolarEdge),
-      offerExpiresAt: offerExpiresAt,
+      showLimitedOffer,
+      offerExpiresAt,
       // שמירת פרטי הסוכן שהפיק את ההצעה (כולל תמונה עדכנית מהמחירון)
       agentDetails:
         currentUser?.role === 'agent' && currentUser.data
@@ -2614,10 +2966,45 @@ export default function App() {
               return { ...base, photo: normalizeDatasheet(base.photo) };
             })()
           : null,
-    });
+    };
 
+    setQuoteDraft(quotePayload);
+    setAgentOfferPriceInput(String(getCalculatedClientOfferPrice(quotePayload, adminPrices)));
+    setActiveTab('priceConfirm');
+    window.scrollTo(0, 0);
+  };
+
+  const confirmQuoteWithClientPrice = () => {
+    if (!quoteDraft) return;
+    const amount = Math.round(parseFloat(String(agentOfferPriceInput).replace(/,/g, '')) || 0);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setErrorMsg('יש להזין סכום תקין ללקוח (מספר חיובי).');
+      return;
+    }
+    const metrics = recomputeInvestmentMetrics(quoteDraft, amount, adminPrices);
+    const showLimitedOffer = Boolean(quoteDraft.showLimitedOffer);
+    const offerExpiresAt = showLimitedOffer ? Date.now() + 7 * 24 * 60 * 60 * 1000 : null;
+    setGeneratedQuote({
+      ...quoteDraft,
+      ...metrics,
+      clientOfferPrice: amount,
+      calculatedClientOfferPrice: getCalculatedClientOfferPrice(quoteDraft, adminPrices),
+      showLimitedOffer,
+      offerExpiresAt,
+    });
+    setQuoteDraft(null);
+    setAgentOfferPriceInput('');
+    setErrorMsg('');
+    setClientSignature(null);
     setActiveTab('quote');
     window.scrollTo(0, 0);
+  };
+
+  const backFromPriceConfirm = () => {
+    setQuoteDraft(null);
+    setAgentOfferPriceInput('');
+    setErrorMsg('');
+    setActiveTab('sales');
   };
 
   const seStatusDisplay = getSolarEdgeStatus();
@@ -2731,7 +3118,10 @@ export default function App() {
 
   // חישוב זמן נותר להטבה (לתצוגת הטיימר)
   let timeLeft = { days: 0, hours: 0, minutes: 0, seconds: 0, expired: true };
-  if (generatedQuote && generatedQuote.offerExpiresAt) {
+  const quoteShowsLimitedOffer =
+    generatedQuote &&
+    (generatedQuote.showLimitedOffer ?? Boolean(generatedQuote.offerExpiresAt));
+  if (quoteShowsLimitedOffer && generatedQuote.offerExpiresAt) {
     const distance = generatedQuote.offerExpiresAt - currentTime;
     if (distance > 0) {
       timeLeft = {
@@ -2985,9 +3375,16 @@ export default function App() {
               </>
             ) : (
               <>
-            <button onClick={() => setActiveTab('sales')}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 ${activeTab === 'sales' || activeTab === 'quote' ? 'text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
-              style={activeTab === 'sales' || activeTab === 'quote' ? { background: 'linear-gradient(135deg, #1d4ed8, #2563eb)', boxShadow: '0 4px 15px rgba(59,130,246,0.4)' } : {}}>
+            <button
+              onClick={() => {
+                if (activeTab === 'priceConfirm') {
+                  setQuoteDraft(null);
+                  setAgentOfferPriceInput('');
+                }
+                setActiveTab('sales');
+              }}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 ${activeTab === 'sales' || activeTab === 'quote' || activeTab === 'priceConfirm' ? 'text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
+              style={activeTab === 'sales' || activeTab === 'quote' || activeTab === 'priceConfirm' ? { background: 'linear-gradient(135deg, #1d4ed8, #2563eb)', boxShadow: '0 4px 15px rgba(59,130,246,0.4)' } : {}}>
               <Calculator className="w-4 h-4" /> מכירות
             </button>
             {currentUser.role === 'admin' && (
@@ -3528,22 +3925,10 @@ export default function App() {
                         <input type="text" name="clientCity" value={quoteForm.clientCity} onChange={handleFormChange}
                           className="w-full min-w-0 max-w-full bg-white/5 border border-white/10 rounded-xl p-3.5 text-white outline-none transition-all duration-200 focus:border-blue-500/60 focus:bg-white/8"
                           onFocus={e => e.target.style.boxShadow='0 0 0 3px rgba(59,130,246,0.18)'} onBlur={e => e.target.style.boxShadow='none'} />
+                        <p className="mt-2 text-xs text-slate-500 leading-snug">
+                          פרמיה אורבנית (חח&quot;י) — {URBAN_PREMIUM_AGOROT_PER_KWH} אגורות לתעריף המשוקלל עד {URBAN_PREMIUM_VALID_UNTIL_YEAR} — תתווסף אוטומטית אם היישוב ברשימת הזכאים (התאמה של לפחות 80%).
+                        </p>
                       </div>
-                      <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-3 transition-colors hover:border-emerald-500/35 hover:bg-white/[0.07]">
-                        <input
-                          type="checkbox"
-                          name="hasUrbanPremium"
-                          checked={quoteForm.hasUrbanPremium}
-                          onChange={handleFormChange}
-                          className="mt-1 h-4 w-4 shrink-0 rounded border-white/20 bg-slate-900 accent-emerald-500"
-                        />
-                        <span className="min-w-0 text-sm leading-snug text-slate-200">
-                          <span className="font-bold text-white">פרמיה אורבנית (חח&quot;י)</span>
-                          <span className="mt-1 block text-xs text-slate-400">
-                            סמן כשהאתר זכאי לפרמיה אורבנית — בתחשיב יתווספו {URBAN_PREMIUM_AGOROT_PER_KWH} אגורות לתעריף המשוקלל עד שנת {URBAN_PREMIUM_VALID_UNTIL_YEAR}.
-                          </span>
-                        </span>
-                      </label>
                     </div>
                   </div>
                 </div>
@@ -3783,6 +4168,29 @@ export default function App() {
                           </div>
                         )}
                       </div>
+                      <div
+                        className={`rounded-2xl border transition-all ${
+                          quoteForm.showLimitedOffer
+                            ? 'border-amber-400/50 bg-amber-500/10'
+                            : 'border-white/8 bg-black/15'
+                        }`}
+                      >
+                        <label className="flex cursor-pointer items-center gap-3 rounded-2xl p-4 transition-colors hover:bg-white/5">
+                          <input
+                            type="checkbox"
+                            name="showLimitedOffer"
+                            checked={quoteForm.showLimitedOffer}
+                            onChange={handleFormChange}
+                            className="h-5 w-5 shrink-0 rounded accent-amber-500"
+                          />
+                          <span className="block font-semibold text-white">הטבה דחופה · 7 ימים בלבד</span>
+                        </label>
+                        {quoteForm.showLimitedOffer && (
+                          <p className="px-4 pb-4 pt-0 text-sm font-medium leading-snug text-amber-100/90">
+                            יוצג בהצעה באנר עם ספירה לאחור ל-7 ימים וקישור לניצול ההטבה.
+                          </p>
+                        )}
+                      </div>
                     </div>
 
                     <div className="md:col-span-2 pt-2">
@@ -3833,12 +4241,25 @@ export default function App() {
                     className="relative flex items-center gap-3 text-slate-900 px-10 py-4 rounded-2xl font-black text-xl shadow-2xl transition-all duration-200 hover:scale-[1.03] active:scale-[0.97]"
                     style={{ background: 'linear-gradient(135deg, #f97316 0%, #fbbf24 50%, #f97316 100%)', backgroundSize: '200%' }}>
                     <FileText className="w-6 h-6" />
-                    חשב והפק פרזנטציה
+                    חשב מחיר והמשך
                     <span className="text-orange-900 text-lg">←</span>
                   </button>
                 </div>
               </div>
             </form>
+          )}
+
+          {activeTab === 'priceConfirm' && quoteDraft && (
+            <QuotePriceConfirmPanel
+              quoteDraft={quoteDraft}
+              adminPrices={adminPrices}
+              offerPriceInput={agentOfferPriceInput}
+              onOfferPriceInputChange={setAgentOfferPriceInput}
+              onConfirm={confirmQuoteWithClientPrice}
+              onBack={backFromPriceConfirm}
+              errorMsg={errorMsg}
+              showInternalCosts={currentUser?.role === 'admin'}
+            />
           )}
 
           {/* ================= QUOTE PRESENTATION TAB ================= */}
@@ -4008,11 +4429,13 @@ export default function App() {
                     </h2>
                     <div className="quote-print-avoid-split">
                     <QuoteSystemSpecSummary quote={generatedQuote} />
-                    <QuoteLimitedOfferBanner
-                      timeLeft={timeLeft}
-                      highlightText={limitedOfferHighlightShort}
-                      whatsappLink={whatsappLink}
-                    />
+                    {quoteShowsLimitedOffer && (
+                      <QuoteLimitedOfferBanner
+                        timeLeft={timeLeft}
+                        highlightText={limitedOfferHighlightShort}
+                        whatsappLink={whatsappLink}
+                      />
+                    )}
                     {generatedQuote.hasUrbanPremium && (
                       <div className="mx-auto mb-6 max-w-4xl rounded-2xl border border-emerald-300/90 bg-gradient-to-br from-emerald-50 via-white to-teal-50 px-6 py-5 text-center shadow-md print:mb-8">
                         <div className="mb-2 flex items-center justify-center gap-2 text-emerald-800">
@@ -4081,14 +4504,14 @@ export default function App() {
                           {row.datasheet ? (
                             <button
                               type="button"
-                              className={`${QUOTE_BRAND_CARD_COMPACT_CLASS} cursor-pointer transition-transform hover:scale-[1.02] hover:border-orange-400/35 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400/70`}
+                              className={`${QUOTE_BRAND_CARD_LOGO_ONLY_CLASS} cursor-pointer transition-transform hover:scale-[1.02] hover:border-orange-400/35 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400/70`}
                               onClick={() => openQuoteDatasheet(`מפרט טכני — ${row.displayName}`, row.datasheet)}
                             >
-                              <img src={row.imageSrc} alt="" className={QUOTE_BRAND_LOGO_IMG_COMPACT_CLASS} />
+                              <img src={row.imageSrc} alt="" className={QUOTE_BRAND_LOGO_IMG_FILL_CLASS} />
                             </button>
                           ) : (
-                          <div className={QUOTE_BRAND_CARD_COMPACT_CLASS}>
-                            <img src={row.imageSrc} alt="" className={QUOTE_BRAND_LOGO_IMG_COMPACT_CLASS} />
+                          <div className={QUOTE_BRAND_CARD_LOGO_ONLY_CLASS}>
+                            <img src={row.imageSrc} alt="" className={QUOTE_BRAND_LOGO_IMG_FILL_CLASS} />
                           </div>
                           )}
                           {row.quantity > 1 && (
@@ -4149,7 +4572,7 @@ export default function App() {
                               {quoteOptimizerQuoteCard.datasheet ? (
                                 <button
                                   type="button"
-                                  className={`${QUOTE_BRAND_CARD_COMPACT_EMERALD_CLASS} cursor-pointer transition-transform hover:scale-[1.02] hover:border-emerald-300/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70`}
+                                  className={`${QUOTE_BRAND_CARD_LOGO_ONLY_EMERALD_CLASS} cursor-pointer transition-transform hover:scale-[1.02] hover:border-emerald-300/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70`}
                                   onClick={() =>
                                     openQuoteDatasheet('מפרט טכני — אופטימייזרים Tigo', quoteOptimizerQuoteCard.datasheet)
                                   }
@@ -4157,15 +4580,15 @@ export default function App() {
                                   <img
                                     src={quoteOptimizerQuoteCard.logoSrc}
                                     alt="Tigo"
-                                    className={QUOTE_BRAND_LOGO_IMG_COMPACT_CLASS}
+                                    className={QUOTE_BRAND_LOGO_IMG_FILL_CLASS}
                                   />
                                 </button>
                               ) : (
-                                <div className={QUOTE_BRAND_CARD_COMPACT_EMERALD_CLASS}>
+                                <div className={QUOTE_BRAND_CARD_LOGO_ONLY_EMERALD_CLASS}>
                                   <img
                                     src={quoteOptimizerQuoteCard.logoSrc}
                                     alt="Tigo"
-                                    className={QUOTE_BRAND_LOGO_IMG_COMPACT_CLASS}
+                                    className={QUOTE_BRAND_LOGO_IMG_FILL_CLASS}
                                   />
                                 </div>
                               )}
@@ -4182,7 +4605,7 @@ export default function App() {
                               {quoteOptimizerQuoteCard.datasheet ? (
                                 <button
                                   type="button"
-                                  className={`${QUOTE_BRAND_CARD_COMPACT_CLASS} cursor-pointer transition-transform hover:scale-[1.02] hover:border-orange-400/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400/70`}
+                                  className={`${QUOTE_BRAND_CARD_LOGO_ONLY_CLASS} cursor-pointer transition-transform hover:scale-[1.02] hover:border-orange-400/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400/70`}
                                   onClick={() =>
                                     openQuoteDatasheet('מפרט טכני — אופטימייזרים Sungrow', quoteOptimizerQuoteCard.datasheet)
                                   }
@@ -4190,15 +4613,15 @@ export default function App() {
                                   <img
                                     src={quoteOptimizerQuoteCard.logoSrc}
                                     alt="Sungrow"
-                                    className={QUOTE_BRAND_LOGO_IMG_COMPACT_CLASS}
+                                    className={QUOTE_BRAND_LOGO_IMG_FILL_CLASS}
                                   />
                                 </button>
                               ) : (
-                                <div className={QUOTE_BRAND_CARD_COMPACT_CLASS}>
+                                <div className={QUOTE_BRAND_CARD_LOGO_ONLY_CLASS}>
                                   <img
                                     src={quoteOptimizerQuoteCard.logoSrc}
                                     alt="Sungrow"
-                                    className={QUOTE_BRAND_LOGO_IMG_COMPACT_CLASS}
+                                    className={QUOTE_BRAND_LOGO_IMG_FILL_CLASS}
                                   />
                                 </div>
                               )}
@@ -4215,7 +4638,7 @@ export default function App() {
                               {quoteOptimizerQuoteCard.datasheet ? (
                                 <button
                                   type="button"
-                                  className={`${QUOTE_BRAND_CARD_COMPACT_BLUE_CLASS} cursor-pointer transition-transform hover:scale-[1.02] hover:border-blue-400/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/70`}
+                                  className={`${QUOTE_BRAND_CARD_LOGO_ONLY_BLUE_CLASS} cursor-pointer transition-transform hover:scale-[1.02] hover:border-blue-400/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/70`}
                                   onClick={() =>
                                     openQuoteDatasheet(
                                       `מפרט טכני — אופטימייזרים (${generatedQuote.optimizerDetails.type})`,
@@ -4226,15 +4649,15 @@ export default function App() {
                                   <img
                                     src={quoteOptimizerQuoteCard.logoSrc}
                                     alt="SolarEdge"
-                                    className={QUOTE_BRAND_LOGO_IMG_COMPACT_CLASS}
+                                    className={QUOTE_BRAND_LOGO_IMG_FILL_CLASS}
                                   />
                                 </button>
                               ) : (
-                                <div className={QUOTE_BRAND_CARD_COMPACT_BLUE_CLASS}>
+                                <div className={QUOTE_BRAND_CARD_LOGO_ONLY_BLUE_CLASS}>
                                   <img
                                     src={quoteOptimizerQuoteCard.logoSrc}
                                     alt="SolarEdge"
-                                    className={QUOTE_BRAND_LOGO_IMG_COMPACT_CLASS}
+                                    className={QUOTE_BRAND_LOGO_IMG_FILL_CLASS}
                                   />
                                 </div>
                               )}
@@ -4299,7 +4722,7 @@ export default function App() {
                           {generatedQuote.panelDatasheet ? (
                             <button
                               type="button"
-                              className={`${QUOTE_BRAND_CARD_COMPACT_CLASS} cursor-pointer transition-transform hover:scale-[1.02] hover:border-orange-400/35 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400/70`}
+                              className={`${QUOTE_BRAND_CARD_COMPACT_CLASS} !gap-1 !p-1 md:!p-1.5 cursor-pointer transition-transform hover:scale-[1.02] hover:border-orange-400/35 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400/70`}
                               onClick={() =>
                                 openQuoteDatasheet(
                                   `מפרט טכני — פאנלים ${generatedQuote.panelPowerWatts}W`,
@@ -4307,35 +4730,33 @@ export default function App() {
                                 )
                               }
                             >
-                              <img
-                                src={quotePanelBrandLogoSrc}
-                                alt="SolarSpace"
-                                className={QUOTE_BRAND_LOGO_IMG_COMPACT_CLASS}
-                              />
-                              <span className="text-center text-xs font-bold leading-tight text-white/95 print:text-slate-900 md:text-sm">
+                              <div className="flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden rounded-lg bg-white p-0.5 ring-1 ring-black/10 print:ring-slate-200">
+                                <img
+                                  src={quotePanelBrandLogoSrc}
+                                  alt="SolarSpace"
+                                  className={QUOTE_BRAND_LOGO_IMG_FILL_CLASS}
+                                />
+                              </div>
+                              <span className="shrink-0 text-center text-xs font-bold leading-tight text-white/95 print:text-slate-900 md:text-sm">
                                 פאנלים {generatedQuote.panelPowerWatts}W
-                              </span>
-                              <span className="line-clamp-2 px-0.5 text-center text-xs font-semibold leading-snug text-slate-100 md:text-sm print:text-slate-600">
-                                דוצדדיים • מרשימת Tier 1
                               </span>
                             </button>
                           ) : (
-                            <div className={QUOTE_BRAND_CARD_COMPACT_CLASS}>
-                              <img
-                                src={quotePanelBrandLogoSrc}
-                                alt="SolarSpace"
-                                className={QUOTE_BRAND_LOGO_IMG_COMPACT_CLASS}
-                              />
-                              <span className="text-center text-xs font-bold leading-tight text-white/95 print:text-slate-900 md:text-sm">
+                            <div className={`${QUOTE_BRAND_CARD_COMPACT_CLASS} !gap-1 !p-1 md:!p-1.5`}>
+                              <div className="flex min-h-0 w-full flex-1 items-center justify-center overflow-hidden rounded-lg bg-white p-0.5 ring-1 ring-black/10 print:ring-slate-200">
+                                <img
+                                  src={quotePanelBrandLogoSrc}
+                                  alt="SolarSpace"
+                                  className={QUOTE_BRAND_LOGO_IMG_FILL_CLASS}
+                                />
+                              </div>
+                              <span className="shrink-0 text-center text-xs font-bold leading-tight text-white/95 print:text-slate-900 md:text-sm">
                                 פאנלים {generatedQuote.panelPowerWatts}W
-                              </span>
-                              <span className="line-clamp-2 px-0.5 text-center text-xs font-semibold leading-snug text-slate-100 md:text-sm print:text-slate-600">
-                                דוצדדיים • מרשימת Tier 1
                               </span>
                             </div>
                           )}
                           <span className={QUOTE_EQUIP_BELOW_CAPTION_CLASS}>
-                            פאנלים דוצדדיים מרשימת Tier 1 • בסט תפוקה מלאה • {generatedQuote.calculatedNumPanels} יח&apos;
+                            פאנלים דו צדדיים SolarSpace {generatedQuote.panelPowerWatts}W מרשימת Tier1
                             {generatedQuote.panelDatasheet && (
                               <span className={QUOTE_EQUIP_BELOW_HINT_CLASS}>לחץ לצפייה במפרט</span>
                             )}
