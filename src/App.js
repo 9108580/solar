@@ -782,8 +782,8 @@ function QuotePricingSummary({ quote, adminPrices, companyPaysFees }) {
         )}
         {companyPaysFees && (
           <div className="mb-2 flex justify-between border-b border-slate-600 pb-2 print:border-blue-200">
-            <span className="font-semibold text-amber-300 print:text-amber-800">אגרות חח״י ורשויות</span>
-            <span className="shrink-0 font-bold text-amber-200 print:text-amber-800">במתנה</span>
+            <span className="font-semibold text-green-400 print:text-green-700">אגרות חח״י ורשויות</span>
+            <span className="shrink-0 font-bold text-green-300 print:text-green-700">במתנה</span>
           </div>
         )}
         {isResidential ? (
