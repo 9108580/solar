@@ -145,6 +145,79 @@ html, body {
     margin-right: auto !important;
     object-fit: contain !important;
   }
+
+  /* --- עמודים לוגיים ב-PDF (שמירה מהדפדפן) --- */
+  #quote-presentation .quote-print-cover {
+    min-height: 0 !important;
+    height: auto !important;
+    max-height: none !important;
+    padding-top: 5mm !important;
+    padding-bottom: 4mm !important;
+    break-after: page;
+    page-break-after: always;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  #quote-presentation .quote-print-cover .quote-print-cover-hero-img {
+    max-height: 52mm !important;
+    height: 52mm !important;
+  }
+
+  #quote-presentation .quote-print-page-break {
+    break-before: page;
+    page-break-before: always;
+  }
+
+  #quote-presentation .quote-print-avoid-split {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  #quote-presentation .quote-print-summary {
+    padding-top: 0.4rem !important;
+    padding-bottom: 0.45rem !important;
+  }
+
+  #quote-presentation .quote-print-summary h2 {
+    margin-bottom: 0.35rem !important;
+  }
+
+  #quote-presentation .quote-print-loan-block table {
+    font-size: 7pt !important;
+  }
+
+  #quote-presentation .quote-print-loan-block table thead {
+    display: table-header-group;
+  }
+
+  #quote-presentation .quote-print-loan-block table tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  #quote-presentation .quote-print-tech-spec {
+    font-size: 8.5pt !important;
+    line-height: 1.32 !important;
+  }
+
+  #quote-presentation .quote-print-tech-spec h4 {
+    font-size: 9.5pt !important;
+    margin-bottom: 0.2rem !important;
+  }
+
+  #quote-presentation .quote-print-tech-spec ul {
+    margin-bottom: 0.35rem !important;
+  }
+
+  #quote-presentation .quote-print-tech-spec li {
+    padding: 0.05rem 0 !important;
+  }
+
+  #quote-presentation .quote-print-equipment-strip {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
 }
 
 /* === ANIMATION: Fade In === */

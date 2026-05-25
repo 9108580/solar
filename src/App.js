@@ -3929,9 +3929,9 @@ export default function App() {
               <div id="quote-presentation" className="bg-white text-slate-900 shadow-2xl max-w-6xl mx-auto font-sans relative">
                 
                 {/* --- PAGE 1: HERO COVER --- */}
-                <section className="relative h-[80vh] min-h-[640px] flex flex-col justify-center px-8 md:px-16 lg:px-20 print:h-auto print:min-h-0 print:flex-col print:justify-start print:gap-4 print:overflow-hidden print:py-8 md:print:py-10 overflow-hidden print:overflow-hidden isolate print:isolation-auto">
-                   {/* תמונת רקע מלאה — הפאנלים בולטים משמאל, גרדיאנט כהה מאחורי הטקסט (ימין בעברית); ב-PDF פס קומפקטי כדי לא לבזבז דף */}
-                   <div className="absolute inset-0 z-0 print:relative print:inset-auto print:h-[56mm] print:max-h-[56mm] print:w-full print:flex-shrink-0 print:overflow-hidden">
+                <section className="quote-print-cover relative h-[80vh] min-h-[640px] flex flex-col justify-center px-8 md:px-16 lg:px-20 print:h-auto print:min-h-0 print:flex-col print:justify-start print:gap-3 print:overflow-hidden print:py-6 overflow-hidden print:overflow-hidden isolate print:isolation-auto">
+                   {/* תמונת רקע מלאה — ב-PDF גובה קבוע ואז מעבר עמוד אוטומטי לסיכום */}
+                   <div className="absolute inset-0 z-0 print:relative print:inset-auto print:h-[52mm] print:max-h-[52mm] print:w-full print:flex-shrink-0 print:overflow-hidden quote-print-cover-hero-img">
                      <img
                        src={`${process.env.PUBLIC_URL}/hero-solar-rooftop.png`}
                        alt=""
@@ -4000,12 +4000,13 @@ export default function App() {
                    </div>
                 </section>
 
-                {/* --- סיכום מערכת, מספרים ומחיר (בתחילת ההצעה) --- */}
-                <section className="border-b border-slate-200 bg-slate-50 px-4 py-8 sm:px-8 md:px-20 print:py-6">
+                {/* --- סיכום מערכת, מספרים ומחיר (עמוד 2) --- */}
+                <section className="quote-print-summary border-b border-slate-200 bg-slate-50 px-4 py-8 sm:px-8 md:px-20 print:py-4">
                   <div className="mx-auto max-w-6xl">
-                    <h2 className="mb-6 text-center text-2xl font-black text-blue-900 sm:text-3xl">
+                    <h2 className="mb-6 text-center text-2xl font-black text-blue-900 sm:text-3xl print:mb-3 print:text-xl">
                       סיכום המערכת וההשקעה
                     </h2>
+                    <div className="quote-print-avoid-split">
                     <QuoteSystemSpecSummary quote={generatedQuote} />
                     <QuoteLimitedOfferBanner
                       timeLeft={timeLeft}
@@ -4025,7 +4026,7 @@ export default function App() {
                         </p>
                       </div>
                     )}
-                    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-stretch lg:gap-8">
+                    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-stretch lg:gap-8 print:gap-3">
                       <QuoteFinancialHighlights quote={generatedQuote} />
                       <div className="max-md:order-first lg:order-none">
                         <QuotePricingSummary
@@ -4035,12 +4036,13 @@ export default function App() {
                         />
                       </div>
                     </div>
+                    </div>
                   </div>
                 </section>
 
                 {quoteShowEquipmentBrandsSection && (
                 <section
-                  className="relative overflow-hidden border-y border-white/5 print:border-slate-200 print:break-inside-auto"
+                  className="quote-print-page-break relative overflow-hidden border-y border-white/5 print:border-slate-200"
                   aria-labelledby="quote-equipment-brands-heading"
                 >
                   {/* מעבר חזותי משער כהה לעמוד בהיר — הרקע הכהה «מבטל» את מלבן השחור בקבצי PNG ונותן תחושת שקיפות */}
@@ -4069,7 +4071,7 @@ export default function App() {
                       </p>
                       <div className="mx-auto mt-5 h-px w-24 rounded-full bg-gradient-to-l from-transparent via-orange-400/80 to-transparent print:via-blue-400/60" aria-hidden />
                     </div>
-                    <div className="mx-auto flex max-w-5xl flex-wrap items-start justify-center gap-3 md:gap-4">
+                    <div className="quote-print-equipment-strip mx-auto flex max-w-5xl flex-wrap items-start justify-center gap-3 md:gap-4 print:gap-2">
                       {aggregatedQuoteInverterLogos.map((row) => {
                         return (
                         <div
@@ -4427,15 +4429,15 @@ export default function App() {
                 </section>
                 )}
 
-                {/* --- PAGE 3: THE SYSTEM & FINANCIALS --- */}
-                <section className="py-8 px-4 sm:px-8 md:py-12 md:px-20 print:break-before-auto">
+                {/* --- תחזית כלכלית (עמוד נפרד) --- */}
+                <section className="quote-print-page-break py-8 px-4 sm:px-8 md:py-12 md:px-20 print:py-4">
                    <h2 className="mb-6 text-center text-2xl font-black text-blue-900 sm:text-3xl">תחזית כלכלית מפורטת</h2>
 
                    {/* Custom Financial Chart (CSS Based) */}
-                   <div className="bg-white border border-slate-200 rounded-2xl p-5 mb-8 shadow-md">
-                      <h3 className="text-lg font-bold text-blue-900 mb-4 flex items-center gap-2"><TrendingUp className="text-orange-500 w-5 h-5"/> תחזית תזרים מזומנים (25 שנה)</h3>
+                   <div className="quote-print-avoid-split bg-white border border-slate-200 rounded-2xl p-5 mb-8 shadow-md print:mb-4 print:p-3">
+                      <h3 className="text-lg font-bold text-blue-900 mb-4 flex items-center gap-2 print:mb-2 print:text-base"><TrendingUp className="text-orange-500 w-5 h-5"/> תחזית תזרים מזומנים (25 שנה)</h3>
                       
-                      <div className="quote-print-cashflow-chart h-48 sm:h-52 flex items-end justify-between gap-2 md:gap-6 mt-6 relative border-b-2 border-slate-300 pb-2 print:mt-4 print:h-40">
+                      <div className="quote-print-cashflow-chart h-48 sm:h-52 flex items-end justify-between gap-2 md:gap-6 mt-6 relative border-b-2 border-slate-300 pb-2 print:mt-3 print:h-36">
                         {/* 0 Line marker */}
                         <div className="absolute w-full border-t border-dashed border-slate-400" style={{bottom: `${Math.abs(generatedQuote.minLoss) / ((generatedQuote.maxProfit || 1) + Math.abs(generatedQuote.minLoss)) * 100}%`}}></div>
                         <span className="absolute left-0 font-bold text-xs text-slate-400" style={{bottom: `calc(${Math.abs(generatedQuote.minLoss) / ((generatedQuote.maxProfit || 1) + Math.abs(generatedQuote.minLoss)) * 100}% + 5px)`}}>איזון 0</span>
@@ -4498,9 +4500,9 @@ export default function App() {
                        teaser={`רווח נטו צפוי ל־25 שנה: ₪${Math.round(
                          generatedQuote.loanSimulation.reduce((acc, row) => acc + row.netProfit, 0)
                        ).toLocaleString('he-IL')}`}
-                       className="max-w-5xl"
+                       className="max-w-5xl quote-print-page-break"
                      >
-                     <div className="bg-white border border-slate-200 rounded-3xl p-6 md:p-8 shadow-lg overflow-hidden print:break-before-auto print:p-4 print:shadow-none print:border-slate-300">
+                     <div className="quote-print-loan-block bg-white border border-slate-200 rounded-3xl p-6 md:p-8 shadow-lg overflow-hidden print:p-3 print:shadow-none print:border-slate-300">
                         <p className="text-slate-600 mb-4 text-sm leading-relaxed">
                              <span className="font-medium bg-blue-50 text-blue-800 px-2 py-1 rounded inline-block border border-blue-100">
                                החזר ההלוואה מבוסס על הפניית 100% מההכנסות לטובת סילוק הקרן והריבית עד לסיומה. לאחר מכן, ההכנסות עוברות לרווח נקי.
@@ -4556,8 +4558,8 @@ export default function App() {
 
                 </section>
 
-                {/* --- PAGE 2: ABOUT US --- */}
-                <section className="py-10 px-4 sm:px-8 md:px-20 bg-slate-50 print:break-before-auto print:py-6">
+                {/* --- מי אנחנו --- */}
+                <section className="quote-print-page-break py-10 px-4 sm:px-8 md:px-20 bg-slate-50 print:py-5">
                    <div className="max-w-4xl mx-auto text-center mb-8">
                      <h2 className="text-2xl md:text-3xl font-black text-blue-900 mb-3">מי אנחנו? המומחים שלכם באנרגיה סולארית</h2>
                      <p className="text-base text-slate-600">אנו חברת בוטיק המתמחה בפתרונות אנרגיה מתקדמים — איכות, מקצועיות ושירות אישי.</p>
@@ -4591,8 +4593,8 @@ export default function App() {
                    </div>
                 </section>
 
-                {/* --- PAGE 4: INCLUSIONS --- */}
-                <section className="py-10 px-4 sm:px-8 md:px-20 bg-white border-t border-slate-200 print:break-before-auto print:py-6">
+                {/* --- Turn-Key --- */}
+                <section className="quote-print-page-break py-10 px-4 sm:px-8 md:px-20 bg-white border-t border-slate-200 print:py-5">
                   <h2 className="text-2xl md:text-3xl font-black mb-8 text-center text-blue-900">מה כלול בפרויקט Turn-Key?</h2>
                   
                   <div className="mx-auto max-w-3xl mb-8">
@@ -4643,15 +4645,15 @@ export default function App() {
                    </div>
                 </section>
 
-                {/* --- PAGE 5: TECHNICAL SPECIFICATIONS — נפתח בלחיצה --- */}
-                <section className="py-6 px-4 sm:px-8 md:px-20 bg-white print:break-before-auto print:py-6">
+                {/* --- מפרט טכני — בהדפסה תמיד פתוח --- */}
+                <section className="quote-print-page-break py-6 px-4 sm:px-8 md:px-20 bg-white print:py-4">
                    <QuoteExpandableSection
                      title="פירוט מלא של מפרט טכני"
                      subtitle="אביזרי חשמל, קונסטרוקציה, DC/AC והגנות וניטור"
                      teaser="לחצו לצפייה בכל סעיפי המפרט"
                      className="max-w-5xl"
                    >
-                   <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-8 text-sm print:gap-y-6">
+                   <div className="quote-print-tech-spec grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-8 text-sm print:gap-x-5 print:gap-y-4">
                      
                      {/* Column 1 */}
                      <div className="space-y-8">
@@ -4721,8 +4723,8 @@ export default function App() {
                    </QuoteExpandableSection>
                 </section>
 
-                {/* --- PAGE 6: PAYMENT TERMS & WARRANTY --- */}
-                <section className="py-10 px-4 sm:px-8 md:px-20 bg-slate-50 print:break-before-auto print:py-6">
+                {/* --- תנאי תשלום ואחריות --- */}
+                <section className="quote-print-page-break py-10 px-4 sm:px-8 md:px-20 bg-slate-50 print:py-5">
                    <h2 className="text-2xl md:text-3xl font-black text-blue-900 mb-8 text-center">תנאי תשלום ואחריות</h2>
                    
                    <div className="mx-auto grid max-w-5xl grid-cols-1 gap-6 md:grid-cols-2 md:items-stretch lg:gap-8">
@@ -4799,7 +4801,7 @@ export default function App() {
 
                 {/* --- PAGE 6.1: ADDITIONAL NOTES (CONDITIONAL) --- */}
                 {generatedQuote.additionalNotes && generatedQuote.additionalNotes.trim() !== '' && (
-                  <section className="py-10 px-8 md:px-20 bg-white border-t border-slate-200">
+                  <section className="quote-print-page-break py-10 px-8 md:px-20 bg-white border-t border-slate-200 print:py-5">
                      <div className="max-w-4xl mx-auto bg-blue-50 border border-blue-100 p-8 rounded-3xl shadow-sm">
                         <h3 className="text-2xl font-bold text-blue-900 mb-4 flex items-center gap-2">
                            <FileText className="w-6 h-6 text-blue-600" /> סיכומים נוספים
@@ -4811,8 +4813,8 @@ export default function App() {
                   </section>
                 )}
 
-                {/* --- PROJECT EXAMPLES — סליידר, נפתח בלחיצה --- */}
-                <section className="px-4 sm:px-8 md:px-20 py-6 border-t border-slate-200 bg-slate-50/50 print:bg-white print:py-4">
+                {/* --- דוגמאות פרויקטים — לא ב-PDF (חוסך דפים ושוברי עמוד) --- */}
+                <section className="px-4 sm:px-8 md:px-20 py-6 border-t border-slate-200 bg-slate-50/50 print:hidden">
                   <QuoteExpandableSection
                     title="דוגמאות מפרויקטים שלנו"
                     subtitle="התקנות אמיתיות ברחבי הארץ"
@@ -4835,8 +4837,8 @@ export default function App() {
                    </QuoteExpandableSection>
                 </section>
 
-                {/* --- PAGE 6.5: DIGITAL SIGNATURE (PRINCIPLE APPROVAL) — אחרי המפה והמבצע --- */}
-                <section className="py-16 px-8 md:px-20 bg-white border-t border-slate-200">
+                {/* --- חתימה — עמוד אחרון --- */}
+                <section className="quote-print-page-break py-16 px-8 md:px-20 bg-white border-t border-slate-200 print:py-8">
                    <div className="max-w-4xl mx-auto">
                      <div className="flex items-center gap-3 mb-6">
                         <div className="p-3 bg-blue-100 text-blue-600 rounded-xl"><PenTool className="w-6 h-6" /></div>
