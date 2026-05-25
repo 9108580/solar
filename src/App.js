@@ -4777,7 +4777,7 @@ export default function App() {
                               החברה נושאת בעלות — הכל כלול במחיר ההצעה
                             </span>
                           </div>
-                          <span className={QUOTE_EQUIP_BELOW_CAPTION_CLASS}>
+                          <span className="block px-1 text-center text-base font-black leading-snug text-emerald-100 md:text-lg [text-shadow:0_1px_4px_rgba(0,0,0,0.95),0_2px_12px_rgba(0,0,0,0.7)] print:text-emerald-900 print:[text-shadow:none]">
                             ללא חיוב נפרד לאגרות רישוי וחח״י
                           </span>
                         </div>
@@ -4836,14 +4836,13 @@ export default function App() {
                       />
                     )}
                     {quoteCompanyPaysFees && (
-                      <div className="mx-auto mt-10 max-w-3xl rounded-2xl border-2 border-amber-400/50 bg-gradient-to-l from-amber-500/25 via-amber-500/10 to-transparent px-5 py-4 text-center shadow-lg print:border-amber-300 print:bg-amber-50">
-                        <div className="mb-2 flex items-center justify-center gap-2">
-                          <Gift className="h-6 w-6 shrink-0 text-amber-300 print:text-amber-600" aria-hidden />
-                          <span className="text-lg font-black text-amber-50 print:text-amber-900">אגרות חח&quot;י ורשויות — על חשבון החברה</span>
+                      <div className="mx-auto mt-10 max-w-3xl rounded-2xl border-2 border-emerald-400/70 bg-gradient-to-br from-emerald-500/45 via-emerald-600/30 to-emerald-900/25 px-6 py-5 text-center shadow-[0_16px_48px_-12px_rgba(16,185,129,0.55)] print:border-emerald-500 print:bg-emerald-50 print:shadow-md">
+                        <div className="flex flex-wrap items-center justify-center gap-3">
+                          <Gift className="h-8 w-8 shrink-0 text-emerald-100 drop-shadow-md print:text-emerald-600 md:h-9 md:w-9" aria-hidden />
+                          <p className="text-xl font-black leading-snug tracking-tight text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.35)] md:text-2xl print:text-emerald-950 print:[text-shadow:none]">
+                            אגרות חברת חשמל - במתנה על חשבון החברה!
+                          </p>
                         </div>
-                        <p className="text-sm font-semibold leading-relaxed text-amber-50/95 print:text-slate-800 md:text-base">
-                          תשלום אגרות חח&quot;י והרשויות נכלל בהצעה במתנה — ללא חיוב נפרד ללקוח.
-                        </p>
                       </div>
                     )}
                   </div>
