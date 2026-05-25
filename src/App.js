@@ -1173,6 +1173,26 @@ const BrandLogo = ({ className }) => {
   );
 };
 
+/** לוגו בכריכה — גודל תצוגה ≤ מקור (212px) לחדות, בלי blend */
+function BrandLogoCover({ className = '' }) {
+  const [imgFailed, setImgFailed] = React.useState(false);
+  if (imgFailed) {
+    return <BrandLogoSvg className={`h-full w-full ${className}`.trim()} />;
+  }
+  return (
+    <img
+      src={`${process.env.PUBLIC_URL}/brand-logo.png`}
+      alt="מומחי אנרגיה סולארית"
+      width={212}
+      height={212}
+      decoding="async"
+      fetchPriority="high"
+      className={`h-auto w-auto max-h-full max-w-full object-contain object-center drop-shadow-[0_6px_28px_rgba(0,0,0,0.75)] ${className}`.trim()}
+      onError={() => setImgFailed(true)}
+    />
+  );
+}
+
 /** לוגואי יצרני ממירים ב־`public/inverters` (מקור: לוגואים ממירים.docx) */
 const INVERTER_LOGO_KEYS = ['sungrow', 'solaredge', 'growatt', 'solis'];
 
@@ -4494,22 +4514,19 @@ export default function App() {
                      <p className="absolute bottom-3 right-4 left-4 text-white text-xs font-bold drop-shadow-md text-center">פאנלים על הגג — אנרגיה נקייה</p>
                    </div>
                    
-                   <div className="absolute top-8 right-4 z-[5] flex flex-row-reverse items-center gap-3 md:right-10 md:gap-4 print:relative print:top-auto print:right-auto print:flex-row print:self-start">
-                      <div className="flex h-28 w-28 shrink-0 items-center justify-center sm:h-32 sm:w-32 md:h-36 md:w-36 print:h-24 print:w-24 print:rounded-xl print:bg-white print:p-1.5 print:shadow-sm">
-                        <BrandLogo className="h-full w-full max-h-full max-w-full object-contain object-center drop-shadow-[0_8px_36px_rgba(0,0,0,0.8)] mix-blend-screen brightness-110 contrast-[1.02] print:mix-blend-normal print:brightness-100 print:drop-shadow-none" />
+                   <div className="absolute top-6 right-4 z-[5] flex w-[min(100%,16.5rem)] flex-col items-end gap-3 md:top-8 md:right-10 md:w-[18rem] md:gap-4 print:relative print:top-auto print:right-auto print:w-full print:items-start print:gap-2">
+                      <div className="flex h-[5.25rem] w-[5.25rem] shrink-0 items-center justify-center sm:h-[5.75rem] sm:w-[5.75rem] print:h-24 print:w-24 print:rounded-xl print:bg-white print:p-2 print:shadow-sm">
+                        <BrandLogoCover />
                       </div>
-                      <div className="hidden max-w-[14rem] flex-col justify-center rounded-2xl border border-white/20 bg-black/30 px-4 py-2.5 backdrop-blur-md md:flex print:flex print:max-w-none print:border-slate-200 print:bg-slate-100 print:backdrop-blur-none">
-                        <span className="font-black text-2xl tracking-tight text-white drop-shadow-md md:text-3xl print:text-slate-900 print:drop-shadow-none">מומחי אנרגיה סולארית</span>
-                      </div>
-                   </div>
-                   
-                   <div className="absolute top-36 left-4 z-[5] max-w-[min(100%,20rem)] sm:top-40 sm:max-w-md md:left-12 md:top-44 lg:left-16 print:relative print:top-auto print:left-auto print:z-auto print:mb-4 print:max-w-none">
-                     <p className="rounded-xl border border-blue-400/40 bg-blue-950/55 px-4 py-2.5 text-sm font-bold leading-snug text-blue-50 shadow-lg backdrop-blur-md sm:text-base print:border-blue-200 print:bg-blue-50 print:text-blue-900 print:shadow-sm print:backdrop-blur-none">
-                       מערכת אנרגיה סולארית ביתית - On Grid או הברידית או משחרית וכו&apos;
-                     </p>
+                      <p className="w-full rounded-xl border border-blue-400/35 bg-slate-950/70 px-3.5 py-2.5 text-right text-xs font-bold leading-snug text-blue-50 shadow-lg backdrop-blur-sm sm:text-sm print:border-blue-200 print:bg-blue-50 print:text-blue-900 print:shadow-none print:backdrop-blur-none">
+                        מערכת אנרגיה סולארית ביתית - On Grid או הברידית או משחרית וכו&apos;
+                      </p>
+                      <p className="hidden text-right font-black text-xl tracking-tight text-white drop-shadow-md md:block md:text-2xl print:block print:text-slate-900 print:drop-shadow-none">
+                        מומחי אנרגיה סולארית
+                      </p>
                    </div>
 
-                   <div className="text-white relative z-[5] w-full max-w-4xl mr-0 md:mr-auto mt-28 sm:mt-32 md:mt-24 print:mt-0 print:text-slate-900">
+                   <div className="text-white relative z-[5] w-full max-w-4xl mr-0 md:mr-auto mt-[13.5rem] sm:mt-[14.5rem] md:mt-[15rem] print:mt-0 print:text-slate-900">
                      <h1 className="text-5xl md:text-6xl lg:text-7xl font-black mb-2 leading-[1.1] drop-shadow-[0_4px_24px_rgba(0,0,0,0.45)] print:text-slate-900 print:drop-shadow-none">
                        עצמאות אנרגטית.
                        <br />
