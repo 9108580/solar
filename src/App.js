@@ -5026,20 +5026,24 @@ export default function App() {
                          <div className="flex items-start gap-3"><CheckCircle className="w-5 h-5 text-green-500 shrink-0 mt-0.5"/><p className="text-slate-700"><strong>בדיקות:</strong> בודק פרטי מוסמך וחיבור למערכת ניטור.</p></div>
                          {generatedQuote.includesOptimizers && (
                            <div className="flex items-start gap-3">
-                             <CheckCircle className="w-5 h-5 text-green-500 shrink-0 mt-0.5" />
+                             <CheckCircle className="mt-1 h-6 w-6 shrink-0 text-green-500" />
                              {generatedQuote.optimizerDatasheet ? (
                                <button
                                  type="button"
                                  onClick={() => openQuoteDatasheet(`מפרט טכני — אופטימייזרים (${generatedQuote.optimizerDetails.type})`, generatedQuote.optimizerDatasheet)}
-                                 className="text-right text-slate-300 underline decoration-orange-400/60 underline-offset-2 transition-colors print:text-slate-700 hover:text-orange-300 print:no-underline"
+                                 className="-mx-1 min-h-[3.25rem] w-full flex-1 rounded-xl border-2 border-green-300/80 bg-white px-4 py-3.5 text-right shadow-sm transition-colors hover:border-green-500 hover:bg-green-50 active:bg-green-100 print:border-slate-300 print:bg-white print:shadow-none"
                                >
-                                 <strong className="text-green-400 print:text-green-700">אופטימייזרים:</strong>{' '}
-                                 התקנת אופטימייזרים למיקסום תפוקה ({generatedQuote.optimizerDetails.type}).{' '}
-                                 <span className="text-xs text-orange-300 print:hidden">(לחץ לצפייה במפרט)</span>
+                                 <p className="text-base font-bold leading-snug text-slate-900 md:text-lg">
+                                   <span className="text-green-700">אופטימייזרים:</span>{' '}
+                                   התקנת אופטימייזרים למיקסום תפוקה ({generatedQuote.optimizerDetails.type}).
+                                 </p>
+                                 <span className="mt-2 block text-sm font-black text-orange-600 underline decoration-2 underline-offset-4 md:text-base">
+                                   לחץ לצפייה במפרט
+                                 </span>
                                </button>
                              ) : (
-                               <p className="text-slate-700">
-                                 <strong>אופטימייזרים:</strong> התקנת אופטימייזרים למיקסום תפוקה ({generatedQuote.optimizerDetails.type}).
+                               <p className="text-base font-semibold leading-relaxed text-slate-800 md:text-lg">
+                                 <strong className="text-green-700">אופטימייזרים:</strong> התקנת אופטימייזרים למיקסום תפוקה ({generatedQuote.optimizerDetails.type}).
                                </p>
                              )}
                            </div>
@@ -5049,14 +5053,6 @@ export default function App() {
                              <CheckCircle className="mt-0.5 h-5 w-5 shrink-0 text-green-500" />
                              <p className="text-slate-700">
                                <strong>שטיפה:</strong> מערכת ניקוי פאנלים אוטומטית.
-                             </p>
-                           </div>
-                         )}
-                         {generatedQuote.feesPayer === 'company' && (
-                           <div className="flex items-start gap-3 rounded-xl border border-amber-400/30 bg-amber-500/10 p-3 print:border-amber-200 print:bg-amber-50">
-                             <Gift className="mt-0.5 h-5 w-5 shrink-0 text-amber-400 print:text-amber-600" aria-hidden />
-                             <p className="text-slate-700">
-                               <strong className="text-amber-800">אגרות חח&quot;י ורשויות:</strong> תשלום על חשבון החברה — ללא חיוב נפרד ללקוח.
                              </p>
                            </div>
                          )}
