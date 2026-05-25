@@ -625,10 +625,15 @@ function QuoteFinancialHighlights({ quote }) {
       <div className="flex min-w-0 flex-col items-center overflow-hidden rounded-2xl border border-slate-700/50 bg-gradient-to-br from-slate-900 to-slate-800 p-4 text-center text-white shadow-lg sm:p-5">
         <Clock className="mb-2 h-7 w-7 shrink-0 text-blue-400" />
         <p className="text-xs font-medium text-slate-400">החזר השקעה</p>
-        <p className="mt-1 text-2xl font-black tabular-nums sm:text-3xl">
-          {quote.roiYears > 0 && isFinite(quote.roiYears) ? quote.roiYears.toFixed(1) : '—'}
+        <p className="mt-1 flex flex-wrap items-baseline justify-center gap-x-1.5 gap-y-0 text-2xl font-black tabular-nums sm:text-3xl">
+          <span>{quote.roiYears > 0 && isFinite(quote.roiYears) ? quote.roiYears.toFixed(1) : '—'}</span>
+          {quote.roiYears > 0 && isFinite(quote.roiYears) ? (
+            <span className="text-base font-bold text-slate-200 sm:text-lg">שנים</span>
+          ) : null}
         </p>
-        <p className="text-xs font-bold text-orange-400">תשואה שנתית {quote.annualYield ? quote.annualYield.toFixed(1) : 0}%</p>
+        <p className="mt-2 text-sm font-black text-green-400 sm:text-base md:text-lg print:text-green-700">
+          תשואה שנתית {quote.annualYield ? quote.annualYield.toFixed(1) : 0}%
+        </p>
       </div>
     </div>
   );
