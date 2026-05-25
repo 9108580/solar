@@ -4448,10 +4448,13 @@ export default function App() {
                       </div>
                    </div>
                    
-                   <div className="text-white relative z-[5] w-full max-w-4xl mr-0 md:mr-auto mt-12 md:mt-8 print:mt-0 print:text-slate-900">
-                     <div className="inline-flex py-1.5 px-4 rounded-full bg-blue-500/25 text-blue-100 font-bold text-sm mb-6 border border-blue-400/35 backdrop-blur-sm shadow-lg print:bg-blue-50 print:text-blue-900 print:border-blue-200 print:backdrop-blur-none print:shadow-sm">
-                       מערכת אנרגיה סולארית {generatedQuote.systemType === 'commercial' ? 'מסחרית' : 'ביתית'} • {generatedQuote.inverterSystemType === 'hybrid' ? 'היברידית (Hybrid)' : 'אונגריד (On-Grid)'}
-                     </div>
+                   <div className="absolute top-36 left-4 z-[5] max-w-[min(100%,20rem)] sm:top-40 sm:max-w-md md:left-12 md:top-44 lg:left-16 print:relative print:top-auto print:left-auto print:z-auto print:mb-4 print:max-w-none">
+                     <p className="rounded-xl border border-blue-400/40 bg-blue-950/55 px-4 py-2.5 text-sm font-bold leading-snug text-blue-50 shadow-lg backdrop-blur-md sm:text-base print:border-blue-200 print:bg-blue-50 print:text-blue-900 print:shadow-sm print:backdrop-blur-none">
+                       מערכת אנרגיה סולארית ביתית - On Grid או הברידית או משחרית וכו&apos;
+                     </p>
+                   </div>
+
+                   <div className="text-white relative z-[5] w-full max-w-4xl mr-0 md:mr-auto mt-28 sm:mt-32 md:mt-24 print:mt-0 print:text-slate-900">
                      <h1 className="text-5xl md:text-6xl lg:text-7xl font-black mb-2 leading-[1.1] drop-shadow-[0_4px_24px_rgba(0,0,0,0.45)] print:text-slate-900 print:drop-shadow-none">
                        עצמאות אנרגטית.
                        <br />
