@@ -35,6 +35,12 @@ describe('resolveUrbanPremiumFromCity', () => {
     expect(r.matchedCity).toBe('קריית גת');
   });
 
+  it('תל אביב בלי יפו — זכאות לפרמיה אורבנית', () => {
+    const r = resolveUrbanPremiumFromCity('תל אביב', list);
+    expect(r.eligible).toBe(true);
+    expect(r.matchedCity).toBeTruthy();
+  });
+
   it('ללא התאמה מתחת לסף', () => {
     const r = resolveUrbanPremiumFromCity('קיבוץ גלויות', list);
     expect(r.eligible).toBe(false);

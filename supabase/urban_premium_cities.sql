@@ -89,5 +89,7 @@ insert into public.urban_premium_cities (name_he, sort_order) values
   ('שגב–שלום', 65),
   ('שדרות', 66),
   ('שפרעם', 67),
-  ('תל־אביב–יפו', 68)
+  ('תל־אביב–יפו', 68),
+  ('תל אביב', 69),
+  ('תל-אביב', 70)
 on conflict (name_he) do update set sort_order = excluded.sort_order;

@@ -751,6 +751,43 @@ function recomputeInvestmentMetrics(quote, initialInvestment, adminPrices) {
   };
 }
 
+/** מעדכן פרמיה אורבנית ומספרים כלכליים לפי יישוב הלקוח (גם בהצעה משותפת שמורה) */
+function applyUrbanPremiumToQuote(quote, cityList, adminPrices) {
+  if (!quote || quote.baseCalculatedTariff == null) return quote;
+
+  const urbanMatch = resolveUrbanPremiumFromCity(quote.clientCity, cityList);
+  const hasUrbanPremium = urbanMatch.eligible;
+  const projectionStartYear = quote.projectionStartYear ?? new Date().getFullYear();
+  const getTariffForModelYear = (modelYear) =>
+    getEffectiveTariffForCalendarYear(
+      quote.baseCalculatedTariff,
+      hasUrbanPremium,
+      projectionStartYear + modelYear - 1
+    );
+  const calculatedTariff = getTariffForModelYear(1);
+
+  const withPremium = {
+    ...quote,
+    hasUrbanPremium,
+    urbanPremiumMatchedCity: urbanMatch.matchedCity,
+    urbanPremiumAgorotPerKwh: hasUrbanPremium ? URBAN_PREMIUM_AGOROT_PER_KWH : 0,
+    urbanPremiumValidUntilYear: hasUrbanPremium ? URBAN_PREMIUM_VALID_UNTIL_YEAR : null,
+    calculatedTariff,
+  };
+
+  const finalPrice = Number(withPremium.breakdown?.finalPrice) || 0;
+  const vat = getVatRatePercent(adminPrices);
+  const initialInvestment = isResidentialQuote(withPremium)
+    ? withPremium.clientOfferPrice != null
+      ? Number(withPremium.clientOfferPrice)
+      : Math.round(finalPrice * (1 + vat / 100))
+    : finalPrice;
+
+  if (initialInvestment <= 0) return withPremium;
+
+  return { ...withPremium, ...recomputeInvestmentMetrics(withPremium, initialInvestment, adminPrices) };
+}
+
 function QuotePricingSummary({ quote, adminPrices, companyPaysFees }) {
   if (!quote?.breakdown) return null;
   const vatRate = getVatRatePercent(adminPrices);
@@ -2130,7 +2167,9 @@ export default function App() {
         return;
       }
       if (row.ok === true && row.payload && typeof row.payload === 'object') {
-        setGeneratedQuote(row.payload);
+        const cities =
+          urbanPremiumCities.length > 0 ? urbanPremiumCities : DEFAULT_URBAN_PREMIUM_CITIES;
+        setGeneratedQuote(applyUrbanPremiumToQuote(row.payload, cities, adminPrices));
         setCurrentUser({ role: 'viewer', data: null });
         setActiveTab('quote');
         setShareQuoteLoad({ phase: 'ready', message: '', waHref: null });
@@ -2159,7 +2198,18 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [shareQuoteId, supabase]);
+  }, [shareQuoteId, supabase, adminPrices, urbanPremiumCities]);
+
+  /** הצעה משותפת — עדכון פרמיה אורבנית אחרי טעינת רשימת יישובים מהענן */
+  useEffect(() => {
+    if (!shareQuoteId || !generatedQuote?.baseCalculatedTariff) return undefined;
+    const cities =
+      urbanPremiumCities.length > 0 ? urbanPremiumCities : DEFAULT_URBAN_PREMIUM_CITIES;
+    setGeneratedQuote((prev) =>
+      prev ? applyUrbanPremiumToQuote(prev, cities, adminPrices) : prev
+    );
+    return undefined;
+  }, [shareQuoteId, urbanPremiumCities]);
 
   const handleCreateShareLink = useCallback(async () => {
     if (!generatedQuote) return;

@@ -71,6 +71,8 @@ export const DEFAULT_URBAN_PREMIUM_CITIES = [
   'שדרות',
   'שפרעם',
   'תל־אביב–יפו',
+  'תל אביב',
+  'תל-אביב',
 ];
 
 /** מנרמל שם יישוב להשוואה — מתעלם מרווחים, מקפים וגרש */
@@ -111,7 +113,25 @@ export function cityMatchSimilarity(inputCity, referenceCity) {
   if (a === b) return 1;
   const dist = levenshteinDistance(a, b);
   const maxLen = Math.max(a.length, b.length);
-  return maxLen === 0 ? 0 : 1 - dist / maxLen;
+  let score = maxLen === 0 ? 0 : 1 - dist / maxLen;
+
+  /** קיצור נפוץ (למשל «תל אביב») כשם הרשמי המלא מתחיל באותו prefix */
+  if (a.length >= 5 && b.startsWith(a)) {
+    const prefixRatio = a.length / b.length;
+    if (prefixRatio >= URBAN_PREMIUM_MATCH_THRESHOLD) {
+      score = Math.max(score, prefixRatio);
+    } else if (prefixRatio >= 0.6) {
+      score = Math.max(score, URBAN_PREMIUM_MATCH_THRESHOLD);
+    }
+  }
+  if (b.length >= 5 && a.startsWith(b)) {
+    const prefixRatio = b.length / a.length;
+    if (prefixRatio >= URBAN_PREMIUM_MATCH_THRESHOLD) {
+      score = Math.max(score, prefixRatio);
+    }
+  }
+
+  return score;
 }
 
 /**
