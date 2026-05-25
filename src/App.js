@@ -111,13 +111,18 @@ const QUOTE_PLAIN_EQUIP_CARD_COMPACT_CLASS =
 const QUOTE_BRAND_LOGO_IMG_COMPACT_CLASS =
   'max-h-[3.25rem] w-auto max-w-[88%] object-contain md:max-h-[3.5rem]';
 
-/** כרטיס ממיר/אופטימייזר — לוגו בלבד, ממלא את כל שטח הריבוע */
-const QUOTE_BRAND_CARD_LOGO_ONLY_SUFFIX = '!gap-0 !p-1 md:!p-1.5';
-const QUOTE_BRAND_CARD_LOGO_ONLY_CLASS = `${QUOTE_BRAND_CARD_COMPACT_CLASS} ${QUOTE_BRAND_CARD_LOGO_ONLY_SUFFIX}`;
-const QUOTE_BRAND_CARD_LOGO_ONLY_EMERALD_CLASS = `${QUOTE_BRAND_CARD_COMPACT_EMERALD_CLASS} ${QUOTE_BRAND_CARD_LOGO_ONLY_SUFFIX}`;
-const QUOTE_BRAND_CARD_LOGO_ONLY_BLUE_CLASS = `${QUOTE_BRAND_CARD_COMPACT_BLUE_CLASS} ${QUOTE_BRAND_CARD_LOGO_ONLY_SUFFIX}`;
+/** משבצת לוגו/תמונה — רקע לבן מלא (אחיד לכל המותגים, כמו SolarSpace) */
+const QUOTE_EQUIP_LOGO_TILE_CLASS =
+  `${QUOTE_CARD_SHELL_COMPACT} !gap-0 !p-1 md:!p-1.5 overflow-hidden !border-white/20 !bg-white ring-1 ring-black/10 print:border-slate-200 print:bg-white print:shadow-sm`;
 const QUOTE_BRAND_LOGO_IMG_FILL_CLASS =
-  'h-full w-full min-h-0 flex-1 object-contain object-center';
+  'h-full w-full min-h-0 flex-1 object-contain object-center p-0.5';
+const QUOTE_EQUIP_PHOTO_TILE_IMG_CLASS =
+  'h-full w-full min-h-0 flex-1 object-cover object-center';
+
+/** @deprecated — השתמשו ב-QUOTE_EQUIP_LOGO_TILE_CLASS */
+const QUOTE_BRAND_CARD_LOGO_ONLY_CLASS = QUOTE_EQUIP_LOGO_TILE_CLASS;
+const QUOTE_BRAND_CARD_LOGO_ONLY_EMERALD_CLASS = QUOTE_EQUIP_LOGO_TILE_CLASS;
+const QUOTE_BRAND_CARD_LOGO_ONLY_BLUE_CLASS = QUOTE_EQUIP_LOGO_TILE_CLASS;
 
 /** כיתוב מתחת לכרטיס — ללא רקע; הדגשה עם צל כהה לקריאות על גרדיאנט */
 const QUOTE_EQUIP_BELOW_CAPTION_CLASS =
@@ -4847,11 +4852,11 @@ export default function App() {
                       )}
                       {generatedQuote.includesWashing && (
                         <div className={QUOTE_EQUIPMENT_STRIP_CELL}>
-                          <div className={`${QUOTE_BRAND_CARD_COMPACT_CYAN_CLASS} !gap-0 !p-1 md:!p-1.5 relative`}>
+                          <div className={QUOTE_EQUIP_LOGO_TILE_CLASS}>
                             <img
                               src={QUOTE_WASHING_SYSTEM_IMG}
                               alt=""
-                              className="h-[5.5rem] w-full rounded-lg object-cover object-center md:h-[6rem]"
+                              className={QUOTE_EQUIP_PHOTO_TILE_IMG_CLASS}
                             />
                           </div>
                           <span className={QUOTE_EQUIP_BELOW_CAPTION_CLASS}>מערכת שטיפה אוטומטית לפאנלים</span>
@@ -4862,7 +4867,7 @@ export default function App() {
                           {isDatasheetViewable(generatedQuote.panelDatasheet) ? (
                             <button
                               type="button"
-                              className={`${QUOTE_BRAND_CARD_LOGO_ONLY_CLASS} cursor-pointer overflow-hidden !bg-white ring-1 ring-black/10 transition-transform hover:scale-[1.02] hover:border-orange-400/35 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400/70 print:ring-slate-200`}
+                              className={`${QUOTE_EQUIP_LOGO_TILE_CLASS} cursor-pointer transition-transform hover:scale-[1.02] hover:border-orange-400/35 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400/70`}
                               onClick={() =>
                                 openQuoteDatasheet(
                                   `מפרט טכני — פאנלים ${generatedQuote.panelPowerWatts}W`,
@@ -4877,7 +4882,7 @@ export default function App() {
                               />
                             </button>
                           ) : (
-                            <div className={`${QUOTE_BRAND_CARD_LOGO_ONLY_CLASS} overflow-hidden !bg-white ring-1 ring-black/10 print:ring-slate-200`}>
+                            <div className={QUOTE_EQUIP_LOGO_TILE_CLASS}>
                               <img
                                 src={quotePanelBrandLogoSrc}
                                 alt="SolarSpace"
