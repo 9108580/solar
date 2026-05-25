@@ -1,5 +1,5 @@
 {
-  "name": "solar-final",
+  "name": "hatzaot-mechir",
   "version": "0.1.0",
   "private": true,
   "dependencies": {
@@ -23,6 +23,7 @@
     "pull:admin": "node scripts/pull-admin-settings.mjs",
     "sync:env:prod": "node scripts/sync-env-from-production-bundle.mjs",
     "db:apply:shared-quotes": "node scripts/apply-shared-quotes.mjs",
+    "db:apply:all": "node scripts/apply-all-supabase.mjs",
     "build:og-share": "node scripts/build-og-quote-share.mjs"
   },
   "eslintConfig": {

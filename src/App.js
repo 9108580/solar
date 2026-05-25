@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { getSupabase } from './supabaseClient';
+import { prepareAdminPricesForCloud, publicAdminAssetUrl } from './adminCloudPayload';
 import { 
   Calculator, Settings, Sun, User, FileText, CheckCircle, Zap, DollarSign, 
   Trash2, Plus, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, HardHat, BatteryCharging, ExternalLink, 
@@ -852,21 +853,29 @@ function joinHebrewEquipmentTitle(parts) {
   return `${p.slice(0, -1).join(', ')} ו${p[p.length - 1]} בהצעה`;
 }
 
-/** דאטהשיט (PDF/תמונה) — נשמר ב-base64 בהגדרות האדמין */
+/** דאטהשיט / לוגו — base64 מקומי או storagePath מהענן */
 function normalizeDatasheet(raw) {
   if (!raw || typeof raw !== 'object') return null;
-  const { fileName, mimeType, dataBase64 } = raw;
+  const { fileName, mimeType, dataBase64, storagePath } = raw;
+  if (storagePath && typeof storagePath === 'string') {
+    return {
+      fileName: typeof fileName === 'string' ? fileName : 'datasheet',
+      mimeType: typeof mimeType === 'string' ? mimeType : 'application/octet-stream',
+      storagePath,
+    };
+  }
   if (!dataBase64 || typeof dataBase64 !== 'string' || !mimeType || typeof mimeType !== 'string') return null;
   return {
     fileName: typeof fileName === 'string' ? fileName : 'datasheet',
     mimeType,
-    dataBase64
+    dataBase64,
   };
 }
 
 function datasheetToSrc(ds) {
   const n = normalizeDatasheet(ds);
   if (!n) return null;
+  if (n.storagePath) return publicAdminAssetUrl(n.storagePath);
   return `data:${n.mimeType};base64,${n.dataBase64}`;
 }
 
@@ -1285,10 +1294,27 @@ const SignaturePad = ({ onSave }) => {
   );
 };
 
-/** מפתח localStorage — נשמר בדפדפן; עדכון באתר (Vercel) לא מוחק את הנתונים */
-const ADMIN_SETTINGS_STORAGE_KEY = 'solar-final-admin-settings-v1';
-const LOGIN_INPUT_STORAGE_KEY = 'solar-final-last-login-input';
-const REMEMBER_LOGIN_STORAGE_KEY = 'solar-final-remember-login';
+/** מפתחות localStorage — תיקיית הפרויקט: הצעות מחיר (לשעבר solar-final) */
+const APP_STORAGE_PREFIX = 'hatzaot-mechir';
+const ADMIN_SETTINGS_STORAGE_KEY = `${APP_STORAGE_PREFIX}-admin-settings-v1`;
+const LOGIN_INPUT_STORAGE_KEY = `${APP_STORAGE_PREFIX}-last-login-input`;
+const REMEMBER_LOGIN_STORAGE_KEY = `${APP_STORAGE_PREFIX}-remember-login`;
+const LEGACY_STORAGE = {
+  admin: 'solar-final-admin-settings-v1',
+  login: 'solar-final-last-login-input',
+  remember: 'solar-final-remember-login',
+};
+
+function migrateLegacyStorageKey(nextKey, legacyKey) {
+  if (typeof window === 'undefined') return;
+  try {
+    const legacy = window.localStorage.getItem(legacyKey);
+    if (!legacy || window.localStorage.getItem(nextKey)) return;
+    window.localStorage.setItem(nextKey, legacy);
+  } catch {
+    /* ignore */
+  }
+}
 
 const DEFAULT_ADMIN_PRICES = {
   panelPricePerWattUsd: 0.11,
@@ -1319,9 +1345,9 @@ const DEFAULT_ADMIN_PRICES = {
     { id: 'bat-byd5', name: 'סוללה BYD 5kWh', cost: 9500, logo: null, datasheet: null }
   ],
 
-  optimizerPrices: { se1to1: 250, se1to2: 350, tigo: 200 },
-  optimizerDatasheets: { se1to1: null, se1to2: null, tigo: null },
-  optimizerLogos: { se1to1: null, se1to2: null, tigo: null },
+  optimizerPrices: { se1to1: 250, se1to2: 350, tigo: 200, sungrow: 220 },
+  optimizerDatasheets: { se1to1: null, se1to2: null, tigo: null, sungrow: null },
+  optimizerLogos: { se1to1: null, se1to2: null, tigo: null, sungrow: null },
   logisticsCost: 3100, laborPerKw: 650, constructorEngineer: 500, hybridBatteryInstallCost: 5700,
   electricalBoxCommercialPerKw: 270, electricalBoxResidential: 870,
   washingSystemBase: 4500, feesCost: 3000, planningCost: 1400, profitResidentialFixed: 21000, profitCommercialPerKw: 630, vatRate: 18,
@@ -1369,6 +1395,7 @@ function mergeAdminSettingsFromStorage(saved, defaults) {
 
 function loadAdminSettingsFromStorage() {
   if (typeof window === 'undefined') return DEFAULT_ADMIN_PRICES;
+  migrateLegacyStorageKey(ADMIN_SETTINGS_STORAGE_KEY, LEGACY_STORAGE.admin);
   try {
     const raw = window.localStorage.getItem(ADMIN_SETTINGS_STORAGE_KEY);
     if (!raw) return DEFAULT_ADMIN_PRICES;
@@ -1506,6 +1533,7 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState(null); // הופעל מחדש
   const [loginInput, setLoginInput] = useState(() => {
     if (typeof window === 'undefined') return '';
+    migrateLegacyStorageKey(LOGIN_INPUT_STORAGE_KEY, LEGACY_STORAGE.login);
     try {
       return window.localStorage.getItem(LOGIN_INPUT_STORAGE_KEY) || '';
     } catch {
@@ -1515,6 +1543,7 @@ export default function App() {
   const [loginError, setLoginError] = useState('');
   const [rememberLogin, setRememberLogin] = useState(() => {
     if (typeof window === 'undefined') return false;
+    migrateLegacyStorageKey(REMEMBER_LOGIN_STORAGE_KEY, LEGACY_STORAGE.remember);
     try {
       const raw = window.localStorage.getItem(REMEMBER_LOGIN_STORAGE_KEY);
       if (raw === null) return false;
@@ -1553,17 +1582,27 @@ export default function App() {
     setAdminCloudSaveFeedback(null);
     setAdminCloudSaving(true);
     try {
+      const payloadForCloud = await prepareAdminPricesForCloud(supabase, adminPrices);
       const { error } = await supabase
         .from('admin_settings')
         .upsert(
-          { id: 1, payload: adminPrices, updated_at: new Date().toISOString() },
+          { id: 1, payload: payloadForCloud, updated_at: new Date().toISOString() },
           { onConflict: 'id' }
         );
       if (error) throw error;
+      skipNextSupabasePersist.current = true;
+      setAdminPrices(payloadForCloud);
+      try {
+        window.localStorage.setItem(ADMIN_SETTINGS_STORAGE_KEY, JSON.stringify(payloadForCloud));
+      } catch (_) { /* ignore */ }
       setAdminCloudSaveFeedback({ type: 'success', text: 'נשמר לענן בהצלחה.' });
       window.setTimeout(() => setAdminCloudSaveFeedback(null), 4000);
     } catch (err) {
-      const msg = err?.message || String(err);
+      let msg = err?.message || String(err);
+      if (/statement timeout/i.test(msg)) {
+        msg =
+          'השמירה לענן נכשלה (קובץ גדול מדי ל-Postgres). הריצו ב-Supabase את supabase/admin_assets_storage.sql, ודאו שאין טריגר admin_settings_history. אחר כך נסו שוב.';
+      }
       setAdminCloudSaveFeedback({ type: 'error', text: msg });
     } finally {
       setAdminCloudSaving(false);
@@ -1596,8 +1635,14 @@ export default function App() {
         const seed = loadAdminSettingsFromStorage();
         skipNextSupabasePersist.current = true;
         setAdminPrices(seed);
+        let seedPayload = seed;
+        try {
+          seedPayload = await prepareAdminPricesForCloud(supabase, seed);
+        } catch (prepErr) {
+          console.warn('admin_settings seed prepare:', prepErr?.message || prepErr);
+        }
         const { error: upErr } = await supabase.from('admin_settings').upsert(
-          { id: 1, payload: seed, updated_at: new Date().toISOString() },
+          { id: 1, payload: seedPayload, updated_at: new Date().toISOString() },
           { onConflict: 'id' }
         );
         if (upErr) console.warn('Supabase admin_settings seed:', upErr.message);
@@ -1616,13 +1661,29 @@ export default function App() {
     }
     clearTimeout(cloudPersistTimerRef.current);
     cloudPersistTimerRef.current = setTimeout(() => {
-      supabase
-        .from('admin_settings')
-        .upsert({ id: 1, payload: adminPrices, updated_at: new Date().toISOString() }, { onConflict: 'id' })
-        .then(({ error }) => {
+      (async () => {
+        try {
+          const payloadForCloud = await prepareAdminPricesForCloud(supabase, adminPrices);
+          const { error } = await supabase
+            .from('admin_settings')
+            .upsert(
+              { id: 1, payload: payloadForCloud, updated_at: new Date().toISOString() },
+              { onConflict: 'id' }
+            );
           if (error) console.warn('Supabase admin_settings save:', error.message);
+          else {
+            skipNextSupabasePersist.current = true;
+            setAdminPrices(payloadForCloud);
+            try {
+              window.localStorage.setItem(ADMIN_SETTINGS_STORAGE_KEY, JSON.stringify(payloadForCloud));
+            } catch (_) { /* ignore */ }
+          }
+        } catch (e) {
+          console.warn('Supabase admin_settings save:', e?.message || e);
+        } finally {
           cloudPersistTimerRef.current = null;
-        });
+        }
+      })();
     }, 700);
     return () => clearTimeout(cloudPersistTimerRef.current);
   }, [supabase, adminPrices]);
@@ -1656,7 +1717,8 @@ export default function App() {
     includesBatteries: false,
     selectedBatteries: [{ id: 'bat-se10', quantity: 1 }],
     includesOptimizers: false,
-    tigoQuantity: 0, 
+    tigoQuantity: 0,
+    sungrowQuantity: 0,
     includesWashing: false,
     showLoanSimulation: true, 
     feesPayer: 'client', 
@@ -1667,8 +1729,10 @@ export default function App() {
     panelsNorth: 0,
     optimizerAcknowledge: false,
     additionalNotes: '',
-    /** לוגו Tigo בהצעה — רלוונטי כשמסומנים אופטימייזרים מסוג Tigo (לא SolarEdge) */
+    /** לוגו Tigo בהצעה — רלוונטי כשמסומנים אופטימייזרים מסוג Tigo (לא SolarEdge / Sungrow) */
     showTigoLogoOnQuote: true,
+    /** לוגו Sungrow בהצעה — כשממיר Sungrow ואופטימייזרים */
+    showSungrowLogoOnQuote: true,
     /** פרמיה אורבנית חח"י — בתחשיב מתווספות 6 אגורות לשנים קלנדריות עד 2042 כולל */
     hasUrbanPremium: false,
   });
@@ -2188,6 +2252,22 @@ export default function App() {
     return { hasSolarEdge, maxSECapacity };
   };
 
+  const getSungrowStatus = () => {
+    let hasSungrow = false;
+    const activeInvertersForm =
+      quoteForm.inverterSystemType === 'hybrid' ? quoteForm.selectedHybridInverters : quoteForm.selectedInverters;
+    const activeInvertersAdmin =
+      quoteForm.inverterSystemType === 'hybrid' ? adminPrices.invertersHybrid : adminPrices.inverters;
+
+    activeInvertersForm.forEach((sel) => {
+      const invData = activeInvertersAdmin.find((i) => i.id === sel.id);
+      if (invData && sel.quantity > 0 && resolveInverterLogoSlug(invData) === 'sungrow') {
+        hasSungrow = true;
+      }
+    });
+    return { hasSungrow };
+  };
+
   const calculateTariff = (acSize) => {
     const numSize = parseFloat(acSize);
     if (isNaN(numSize) || numSize <= 0) return 0;
@@ -2292,10 +2372,11 @@ export default function App() {
     
     let optimizersCost = 0;
     let optimizerDetails = { type: 'ללא', quantity: 0 };
-    /** מפתח דאטהשיט באופטימייזרים: se1to1 | se1to2 | tigo */
+    /** מפתח דאטהשיט באופטימייזרים: se1to1 | se1to2 | tigo | sungrow */
     let optimizerKind = null;
     if (quoteForm.includesOptimizers) {
       const seStatus = getSolarEdgeStatus();
+      const sgStatus = getSungrowStatus();
       if (seStatus.hasSolarEdge) {
         if (seStatus.maxSECapacity > 15) {
           const optQty = Math.ceil(numPanels / 2);
@@ -2308,8 +2389,13 @@ export default function App() {
           optimizerDetails = { type: 'SolarEdge 1:1', quantity: optQty };
           optimizerKind = 'se1to1';
         }
+      } else if (sgStatus.hasSungrow) {
+        const optQty = parseInt(quoteForm.sungrowQuantity, 10) || numPanels;
+        optimizersCost = optQty * (Number(adminPrices.optimizerPrices?.sungrow) || 220);
+        optimizerDetails = { type: 'Sungrow (סנגרואו)', quantity: optQty };
+        optimizerKind = 'sungrow';
       } else {
-        const optQty = parseInt(quoteForm.tigoQuantity) || 0;
+        const optQty = parseInt(quoteForm.tigoQuantity, 10) || 0;
         optimizersCost = optQty * (Number(adminPrices.optimizerPrices?.tigo) || 200);
         optimizerDetails = { type: 'Tigo (טייגו)', quantity: optQty };
         optimizerKind = 'tigo';
@@ -2535,6 +2621,7 @@ export default function App() {
   };
 
   const seStatusDisplay = getSolarEdgeStatus();
+  const sgStatusDisplay = getSungrowStatus();
 
   const aggregatedQuoteInverterLogos = useMemo(
     () => aggregateInverterLogosForQuote(generatedQuote?.inverterDetailsList),
@@ -2572,6 +2659,17 @@ export default function App() {
         logoSrc: uploadSrc || fallback,
       };
     }
+    if (/sungrow|סנגרואו|סאנגר/.test(lower)) {
+      if (!generatedQuote.showSungrowLogoOnQuote) return null;
+      const fallback = `${process.env.PUBLIC_URL}/inverters/sungrow.png`;
+      return {
+        variant: 'sungrow',
+        quantity: qty,
+        datasheet: ds,
+        captionHe: `אופטימייזרים Sungrow (${qty} יח')`,
+        logoSrc: uploadSrc || fallback,
+      };
+    }
     if (/solaredge|סולאראדג/.test(lower)) {
       const fallback = `${process.env.PUBLIC_URL}/inverters/solaredge.png`;
       return {
@@ -2595,6 +2693,7 @@ export default function App() {
     generatedQuote?.optimizerDatasheet,
     generatedQuote?.optimizerLogoUpload,
     generatedQuote?.showTigoLogoOnQuote,
+    generatedQuote?.showSungrowLogoOnQuote,
   ]);
 
   const quoteShowConstructionEquipment =
@@ -2937,7 +3036,7 @@ export default function App() {
                       ) : (
                         <CloudUpload className="w-4 h-4" aria-hidden />
                       )}
-                      שמור לענן עכשיו
+                      {adminCloudSaving ? 'מעלה קבצים ושומר…' : 'שמור לענן עכשיו'}
                     </button>
                     {adminCloudSaveFeedback && (
                       <span
@@ -3120,6 +3219,24 @@ export default function App() {
                       datasheet={adminPrices.optimizerDatasheets?.tigo}
                       onFile={(f) => attachOptimizerDatasheetFile('tigo', f)}
                       onClear={() => setAdminPrices(prev => ({ ...prev, optimizerDatasheets: { ...prev.optimizerDatasheets, tigo: null } }))}
+                    />
+                    <div className="flex flex-wrap items-center gap-3"><span className="text-sm text-slate-300 w-full shrink-0 sm:w-[42%]">Sungrow (₪)</span><input type="number" name="sungrow" value={adminPrices.optimizerPrices.sungrow} onChange={handleOptimizerPriceChange} className="min-w-[8rem] flex-1 bg-white/5 border border-white/10 rounded-xl p-2 text-white outline-none focus:border-blue-500/60 transition-all" /></div>
+                    <AdminLogoRow
+                      label="לוגו Sungrow להצעה"
+                      logo={adminPrices.optimizerLogos?.sungrow}
+                      onFile={(f) => attachOptimizerLogoFile('sungrow', f)}
+                      onClear={() =>
+                        setAdminPrices((prev) => ({
+                          ...prev,
+                          optimizerLogos: { ...(prev.optimizerLogos || {}), sungrow: null },
+                        }))
+                      }
+                    />
+                    <AdminDatasheetRow
+                      label="דאטהשיט לאופטימייזר Sungrow"
+                      datasheet={adminPrices.optimizerDatasheets?.sungrow}
+                      onFile={(f) => attachOptimizerDatasheetFile('sungrow', f)}
+                      onClear={() => setAdminPrices(prev => ({ ...prev, optimizerDatasheets: { ...prev.optimizerDatasheets, sungrow: null } }))}
                     />
                   </div>
                 )}
@@ -3563,6 +3680,15 @@ export default function App() {
                           <div className="px-4 pb-4 pt-2 border-t border-white/8 bg-black/15 ml-12 space-y-3">
                             {seStatusDisplay.hasSolarEdge ? (
                                <p className="text-sm text-blue-300">זוהה ממיר SolarEdge במערכת ({seStatusDisplay.maxSECapacity > 15 ? 'מסוג 1:2' : 'מסוג 1:1'}).</p>
+                            ) : sgStatusDisplay.hasSungrow ? (
+                               <>
+                                 <p className="text-sm text-orange-300">זוהה ממיר Sungrow — אופטימייזרים לפי מחירון Sungrow (ברירת מחדל: מספר הפאנלים).</p>
+                                 <div className="flex flex-wrap items-center gap-3 mt-1"><label className="text-sm text-slate-400">כמות Sungrow:</label><input type="number" min="1" name="sungrowQuantity" value={quoteForm.sungrowQuantity} onChange={handleFormChange} className="w-24 bg-white/5 border border-white/10 rounded-xl p-2 text-white focus:border-orange-500/60 transition-all" placeholder="פאנלים" /></div>
+                                 <label className="flex items-center gap-3 cursor-pointer rounded-xl bg-black/20 border border-white/10 p-3 hover:bg-white/5 transition-colors">
+                                   <input type="checkbox" name="showSungrowLogoOnQuote" checked={quoteForm.showSungrowLogoOnQuote} onChange={handleFormChange} className="w-5 h-5 accent-orange-500 rounded shrink-0" />
+                                   <span className="text-sm text-slate-200 font-medium">הצג לוגו Sungrow בהצעת המחיר (מערכת עם אופטימייזרים)</span>
+                                 </label>
+                               </>
                             ) : (
                                <>
                                  <div className="flex flex-wrap items-center gap-3 mt-1"><label className="text-sm text-slate-400">כמות Tigo:</label><input type="number" min="1" name="tigoQuantity" value={quoteForm.tigoQuantity} onChange={handleFormChange} className="w-24 bg-white/5 border border-white/10 rounded-xl p-2 text-white focus:border-blue-500/60 transition-all" /></div>
@@ -4037,6 +4163,39 @@ export default function App() {
                                   <img
                                     src={quoteOptimizerQuoteCard.logoSrc}
                                     alt="Tigo"
+                                    className={QUOTE_BRAND_LOGO_IMG_COMPACT_CLASS}
+                                  />
+                                </div>
+                              )}
+                              <span className={QUOTE_EQUIP_BELOW_CAPTION_CLASS}>
+                                {quoteOptimizerQuoteCard.captionHe}
+                                {quoteOptimizerQuoteCard.datasheet && (
+                                  <span className={QUOTE_EQUIP_BELOW_HINT_CLASS}>לחץ לצפייה במפרט</span>
+                                )}
+                              </span>
+                            </>
+                          )}
+                          {quoteOptimizerQuoteCard.variant === 'sungrow' && quoteOptimizerQuoteCard.logoSrc && (
+                            <>
+                              {quoteOptimizerQuoteCard.datasheet ? (
+                                <button
+                                  type="button"
+                                  className={`${QUOTE_BRAND_CARD_COMPACT_CLASS} cursor-pointer transition-transform hover:scale-[1.02] hover:border-orange-400/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400/70`}
+                                  onClick={() =>
+                                    openQuoteDatasheet('מפרט טכני — אופטימייזרים Sungrow', quoteOptimizerQuoteCard.datasheet)
+                                  }
+                                >
+                                  <img
+                                    src={quoteOptimizerQuoteCard.logoSrc}
+                                    alt="Sungrow"
+                                    className={QUOTE_BRAND_LOGO_IMG_COMPACT_CLASS}
+                                  />
+                                </button>
+                              ) : (
+                                <div className={QUOTE_BRAND_CARD_COMPACT_CLASS}>
+                                  <img
+                                    src={quoteOptimizerQuoteCard.logoSrc}
+                                    alt="Sungrow"
                                     className={QUOTE_BRAND_LOGO_IMG_COMPACT_CLASS}
                                   />
                                 </div>

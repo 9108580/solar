@@ -1,6 +1,14 @@
 {
   "rewrites": [
     {
+      "source": "/APP",
+      "destination": "https://solar-up.vercel.app/APP"
+    },
+    {
+      "source": "/APP/:path*",
+      "destination": "https://solar-up.vercel.app/APP/:path*"
+    },
+    {
       "source": "/q/:id",
       "has": [
         {
