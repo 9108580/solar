@@ -3956,10 +3956,19 @@ export default function App() {
                   <div className="p-6 pt-2 border-t border-white/8 space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div><label className="block text-sm text-slate-400 mb-1">הובלות ולוגיסטיקה (פיקס) - ₪</label><input type="number" name="logisticsCost" value={adminPrices.logisticsCost} onChange={handleAdminChange} className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-blue-500/60 transition-all" /></div>
-                      <div><label className="block text-sm text-slate-400 mb-1">עבודה התקנה — מערכת ביתית (₪ לכל kWp)</label><input type="number" name="laborPerKwResidential" value={adminPrices.laborPerKwResidential} onChange={handleAdminChange} className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-blue-500/60 transition-all" /></div>
-                      <div><label className="block text-sm text-slate-400 mb-1">עבודה התקנה — מערכת מסחרית (₪ לכל kWp)</label><input type="number" name="laborPerKwCommercial" value={adminPrices.laborPerKwCommercial} onChange={handleAdminChange} className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-blue-500/60 transition-all" /></div>
                       <div><label className="block text-sm text-slate-400 mb-1">מהנדס קונסטרוקטור (פיקס) - ₪</label><input type="number" name="constructorEngineer" value={adminPrices.constructorEngineer} onChange={handleAdminChange} className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-blue-500/60 transition-all" /></div>
-                      <div><label className="block text-sm text-blue-300 font-medium mb-1">תוספת התקנה למערכת היברידית</label><input type="number" name="hybridBatteryInstallCost" value={adminPrices.hybridBatteryInstallCost} onChange={handleAdminChange} className="w-full bg-blue-500/5 border border-blue-500/20 rounded-xl p-3 text-white outline-none focus:border-blue-500/60 transition-all" /></div>
+                      <div className="md:col-span-2"><label className="block text-sm text-blue-300 font-medium mb-1">תוספת התקנה למערכת היברידית</label><input type="number" name="hybridBatteryInstallCost" value={adminPrices.hybridBatteryInstallCost} onChange={handleAdminChange} className="w-full bg-blue-500/5 border border-blue-500/20 rounded-xl p-3 text-white outline-none focus:border-blue-500/60 transition-all" /></div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t border-white/8 pt-4">
+                       <h4 className="md:col-span-2 text-sm font-medium text-blue-300">עבודת התקנה (לפי סוג מערכת) — ₪ לכל kWp</h4>
+                       <div className="space-y-3 bg-black/20 p-4 rounded-xl border border-white/8">
+                          <p className="text-xs text-slate-500 font-bold mb-2">מערכת ביתית:</p>
+                          <div className="flex items-center gap-3"><span className="text-sm text-slate-400 w-1/2">עבודת התקנה (₪ לכל kWp)</span><input type="number" name="laborPerKwResidential" value={adminPrices.laborPerKwResidential} onChange={handleAdminChange} className="w-1/2 bg-white/5 border border-white/10 rounded-lg p-2 text-white outline-none focus:border-blue-500/60 transition-all" /></div>
+                       </div>
+                       <div className="space-y-3 bg-black/20 p-4 rounded-xl border border-white/8">
+                          <p className="text-xs text-slate-500 font-bold mb-2">מערכת מסחרית:</p>
+                          <div className="flex items-center gap-3"><span className="text-sm text-slate-400 w-1/2">עבודת התקנה (₪ לכל kWp)</span><input type="number" name="laborPerKwCommercial" value={adminPrices.laborPerKwCommercial} onChange={handleAdminChange} className="w-1/2 bg-white/5 border border-white/10 rounded-lg p-2 text-white outline-none focus:border-blue-500/60 transition-all" /></div>
+                       </div>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t border-white/8 pt-4">
                        <h4 className="md:col-span-2 text-sm font-medium text-blue-300">בדיקות וחשמלאי (לפי סוג מערכת)</h4>
