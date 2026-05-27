@@ -1785,7 +1785,11 @@ const DEFAULT_ADMIN_PRICES = {
   optimizerPrices: { se1to1: 250, se1to2: 350, tigo: 200, sungrow: 220 },
   optimizerDatasheets: { se1to1: null, se1to2: null, tigo: null, sungrow: null },
   optimizerLogos: { se1to1: null, se1to2: null, tigo: null, sungrow: null },
-  logisticsCost: 3100, laborPerKw: 650, constructorEngineer: 500, hybridBatteryInstallCost: 5700,
+  logisticsCost: 3100,
+  laborPerKwResidential: 650,
+  laborPerKwCommercial: 550,
+  constructorEngineer: 500,
+  hybridBatteryInstallCost: 5700,
   electricalBoxCommercialPerKw: 270, electricalBoxResidential: 870,
   washingSystemBase: 4500, feesCost: 3000, planningCost: 1400, profitResidentialFixed: 21000, profitCommercialPerKw: 630, vatRate: 18,
   productionHours: 1700,
@@ -1826,7 +1830,15 @@ function mergeAdminSettingsFromStorage(saved, defaults) {
     inverters: Array.isArray(saved.inverters) ? saved.inverters : defaults.inverters,
     invertersHybrid: Array.isArray(saved.invertersHybrid) ? saved.invertersHybrid : defaults.invertersHybrid,
     batteries: Array.isArray(saved.batteries) ? saved.batteries : defaults.batteries,
-    agents: Array.isArray(saved.agents) ? saved.agents : defaults.agents
+    agents: Array.isArray(saved.agents) ? saved.agents : defaults.agents,
+    laborPerKwResidential:
+      saved.laborPerKwResidential != null
+        ? saved.laborPerKwResidential
+        : saved.laborPerKw != null
+          ? saved.laborPerKw
+          : defaults.laborPerKwResidential,
+    laborPerKwCommercial:
+      saved.laborPerKwCommercial != null ? saved.laborPerKwCommercial : defaults.laborPerKwCommercial
   };
 }
 
@@ -2883,7 +2895,11 @@ export default function App() {
     }
 
     const logisticsCost = Number(adminPrices.logisticsCost) || 3100;
-    let laborCost = sizeKw * (Number(adminPrices.laborPerKw) || 650);
+    const laborPerKw =
+      quoteForm.systemType === 'commercial'
+        ? Number(adminPrices.laborPerKwCommercial) || 550
+        : Number(adminPrices.laborPerKwResidential) || Number(adminPrices.laborPerKw) || 650;
+    let laborCost = sizeKw * laborPerKw;
     if (hasBatteries) laborCost += (Number(adminPrices.hybridBatteryInstallCost) || 5700); 
 
     const engineeringCost = (Number(adminPrices.planningCost) || 1400) + (Number(adminPrices.constructorEngineer) || 500);
@@ -3940,7 +3956,8 @@ export default function App() {
                   <div className="p-6 pt-2 border-t border-white/8 space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div><label className="block text-sm text-slate-400 mb-1">הובלות ולוגיסטיקה (פיקס) - ₪</label><input type="number" name="logisticsCost" value={adminPrices.logisticsCost} onChange={handleAdminChange} className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-blue-500/60 transition-all" /></div>
-                      <div><label className="block text-sm text-slate-400 mb-1">עבודה התקנה (₪ לכל kWp)</label><input type="number" name="laborPerKw" value={adminPrices.laborPerKw} onChange={handleAdminChange} className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-blue-500/60 transition-all" /></div>
+                      <div><label className="block text-sm text-slate-400 mb-1">עבודה התקנה — מערכת ביתית (₪ לכל kWp)</label><input type="number" name="laborPerKwResidential" value={adminPrices.laborPerKwResidential} onChange={handleAdminChange} className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-blue-500/60 transition-all" /></div>
+                      <div><label className="block text-sm text-slate-400 mb-1">עבודה התקנה — מערכת מסחרית (₪ לכל kWp)</label><input type="number" name="laborPerKwCommercial" value={adminPrices.laborPerKwCommercial} onChange={handleAdminChange} className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-blue-500/60 transition-all" /></div>
                       <div><label className="block text-sm text-slate-400 mb-1">מהנדס קונסטרוקטור (פיקס) - ₪</label><input type="number" name="constructorEngineer" value={adminPrices.constructorEngineer} onChange={handleAdminChange} className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-blue-500/60 transition-all" /></div>
                       <div><label className="block text-sm text-blue-300 font-medium mb-1">תוספת התקנה למערכת היברידית</label><input type="number" name="hybridBatteryInstallCost" value={adminPrices.hybridBatteryInstallCost} onChange={handleAdminChange} className="w-full bg-blue-500/5 border border-blue-500/20 rounded-xl p-3 text-white outline-none focus:border-blue-500/60 transition-all" /></div>
                     </div>
