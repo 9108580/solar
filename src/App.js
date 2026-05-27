@@ -4557,15 +4557,15 @@ export default function App() {
                      <p className="absolute bottom-3 right-4 left-4 text-white text-xs font-bold drop-shadow-md text-center">פאנלים על הגג — אנרגיה נקייה</p>
                    </div>
                    
-                   <div className="absolute top-6 right-4 z-[5] flex w-[min(100%,16.5rem)] flex-col items-end gap-3 md:top-8 md:right-10 md:w-[18rem] md:gap-4 print:relative print:top-auto print:right-auto print:w-full print:items-start print:gap-2">
+                   <div className="absolute top-6 right-4 z-[5] flex w-max max-w-[calc(100vw-2rem)] flex-col items-end gap-2 md:top-8 md:right-10 md:gap-3 print:relative print:top-auto print:right-auto print:w-full print:max-w-none print:items-start print:gap-2">
                       <div className="flex h-[5.25rem] w-[5.25rem] shrink-0 items-center justify-center sm:h-[5.75rem] sm:w-[5.75rem] print:h-24 print:w-24 print:rounded-xl print:bg-white print:p-2 print:shadow-sm">
                         <BrandLogoCover />
                       </div>
-                      <p className="w-full rounded-xl border border-blue-400/35 bg-slate-950/70 px-3.5 py-2.5 text-right text-xs font-bold leading-snug text-blue-50 shadow-lg backdrop-blur-sm sm:text-sm print:border-blue-200 print:bg-blue-50 print:text-blue-900 print:shadow-none print:backdrop-blur-none">
-                        {formatQuoteHeroSystemTypeLabel(generatedQuote)}
-                      </p>
-                      <p className="hidden text-right font-black text-xl tracking-tight text-white drop-shadow-md md:block md:text-2xl print:block print:text-slate-900 print:drop-shadow-none">
+                      <p className="text-right font-black text-lg tracking-tight text-white drop-shadow-md sm:text-xl md:text-2xl print:text-slate-900 print:drop-shadow-none">
                         מומחי אנרגיה סולארית
+                      </p>
+                      <p className="whitespace-nowrap rounded-xl border border-blue-400/35 bg-slate-950/70 px-3 py-2 text-right text-[11px] font-bold leading-none text-blue-50 shadow-lg backdrop-blur-sm sm:px-3.5 sm:py-2.5 sm:text-xs print:border-blue-200 print:bg-blue-50 print:text-blue-900 print:shadow-none print:backdrop-blur-none">
+                        {formatQuoteHeroSystemTypeLabel(generatedQuote)}
                       </p>
                    </div>
 
