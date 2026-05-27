@@ -473,6 +473,13 @@ function QuoteLimitedOfferBanner({ timeLeft, highlightText, whatsappLink }) {
   );
 }
 
+/** תווית סוג מערכת בכריכת ההצעה — לפי בחירת הסוכן בלבד */
+function formatQuoteHeroSystemTypeLabel(quote) {
+  const scaleType = quote?.systemType === 'commercial' ? 'מסחרית' : 'ביתית';
+  const inverterType = quote?.inverterSystemType === 'hybrid' ? 'היברידית' : 'On Grid';
+  return `מערכת אנרגיה סולארית ${scaleType} — ${inverterType}`;
+}
+
 function QuoteSystemSpecSummary({ quote }) {
   if (!quote) return null;
   const inverterSummary = (quote.inverterDetailsList || [])
@@ -4555,7 +4562,7 @@ export default function App() {
                         <BrandLogoCover />
                       </div>
                       <p className="w-full rounded-xl border border-blue-400/35 bg-slate-950/70 px-3.5 py-2.5 text-right text-xs font-bold leading-snug text-blue-50 shadow-lg backdrop-blur-sm sm:text-sm print:border-blue-200 print:bg-blue-50 print:text-blue-900 print:shadow-none print:backdrop-blur-none">
-                        מערכת אנרגיה סולארית ביתית - On Grid או הברידית או משחרית וכו&apos;
+                        {formatQuoteHeroSystemTypeLabel(generatedQuote)}
                       </p>
                       <p className="hidden text-right font-black text-xl tracking-tight text-white drop-shadow-md md:block md:text-2xl print:block print:text-slate-900 print:drop-shadow-none">
                         מומחי אנרגיה סולארית
