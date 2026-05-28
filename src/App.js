@@ -485,6 +485,7 @@ function QuoteSystemSpecSummary({ quote }) {
   const inverterSummary = (quote.inverterDetailsList || [])
     .map((inv) => `${inv.name}${inv.quantity > 1 ? ` ×${inv.quantity}` : ''}`)
     .join(' · ');
+  const batterySummary = aggregateBatteryStorageSummary(quote.batteryDetailsList);
   const rows = [
     { label: 'הספק DC', value: `${quote.systemSizeKw} kWp`, Icon: Zap, iconClass: 'text-orange-400' },
     { label: 'הספק AC', value: `${quote.systemSizeAcKw} kWp`, Icon: Activity, iconClass: 'text-sky-400' },
@@ -513,6 +514,14 @@ function QuoteSystemSpecSummary({ quote }) {
       iconClass: 'text-violet-300',
     },
   ];
+  if (batterySummary && batterySummary.totalUnits > 0) {
+    rows.push({
+      label: 'אגירה כוללת',
+      value: batterySummary.totalKwh > 0 ? `${batterySummary.totalKwh} kWh` : `${batterySummary.totalUnits} יח׳`,
+      Icon: BatteryCharging,
+      iconClass: 'text-emerald-300',
+    });
+  }
   return (
     <div className="relative mb-6 overflow-hidden rounded-2xl border border-blue-400/35 bg-gradient-to-br from-[#0e2240] via-[#153560] to-[#0c1a30] p-5 shadow-lg sm:p-6 print:border-slate-300 print:bg-white print:shadow-none">
       <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
@@ -521,7 +530,7 @@ function QuoteSystemSpecSummary({ quote }) {
         <Sun className="absolute left-5 top-5 h-14 w-14 text-amber-400/10 sm:h-16 sm:w-16" />
       </div>
       <h3 className="relative mb-4 text-xl font-black text-white sm:text-2xl print:text-blue-900">פירוט המערכת</h3>
-      <dl className="relative grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-6">
+      <dl className={`relative grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 ${rows.length > 6 ? 'lg:grid-cols-7' : 'lg:grid-cols-6'}`}>
         {rows.map((row) => {
           const Icon = row.Icon;
           return (
