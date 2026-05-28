@@ -5397,6 +5397,14 @@ export default function App() {
                               </span>
                             </li>
                           )}
+                          {generatedQuote.hasBatteries && (
+                            <li className="flex items-start gap-4">
+                              <CheckCircle className="mt-1 h-6 w-6 shrink-0 text-green-500 sm:h-7 sm:w-7" />
+                              <span>
+                                אחריות לסוללות אגירה על פי הוראות יצרן.
+                              </span>
+                            </li>
+                          )}
                           <li className="flex items-start gap-4">
                             <CheckCircle className="mt-1 h-6 w-6 shrink-0 text-green-500 sm:h-7 sm:w-7" />
                             <span>
