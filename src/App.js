@@ -2571,12 +2571,25 @@ export default function App() {
 
   const openQuoteDatasheet = (title, ds) => {
     const n = normalizeDatasheet(ds);
-    if (!n || !datasheetToSrc(n)) {
+    const src = n ? datasheetToSrc(n) : null;
+    if (!n || !src) {
       window.alert(
         'לא ניתן לפתוח את המפרט הטכני. ודאו שהקובץ הועלה בהגדרות אדמין, שמרו לענן (כפתור שמירה לענן), והפיקו את ההצעה מחדש.'
       );
       return;
     }
+
+    const isMobileLike =
+      typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(max-width: 900px), (pointer: coarse)').matches;
+    const isPdf = String(n.mimeType || '').toLowerCase().includes('pdf');
+    if (isMobileLike && isPdf) {
+      const opened = window.open(src, '_blank', 'noopener,noreferrer');
+      if (!opened) window.location.href = src;
+      return;
+    }
+
     setQuoteDatasheetViewer({ title, datasheet: n });
   };
 
