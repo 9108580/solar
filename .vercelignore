@@ -1,13 +1,3 @@
-persik/data/downloads/
-persik/data/processed/
-persik/data/manual_review/
-persik/credentials/
-persik/venv/
-persik/__pycache__/
-persik/back/
-persik/debug_roi/
-persik/*.exe
-persik/*.pdf
 tmp-docx-extract/
 tmp-docx.zip
 debug-*.log
