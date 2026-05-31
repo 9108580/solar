@@ -6,6 +6,14 @@
   },
   "rewrites": [
     {
+      "source": "/persik",
+      "destination": "https://persik.onrender.com/"
+    },
+    {
+      "source": "/persik/:path*",
+      "destination": "https://persik.onrender.com/:path*"
+    },
+    {
       "source": "/APP",
       "destination": "https://solar-up.vercel.app/APP"
     },
