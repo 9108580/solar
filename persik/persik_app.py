@@ -27,9 +27,20 @@ data_path = os.path.join("data", "suppliers.json")
 
 eel.init(web_dir)
 
+_real_stdout = sys.__stdout__
+_eel_logging_enabled = False
+
+
+def enable_eel_logging():
+    global _eel_logging_enabled
+    _eel_logging_enabled = True
+
 
 class StreamToLogger:
     def write(self, buf):
+        _real_stdout.write(buf)
+        if not _eel_logging_enabled:
+            return
         for line in buf.rstrip().splitlines():
             if not line.strip():
                 continue
@@ -40,11 +51,19 @@ class StreamToLogger:
                 pass
 
     def flush(self):
-        pass
+        _real_stdout.flush()
 
 
 def install_log_redirect():
     sys.stdout = StreamToLogger()
+
+
+def schedule_eel_logging(delay_seconds=2):
+    def _enable():
+        time.sleep(delay_seconds)
+        enable_eel_logging()
+
+    threading.Thread(target=_enable, daemon=True).start()
 
 
 def _run_agent_thread():

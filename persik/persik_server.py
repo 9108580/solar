@@ -5,7 +5,7 @@ from pathlib import Path
 
 import bottle
 
-from persik_app import install_log_redirect, script_dir, start_auto_run_worker, web_dir
+from persik_app import install_log_redirect, schedule_eel_logging, script_dir, start_auto_run_worker, web_dir
 import persik_app
 
 
@@ -65,6 +65,7 @@ def main():
 
     bootstrap_credentials()
     install_log_redirect()
+    schedule_eel_logging()
     start_auto_run_worker()
     setup_basic_auth()
 

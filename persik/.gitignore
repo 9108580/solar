@@ -5,6 +5,7 @@ __pycache__/
 .env
 .env.local
 local.env
+secrets.local.json
 credentials/
 credentials.json
 data/manual_review/
