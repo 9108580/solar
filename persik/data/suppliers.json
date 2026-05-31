@@ -1,0 +1,65 @@
+{
+    "rcs_solar": {
+        "name": "RCS Solar",
+        "emails": [
+            "davidm@rcssolar.com",
+            "shifra@rcssolar.com",
+            "davidm@rcs.com",
+            "shifra@rcs.com"
+        ],
+        "category": "Auto-detect"
+    },
+    "david_meshulam_priority": {
+        "name": "David Meshulam / Priority",
+        "emails": [
+            "david@mes.co.il"
+        ],
+        "category": "Equipment (Priority)"
+    },
+    "שדות_אנרגיה_מתחדשת_בע\"מ": {
+        "name": "שדות אנרגיה",
+        "emails": [
+            "office@sadot-energy.co.il"
+        ],
+        "category": "Auto-detect"
+    },
+    "כהנא_אנרגיה": {
+        "name": "כהנא_אנרגיה",
+        "emails": [
+            "shayy@kahane.co.il",
+            "smadar@kahane.co.il"
+        ]
+    },
+    "תדירן_סולאר": {
+        "name": "תדירן_סולאר",
+        "emails": [
+            "mor@tadiran-solar.co.il",
+            "anag@tadiran-solar.co.il",
+            "office@tadiran-solar.co.il"
+        ]
+    },
+    "כהנא_קונסטרוקציה": {
+        "name": "כהנא קונסטרוקציה",
+        "emails": [
+            "sapira@kahane.co.il"
+        ]
+    },
+    "ירדן_חזן": {
+        "name": "ירדן חזן",
+        "emails": [
+            "tcelctric@gmail.com‬"
+        ]
+    },
+    "אלום לנד בע``מ": {
+        "name": "אלום לנד בע``מ",
+        "emails": [
+            "noReply@tamal.co.il"
+        ]
+    },
+    "א.מ.אמו סחר בעמ": {
+        "name": "א.מ.אמו סחר בעמ",
+        "emails": [
+            "donotreply3@crtv.co.il"
+        ]
+    }
+}
