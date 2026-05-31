@@ -1,0 +1,22 @@
+name: Deploy Persik to Render
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'persik/**'
+      - 'render-persik.yaml'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: ${{ secrets.RENDER_API_KEY != '' && secrets.RENDER_SERVICE_ID != '' }}
+    steps:
+      - name: Trigger Render deploy
+        run: |
+          curl -fsS -X POST \
+            "https://api.render.com/v1/services/${{ secrets.RENDER_SERVICE_ID }}/deploys" \
+            -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{"clearCache":"do_not_clear"}'
