@@ -1,8 +1,10 @@
 # Persik deployment on Render
 
-1. Open [Render Dashboard](https://dashboard.render.com/) → **New** → **Blueprint**
-2. Connect repo `9108580/solar` and use `render-persik.yaml`
-3. Set secret env vars (Render → persik → Environment):
+**Fastest start:** https://dashboard.render.com/blueprint/new?repo=https://github.com/9108580/solar  
+Blueprint file path: `render-persik.yaml`
+
+1. Open the link above → connect GitHub → **Apply**
+2. Set secret env vars (Render → persik → Environment):
 
 ```bash
 node persik/scripts/export-render-secrets.mjs
