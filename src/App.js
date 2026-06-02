@@ -152,6 +152,24 @@ const QUOTE_PROJECTS_MAP_ID = '1gmzO7k_SBVucywFFtwSgYE35ltMabc0';
 const QUOTE_PROJECTS_MAP_VIEWER_URL = `https://www.google.com/maps/d/u/0/viewer?mid=${QUOTE_PROJECTS_MAP_ID}&hl=iw`;
 const QUOTE_PROJECTS_MAP_EMBED_URL = `https://www.google.com/maps/d/embed?mid=${QUOTE_PROJECTS_MAP_ID}&hl=iw&ll=31.93778024868962%2C35.098651000000025&z=8`;
 
+/** PDF print layout — debug session c91eed */
+function emitPdfDebugLog(hypothesisId, message, data) {
+  if (typeof window === 'undefined' || typeof fetch !== 'function') return;
+  fetch('http://127.0.0.1:7414/ingest/0129d7ab-3eb6-46ad-add7-b5ee7cb6277d', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'c91eed' },
+    body: JSON.stringify({
+      sessionId: 'c91eed',
+      runId: 'pdf-print',
+      hypothesisId,
+      location: 'App.js:print',
+      message,
+      data,
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+}
+
 function emitAgentDebugLog(runId, hypothesisId, location, message, data) {
   if (typeof window === 'undefined' || typeof fetch !== 'function') return;
   fetch('http://127.0.0.1:7601/ingest/db65f22b-e2f1-4fe5-a2e4-59babefb6850', {
@@ -3367,6 +3385,60 @@ export default function App() {
     // #endregion
   }, [generatedQuote, quoteBatteryStorageSummary]);
 
+  const measureQuotePrintLayout = useCallback(() => {
+    const root = document.getElementById('quote-presentation');
+    if (!root) {
+      // #region agent log
+      emitPdfDebugLog('H0', 'quote-presentation-missing', { activeTab });
+      // #endregion
+      return;
+    }
+    const pick = (sel) => {
+      const el = root.querySelector(sel);
+      if (!el) return { present: false };
+      const r = el.getBoundingClientRect();
+      const st = window.getComputedStyle(el);
+      return {
+        present: true,
+        heightPx: Math.round(r.height),
+        topPx: Math.round(r.top),
+        breakBefore: st.breakBefore || st.pageBreakBefore,
+        breakAfter: st.breakAfter || st.pageBreakAfter,
+      };
+    };
+    const highlights = root.querySelector('.quote-print-summary [class*="text-green"]');
+    const chart = root.querySelector('.quote-print-cashflow-chart');
+    const loanTable = root.querySelector('.quote-print-loan-block table');
+  // #region agent log
+    emitPdfDebugLog('H1-H4', 'before-print-layout', {
+      rootScrollHeight: root.scrollHeight,
+      viewportH: window.innerHeight,
+      estimatedPagesA4: Math.ceil(root.scrollHeight / 1050),
+      sections: {
+        cover: pick('.quote-print-cover'),
+        summary: pick('.quote-print-summary'),
+        equipment: pick('.quote-print-chapter-equipment'),
+        financial: pick('.quote-print-chapter-financial'),
+        about: pick('.quote-print-chapter-about'),
+        signature: pick('.quote-print-chapter-start'),
+      },
+      annualYield: generatedQuote?.annualYield ?? null,
+      highlightsBottomPx: highlights ? Math.round(highlights.getBoundingClientRect().bottom) : null,
+      chartHeightPx: chart ? Math.round(chart.getBoundingClientRect().height) : null,
+      loanRowCount: loanTable ? loanTable.querySelectorAll('tbody tr').length : 0,
+      showLoan: Boolean(generatedQuote?.showLoanSimulation),
+      showEquipment: Boolean(quoteShowEquipmentBrandsSection),
+    });
+  // #endregion
+  }, [activeTab, generatedQuote, quoteShowEquipmentBrandsSection]);
+
+  useEffect(() => {
+    if (activeTab !== 'quote' || !generatedQuote) return undefined;
+    const onBeforePrint = () => measureQuotePrintLayout();
+    window.addEventListener('beforeprint', onBeforePrint);
+    return () => window.removeEventListener('beforeprint', onBeforePrint);
+  }, [activeTab, generatedQuote, measureQuotePrintLayout]);
+
   // --- מסך התחברות (Login Screen) ---
   if (!currentUser) {
     if (shareLinkMalformed) {
@@ -4522,7 +4594,10 @@ export default function App() {
                    )}
                    <button
                      type="button"
-                     onClick={() => window.print()}
+                     onClick={() => {
+                       measureQuotePrintLayout();
+                       window.print();
+                     }}
                      className="bg-white text-slate-900 px-6 py-2.5 rounded-xl font-bold shadow-xl flex items-center gap-2 hover:bg-slate-100 transition-all hover:scale-[1.02] hover:shadow-2xl"
                    >
                      <FileText className="w-4 h-4" /> הדפס לקובץ PDF
