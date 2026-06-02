@@ -197,19 +197,41 @@ html, body {
     page-break-inside: auto;
   }
 
-  /* סיכום — מיד אחרי שער, בלי פיצול כותרת */
+  /* סיכום — מיד אחרי שער */
   #quote-presentation .quote-print-section.quote-print-summary {
     break-before: avoid;
     page-break-before: avoid;
   }
 
-  /* פרקים עיקריים — עמוד נפרד לכל אחד */
-  #quote-presentation .quote-print-section.quote-print-chapter-equipment,
-  #quote-presentation .quote-print-section.quote-print-chapter-financial,
-  #quote-presentation .quote-print-section.quote-print-chapter-about,
+  /* סיכום+מחיר — יחד, בלי כרטיס תשואה יתום בעמוד ריק */
+  #quote-presentation .quote-print-summary-blocks {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* גרף תזרים — עמוד נפרד רק לפני טבלת הלוואה (לא לפני כל «כלכלה») */
+  #quote-presentation .quote-print-cashflow-sheet {
+    break-after: page;
+    page-break-after: always;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* טבלת הלוואה — עמוד חדש אחרי הגרף */
+  #quote-presentation .quote-print-chapter-loan {
+    break-before: page;
+    page-break-before: always;
+  }
+
+  /* חתימה — עמוד אחרון נפרד */
   #quote-presentation .quote-print-section.quote-print-chapter-start {
     break-before: page;
     page-break-before: always;
+  }
+
+  /* השוואת תשואה — כפילות של «24.5%» שכבר בסיכום */
+  #quote-presentation .quote-print-hide-in-print {
+    display: none !important;
   }
 
   #quote-presentation .quote-print-avoid-split {
@@ -266,6 +288,11 @@ html, body {
   #quote-presentation .quote-print-equipment-strip {
     break-inside: auto;
     page-break-inside: auto;
+  }
+
+  #quote-presentation .quote-print-payment-warranty {
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 
   .animation-fade-in {

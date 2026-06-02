@@ -3411,15 +3411,18 @@ export default function App() {
     const loanTable = root.querySelector('.quote-print-loan-block table');
   // #region agent log
     emitPdfDebugLog('H1-H4', 'before-print-layout', {
+      runPhase: 'post-fix',
       rootScrollHeight: root.scrollHeight,
       viewportH: window.innerHeight,
       estimatedPagesA4: Math.ceil(root.scrollHeight / 1050),
       sections: {
         cover: pick('.quote-print-cover'),
         summary: pick('.quote-print-summary'),
-        equipment: pick('.quote-print-chapter-equipment'),
-        financial: pick('.quote-print-chapter-financial'),
-        about: pick('.quote-print-chapter-about'),
+        summaryBlocks: pick('.quote-print-summary-blocks'),
+        equipment: pick('[aria-labelledby="quote-equipment-brands-heading"]'),
+        cashflowSheet: pick('.quote-print-cashflow-sheet'),
+        loanChapter: pick('.quote-print-chapter-loan'),
+        about: pick('.quote-print-section.bg-slate-50'),
         signature: pick('.quote-print-chapter-start'),
       },
       annualYield: generatedQuote?.annualYield ?? null,
@@ -4738,7 +4741,7 @@ export default function App() {
                         </p>
                       </div>
                     )}
-                    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-stretch lg:gap-8 print:gap-3">
+                    <div className="quote-print-summary-blocks grid grid-cols-1 gap-6 lg:grid-cols-2 lg:items-stretch lg:gap-8 print:gap-3">
                       <QuoteFinancialHighlights quote={generatedQuote} />
                       <div className="max-md:order-first lg:order-none">
                         <QuotePricingSummary
@@ -4753,7 +4756,7 @@ export default function App() {
 
                 {quoteShowEquipmentBrandsSection && (
                 <section
-                  className="quote-print-section quote-print-chapter-equipment relative overflow-hidden border-y border-white/5 print:border-slate-200"
+                  className="quote-print-section relative overflow-hidden border-y border-white/5 print:border-slate-200"
                   aria-labelledby="quote-equipment-brands-heading"
                 >
                   {/* מעבר חזותי משער כהה לעמוד בהיר — הרקע הכהה «מבטל» את מלבן השחור בקבצי PNG ונותן תחושת שקיפות */}
@@ -5140,11 +5143,15 @@ export default function App() {
                 )}
 
                 {/* --- תחזית כלכלית (עמוד נפרד) --- */}
-                <section className="quote-print-section quote-print-chapter-financial py-8 px-4 sm:px-8 md:py-12 md:px-20 print:py-4">
+                <section className="quote-print-section py-8 px-4 sm:px-8 md:py-12 md:px-20 print:py-4">
                    <h2 className="mb-6 text-center text-2xl font-black text-blue-900 sm:text-3xl">תחזית כלכלית מפורטת</h2>
 
                    {/* Custom Financial Chart (CSS Based) */}
-                   <div className="bg-white border border-slate-200 rounded-2xl p-5 mb-8 shadow-md print:mb-4 print:p-3 quote-print-avoid-split">
+                   <div
+                     className={`bg-white border border-slate-200 rounded-2xl p-5 mb-8 shadow-md print:mb-4 print:p-3 quote-print-avoid-split ${
+                       generatedQuote.showLoanSimulation ? 'quote-print-cashflow-sheet' : ''
+                     }`}
+                   >
                       <h3 className="text-lg font-bold text-blue-900 mb-4 flex items-center gap-2 print:mb-2 print:text-base"><TrendingUp className="text-orange-500 w-5 h-5"/> תחזית תזרים מזומנים (25 שנה)</h3>
                       
                       <div className="quote-print-cashflow-chart h-48 sm:h-52 flex items-end justify-between gap-2 md:gap-6 mt-6 relative border-b-2 border-slate-300 pb-2 print:mt-3 print:h-36">
@@ -5197,13 +5204,14 @@ export default function App() {
                          ? `תשואה שנתית במערכת סולארית: ${generatedQuote.annualYield.toFixed(1)}%`
                          : null
                      }
-                     className="max-w-4xl"
+                     className="max-w-4xl quote-print-hide-in-print"
                    >
                      <QuoteInvestmentYieldChart annualYield={generatedQuote.annualYield} />
                    </QuoteExpandableSection>
 
                    {/* Loan Simulation — נפתח בלחיצה */}
                    {generatedQuote.showLoanSimulation && (
+                     <div className="quote-print-chapter-loan">
                      <QuoteExpandableSection
                        title="תכנית פיננסית — מימון 100% בנקאי"
                        subtitle={`פריים + ${generatedQuote.loanSettings.loanMargin}% (ריבית משוערת: ${generatedQuote.loanSettings.annualInterestRate}%)`}
@@ -5264,12 +5272,13 @@ export default function App() {
                         <p className="text-xs text-slate-400 mt-4">* הסימולציה מציגה הערכה כללית הכוללת פחת מודולים סולאריים משוער של 0.33% בשנה. התנאים הסופיים כפופים לאישור הבנק המממן ולשינויים בריבית הפריים. </p>
                      </div>
                      </QuoteExpandableSection>
+                     </div>
                    )}
 
                 </section>
 
                 {/* --- מי אנחנו --- */}
-                <section className="quote-print-section quote-print-chapter-about py-10 px-4 sm:px-8 md:px-20 bg-slate-50 print:py-5">
+                <section className="quote-print-section py-10 px-4 sm:px-8 md:px-20 bg-slate-50 print:py-5">
                    <div className="max-w-4xl mx-auto text-center mb-8">
                      <h2 className="text-2xl md:text-3xl font-black text-blue-900 mb-3">מי אנחנו? המומחים שלכם באנרגיה סולארית</h2>
                      <p className="text-base text-slate-600">אנו חברת בוטיק המתמחה בפתרונות אנרגיה מתקדמים — איכות, מקצועיות ושירות אישי.</p>
@@ -5433,7 +5442,7 @@ export default function App() {
                 <section className="quote-print-section py-10 px-4 sm:px-8 md:px-20 bg-slate-50 print:py-5">
                    <h2 className="text-2xl md:text-3xl font-black text-blue-900 mb-8 text-center">תנאי תשלום ואחריות</h2>
                    
-                   <div className="mx-auto grid max-w-5xl grid-cols-1 gap-6 md:grid-cols-2 md:items-stretch lg:gap-8">
+                   <div className="quote-print-payment-warranty mx-auto grid max-w-5xl grid-cols-1 gap-6 md:grid-cols-2 md:items-stretch lg:gap-8">
                       
                       {/* Payment Terms */}
                       <div className="flex h-full flex-col rounded-3xl border border-slate-200 bg-white p-6 shadow-lg sm:p-8">
