@@ -71,10 +71,11 @@ const SQL_FILES = [
 
 function runViaSupabaseCli(file) {
   const sqlPath = path.join(root, 'supabase', file);
+  const sql = fs.readFileSync(sqlPath, 'utf8');
   const r = spawnSync(
     'npx',
-    ['--yes', 'supabase@2', 'db', 'query', '--linked', '-f', sqlPath],
-    { cwd: root, stdio: 'pipe', encoding: 'utf8', shell: true }
+    ['--yes', 'supabase@2', 'db', 'query', '--linked'],
+    { cwd: root, input: sql, stdio: ['pipe', 'pipe', 'pipe'], encoding: 'utf8', shell: false }
   );
   if (r.status !== 0) {
     const err = (r.stderr || r.stdout || '').trim();
@@ -100,7 +101,8 @@ if (!databaseUrl) {
     console.log('\n✓ כל מיגרציות Supabase הושלמו (CLI).');
   } catch (e) {
     console.error('\n✗ שגיאה:', e.message || e);
-    console.error('  ודאו: npx supabase login && npx supabase link --project-ref <ref>');
+    console.error('  ודאו: npx supabase login && npx supabase link --project-ref ffcdkpecozxkxcekeywp');
+    console.error('  או הוסיפו ל-.env.local: SUPABASE_DB_PASSWORD (מ-Settings → Database) והריצו שוב.');
     process.exit(1);
   }
   process.exit(0);
