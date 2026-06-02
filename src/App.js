@@ -152,6 +152,23 @@ const QUOTE_PROJECTS_MAP_ID = '1gmzO7k_SBVucywFFtwSgYE35ltMabc0';
 const QUOTE_PROJECTS_MAP_VIEWER_URL = `https://www.google.com/maps/d/u/0/viewer?mid=${QUOTE_PROJECTS_MAP_ID}&hl=iw`;
 const QUOTE_PROJECTS_MAP_EMBED_URL = `https://www.google.com/maps/d/embed?mid=${QUOTE_PROJECTS_MAP_ID}&hl=iw&ll=31.93778024868962%2C35.098651000000025&z=8`;
 
+function emitAgentDebugLog(runId, hypothesisId, location, message, data) {
+  if (typeof window === 'undefined' || typeof fetch !== 'function') return;
+  fetch('http://127.0.0.1:7601/ingest/db65f22b-e2f1-4fe5-a2e4-59babefb6850', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '43ab36' },
+    body: JSON.stringify({
+      sessionId: '43ab36',
+      runId,
+      hypothesisId,
+      location,
+      message,
+      data,
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+}
+
 function QuoteProjectsMap({ clientCity }) {
   const [mapKey, setMapKey] = useState(0);
   const cityLabel = String(clientCity || '').trim();
@@ -1477,54 +1494,21 @@ function readFileAsDatasheet(file) {
 
 /** מסמך PDF סטטי מתיקיית public (הצהרות איכות הסביבה וכו׳) */
 const ENV_QUALITY_DECLARATIONS_PDF = `${process.env.PUBLIC_URL}/documents/hatsara-misrad-habriyot.pdf`;
+const ENV_QUALITY_DECLARATIONS_FILENAME = 'hatsara-misrad-habriyot.pdf';
 
-/** צפייה ב-PDF מקומי — מסך מלא + חזרה + הורדה */
-function StaticPdfViewer({ open, title, prominentSource, url, downloadFileName, onClose }) {
-  if (!open || !url) return null;
-  const ariaLabel = prominentSource ? `${prominentSource}${title ? ` — ${title}` : ''}` : title;
-  return (
-    <div
-      className="fixed inset-0 z-[221] flex flex-col bg-slate-950 text-white print:hidden"
-      dir="rtl"
-      role="dialog"
-      aria-modal="true"
-      aria-label={ariaLabel}
-    >
-      <div
-        className={`flex shrink-0 items-center justify-between gap-3 border-b border-white/10 bg-slate-900 px-4 shadow-lg ${prominentSource ? 'py-4 md:py-5' : 'py-3'}`}
-      >
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded-xl border border-white/20 bg-white/10 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-white/20"
-        >
-          חזרה
-        </button>
-        {prominentSource ? (
-          <div className="flex min-w-0 flex-1 flex-col items-center justify-center gap-1 px-2 text-center">
-            <span className="text-balance text-2xl font-black leading-[1.15] tracking-tight text-white md:text-4xl">
-              {prominentSource}
-            </span>
-            {title ? (
-              <span className="max-w-[min(100%,28rem)] text-xs font-bold text-slate-300 md:text-sm">{title}</span>
-            ) : null}
-          </div>
-        ) : (
-          <span className="min-w-0 flex-1 truncate text-center text-sm font-bold text-slate-100">{title}</span>
-        )}
-        <a
-          href={url}
-          download={downloadFileName || 'document.pdf'}
-          className="shrink-0 rounded-xl border border-emerald-500/40 bg-emerald-600/20 px-3 py-2 text-xs font-bold text-emerald-200 hover:bg-emerald-600/30"
-        >
-          הורדה
-        </a>
-      </div>
-      <div className="min-h-0 flex-1 bg-slate-900 p-2">
-        <iframe title={ariaLabel} src={url} className="h-full w-full rounded-lg border-0 bg-white" />
-      </div>
-    </div>
-  );
+/** פתיחה ישירה של PDF (דפדפן / מציג מערכת) — במיוחד במובייל */
+function openEnvQualityDeclarationsPdf() {
+  const url = ENV_QUALITY_DECLARATIONS_PDF;
+  const opened = window.open(url, '_blank', 'noopener,noreferrer');
+  if (opened) return;
+  const link = document.createElement('a');
+  link.href = url;
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer';
+  link.download = ENV_QUALITY_DECLARATIONS_FILENAME;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
 }
 
 /** צפייה במפרט טכני בהצעת מחיר (מסך מלא + חזרה) */
@@ -2230,7 +2214,6 @@ export default function App() {
   const [currentTime, setCurrentTime] = useState(Date.now()); 
   const [clientSignature, setClientSignature] = useState(null); // סטייט לשמירת החתימה הדיגיטלית
   const [quoteDatasheetViewer, setQuoteDatasheetViewer] = useState(null); // { title, datasheet } — צפייה במפרט טכני בהצעה
-  const [envDeclarationsPdfOpen, setEnvDeclarationsPdfOpen] = useState(false);
   /** טעינת הצעה משותפת מ־/q/:id */
   const [shareQuoteLoad, setShareQuoteLoad] = useState({ phase: 'idle', message: '', waHref: null });
   const [shareLinkFeedback, setShareLinkFeedback] = useState(null);
@@ -2594,6 +2577,15 @@ export default function App() {
       window.matchMedia('(max-width: 900px), (pointer: coarse)').matches;
     const isPdf = String(n.mimeType || '').toLowerCase().includes('pdf');
     if (isMobileLike && isPdf) {
+      // #region agent log
+      emitAgentDebugLog('run-pre-fix', 'H5', 'App.js:2613', 'Opening datasheet via mobile direct PDF path', {
+        title,
+        isMobileLike,
+        isPdf,
+        mimeType: n.mimeType,
+        fileName: n.fileName,
+      });
+      // #endregion
       const opened = window.open(src, '_blank', 'noopener,noreferrer');
       if (!opened) window.location.href = src;
       return;
@@ -2759,18 +2751,23 @@ export default function App() {
 
   const getSolarEdgeStatus = () => {
     let hasSolarEdge = false;
-    let maxSECapacity = 0;
     const activeInvertersForm = quoteForm.inverterSystemType === 'hybrid' ? quoteForm.selectedHybridInverters : quoteForm.selectedInverters;
     const activeInvertersAdmin = quoteForm.inverterSystemType === 'hybrid' ? adminPrices.invertersHybrid : adminPrices.inverters;
 
     activeInvertersForm.forEach(sel => {
       const invData = activeInvertersAdmin.find(i => i.id === sel.id);
-      if (invData && invData.isSolarEdge && sel.quantity > 0) {
+      if (invData && invData.isSolarEdge && (Number(sel.quantity) || 0) > 0) {
         hasSolarEdge = true;
-        if (invData.capacityKw > maxSECapacity) { maxSECapacity = invData.capacityKw; }
       }
     });
-    return { hasSolarEdge, maxSECapacity };
+    return { hasSolarEdge };
+  };
+
+  /** SolarEdge אופטימייזרים: לפי גודל AC בהצעה — ≤15 kW → 1:1, מ-16 kW → 1:2 */
+  const solarEdgeOptimizerUsesOneToTwo = (acKw) => {
+    const ac = parseFloat(acKw);
+    if (!Number.isFinite(ac)) return false;
+    return ac >= 16;
   };
 
   const getSungrowStatus = () => {
@@ -2890,6 +2887,16 @@ export default function App() {
       });
       batteryDetailsList.push(...batteryById.values());
     }
+    // #region agent log
+    emitAgentDebugLog('run-pre-fix', 'H1', 'App.js:2916', 'Battery selection calculation in quote', {
+      inverterSystemType: quoteForm.inverterSystemType,
+      includesBatteries: quoteForm.includesBatteries,
+      hasBatteries,
+      selectedBatteries: quoteForm.selectedBatteries,
+      batteryDetailsCount: batteryDetailsList.length,
+      batteryUnits: batteryDetailsList.map((b) => ({ id: b.id, quantity: b.quantity, unitKwh: b.unitKwh })),
+    });
+    // #endregion
     
     let optimizersCost = 0;
     let optimizerDetails = { type: 'ללא', quantity: 0 };
@@ -2899,7 +2906,7 @@ export default function App() {
       const seStatus = getSolarEdgeStatus();
       const sgStatus = getSungrowStatus();
       if (seStatus.hasSolarEdge) {
-        if (seStatus.maxSECapacity > 15) {
+        if (solarEdgeOptimizerUsesOneToTwo(acKw)) {
           const optQty = Math.ceil(numPanels / 2);
           optimizersCost = optQty * (Number(adminPrices.optimizerPrices?.se1to2) || 350);
           optimizerDetails = { type: 'SolarEdge 1:2', quantity: optQty };
@@ -3164,6 +3171,15 @@ export default function App() {
     const metrics = recomputeInvestmentMetrics(quoteDraft, amount, adminPrices);
     const showLimitedOffer = Boolean(quoteDraft.showLimitedOffer);
     const offerExpiresAt = showLimitedOffer ? Date.now() + 7 * 24 * 60 * 60 * 1000 : null;
+    // #region agent log
+    emitAgentDebugLog('run-pre-fix', 'H2', 'App.js:3200', 'Quote draft promoted to generated quote', {
+      hasBatteries: quoteDraft.hasBatteries,
+      includesBatteries: quoteDraft.includesBatteries,
+      batteryDetailsCount: Array.isArray(quoteDraft.batteryDetailsList) ? quoteDraft.batteryDetailsList.length : -1,
+      includesOptimizers: quoteDraft.includesOptimizers,
+      inverterSystemType: quoteDraft.inverterSystemType,
+    });
+    // #endregion
     setGeneratedQuote({
       ...quoteDraft,
       ...metrics,
@@ -3337,6 +3353,19 @@ export default function App() {
     () => aggregateBatteryStorageSummary(generatedQuote?.batteryDetailsList),
     [generatedQuote?.batteryDetailsList]
   );
+  useEffect(() => {
+    if (!generatedQuote) return;
+    // #region agent log
+    emitAgentDebugLog('run-pre-fix', 'H3-H4', 'App.js:3356', 'Generated quote values used by summary and warranty UI', {
+      hasBatteries: generatedQuote.hasBatteries,
+      includesBatteries: generatedQuote.includesBatteries,
+      batteryDetailsCount: Array.isArray(generatedQuote.batteryDetailsList) ? generatedQuote.batteryDetailsList.length : -1,
+      batterySummaryKwh: quoteBatteryStorageSummary?.totalKwh ?? null,
+      batterySummaryUnits: quoteBatteryStorageSummary?.totalUnits ?? null,
+      includesOptimizers: generatedQuote.includesOptimizers,
+    });
+    // #endregion
+  }, [generatedQuote, quoteBatteryStorageSummary]);
 
   // --- מסך התחברות (Login Screen) ---
   if (!currentUser) {
@@ -4254,7 +4283,7 @@ export default function App() {
                         {quoteForm.includesOptimizers && (
                           <div className="px-4 pb-4 pt-2 border-t border-white/8 bg-black/15 ml-12 space-y-3">
                             {seStatusDisplay.hasSolarEdge ? (
-                               <p className="text-sm text-blue-300">זוהה ממיר SolarEdge במערכת ({seStatusDisplay.maxSECapacity > 15 ? 'מסוג 1:2' : 'מסוג 1:1'}).</p>
+                               <p className="text-sm text-blue-300">זוהה ממיר SolarEdge במערכת — לפי הספק AC ({quoteForm.systemSizeAcKw} kWp): {solarEdgeOptimizerUsesOneToTwo(quoteForm.systemSizeAcKw) ? 'אופטימייזרים 1:2' : 'אופטימייזרים 1:1'}.</p>
                             ) : sgStatusDisplay.hasSungrow ? (
                                <>
                                  <p className="text-sm text-orange-300">זוהה ממיר Sungrow — אופטימייזרים לפי מחירון Sungrow (ברירת מחדל: מספר הפאנלים).</p>
@@ -4461,14 +4490,6 @@ export default function App() {
                 datasheet={quoteDatasheetViewer?.datasheet}
                 onClose={() => setQuoteDatasheetViewer(null)}
               />
-              <StaticPdfViewer
-                open={envDeclarationsPdfOpen}
-                prominentSource="משרד הבריאות"
-                title="הצהרות איכות הסביבה"
-                url={ENV_QUALITY_DECLARATIONS_PDF}
-                downloadFileName="hatsara-misrad-habriyot.pdf"
-                onClose={() => setEnvDeclarationsPdfOpen(false)}
-              />
               {/* Toolbar */}
               <div className="max-w-6xl mx-auto flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between mb-8 px-4 print:hidden">
                  {currentUser.role !== 'viewer' ? (
@@ -4525,7 +4546,7 @@ export default function App() {
               <div className="max-w-6xl mx-auto mb-8 px-4 print:hidden">
                 <button
                   type="button"
-                  onClick={() => setEnvDeclarationsPdfOpen(true)}
+                  onClick={openEnvQualityDeclarationsPdf}
                   className="flex w-full items-center justify-center gap-3 rounded-full bg-gradient-to-r from-orange-500 via-orange-500 to-orange-600 py-4 px-6 text-base font-black text-white shadow-xl ring-1 ring-orange-400/30 transition-all hover:from-orange-600 hover:to-orange-700 hover:shadow-2xl hover:ring-orange-300/40 active:scale-[0.99]"
                   style={{ boxShadow: '0 18px 40px -12px rgba(249,115,22,0.55)' }}
                 >
@@ -4533,7 +4554,7 @@ export default function App() {
                   <FileText className="h-6 w-6 shrink-0 opacity-95" aria-hidden />
                 </button>
                 <p className="mt-2 text-center text-[11px] text-slate-500">
-                  המסמך נטען מהמערכת — לחיצה פותחת תצוגה; אין צורך להוריד קובץ נפרד לצפייה.
+                  לחיצה פותחת את קובץ ה-PDF ישירות (מציג הדפדפן או הורדה).
                 </p>
               </div>
               
@@ -4614,13 +4635,14 @@ export default function App() {
                 </section>
 
                 {/* --- סיכום מערכת, מספרים ומחיר (עמוד 2) --- */}
-                <section className="quote-print-summary border-b border-slate-200 bg-slate-50 px-4 py-8 sm:px-8 md:px-20 print:py-4">
+                <section className="quote-print-section quote-print-summary border-b border-slate-200 bg-slate-50 px-4 py-8 sm:px-8 md:px-20 print:py-4">
                   <div className="mx-auto max-w-6xl">
-                    <h2 className="mb-6 text-center text-2xl font-black text-blue-900 sm:text-3xl print:mb-3 print:text-xl">
-                      סיכום המערכת וההשקעה
-                    </h2>
                     <div className="quote-print-avoid-split">
-                    <QuoteSystemSpecSummary quote={generatedQuote} />
+                      <h2 className="mb-6 text-center text-2xl font-black text-blue-900 sm:text-3xl print:mb-3 print:text-xl">
+                        סיכום המערכת וההשקעה
+                      </h2>
+                      <QuoteSystemSpecSummary quote={generatedQuote} />
+                    </div>
                     {quoteShowsLimitedOffer && (
                       <QuoteLimitedOfferBanner
                         timeLeft={timeLeft}
@@ -4651,13 +4673,12 @@ export default function App() {
                         />
                       </div>
                     </div>
-                    </div>
                   </div>
                 </section>
 
                 {quoteShowEquipmentBrandsSection && (
                 <section
-                  className="quote-print-page-break relative overflow-hidden border-y border-white/5 print:border-slate-200"
+                  className="quote-print-section relative overflow-hidden border-y border-white/5 print:border-slate-200"
                   aria-labelledby="quote-equipment-brands-heading"
                 >
                   {/* מעבר חזותי משער כהה לעמוד בהיר — הרקע הכהה «מבטל» את מלבן השחור בקבצי PNG ונותן תחושת שקיפות */}
@@ -5044,7 +5065,7 @@ export default function App() {
                 )}
 
                 {/* --- תחזית כלכלית (עמוד נפרד) --- */}
-                <section className="quote-print-page-break py-8 px-4 sm:px-8 md:py-12 md:px-20 print:py-4">
+                <section className="quote-print-section py-8 px-4 sm:px-8 md:py-12 md:px-20 print:py-4">
                    <h2 className="mb-6 text-center text-2xl font-black text-blue-900 sm:text-3xl">תחזית כלכלית מפורטת</h2>
 
                    {/* Custom Financial Chart (CSS Based) */}
@@ -5114,7 +5135,7 @@ export default function App() {
                        teaser={`רווח נטו צפוי ל־25 שנה: ₪${Math.round(
                          generatedQuote.loanSimulation.reduce((acc, row) => acc + row.netProfit, 0)
                        ).toLocaleString('he-IL')}`}
-                       className="max-w-5xl quote-print-page-break"
+                       className="max-w-5xl"
                      >
                      <div className="quote-print-loan-block bg-white border border-slate-200 rounded-3xl p-6 md:p-8 shadow-lg overflow-hidden print:p-3 print:shadow-none print:border-slate-300">
                         <p className="text-slate-600 mb-4 text-sm leading-relaxed">
@@ -5173,7 +5194,7 @@ export default function App() {
                 </section>
 
                 {/* --- מי אנחנו --- */}
-                <section className="quote-print-page-break py-10 px-4 sm:px-8 md:px-20 bg-slate-50 print:py-5">
+                <section className="quote-print-section py-10 px-4 sm:px-8 md:px-20 bg-slate-50 print:py-5">
                    <div className="max-w-4xl mx-auto text-center mb-8">
                      <h2 className="text-2xl md:text-3xl font-black text-blue-900 mb-3">מי אנחנו? המומחים שלכם באנרגיה סולארית</h2>
                      <p className="text-base text-slate-600">אנו חברת בוטיק המתמחה בפתרונות אנרגיה מתקדמים — איכות, מקצועיות ושירות אישי.</p>
@@ -5208,7 +5229,7 @@ export default function App() {
                 </section>
 
                 {/* --- Turn-Key --- */}
-                <section className="quote-print-page-break py-10 px-4 sm:px-8 md:px-20 bg-white border-t border-slate-200 print:py-5">
+                <section className="quote-print-section py-10 px-4 sm:px-8 md:px-20 bg-white border-t border-slate-200 print:py-5">
                   <h2 className="text-2xl md:text-3xl font-black mb-8 text-center text-blue-900">מה כלול בפרויקט Turn-Key?</h2>
                   
                   <div className="mx-auto max-w-3xl mb-8">
@@ -5256,7 +5277,7 @@ export default function App() {
                 </section>
 
                 {/* --- מפרט טכני — בהדפסה תמיד פתוח --- */}
-                <section className="quote-print-page-break py-6 px-4 sm:px-8 md:px-20 bg-white print:py-4">
+                <section className="quote-print-section py-6 px-4 sm:px-8 md:px-20 bg-white print:py-4">
                    <QuoteExpandableSection
                      title="פירוט מלא של מפרט טכני"
                      subtitle="אביזרי חשמל, קונסטרוקציה, DC/AC והגנות וניטור"
@@ -5334,7 +5355,7 @@ export default function App() {
                 </section>
 
                 {/* --- תנאי תשלום ואחריות --- */}
-                <section className="quote-print-page-break py-10 px-4 sm:px-8 md:px-20 bg-slate-50 print:py-5">
+                <section className="quote-print-section py-10 px-4 sm:px-8 md:px-20 bg-slate-50 print:py-5">
                    <h2 className="text-2xl md:text-3xl font-black text-blue-900 mb-8 text-center">תנאי תשלום ואחריות</h2>
                    
                    <div className="mx-auto grid max-w-5xl grid-cols-1 gap-6 md:grid-cols-2 md:items-stretch lg:gap-8">
@@ -5419,7 +5440,7 @@ export default function App() {
 
                 {/* --- PAGE 6.1: ADDITIONAL NOTES (CONDITIONAL) --- */}
                 {generatedQuote.additionalNotes && generatedQuote.additionalNotes.trim() !== '' && (
-                  <section className="quote-print-page-break py-10 px-8 md:px-20 bg-white border-t border-slate-200 print:py-5">
+                  <section className="quote-print-section py-10 px-8 md:px-20 bg-white border-t border-slate-200 print:py-5">
                      <div className="max-w-4xl mx-auto bg-blue-50 border border-blue-100 p-8 rounded-3xl shadow-sm">
                         <h3 className="text-2xl font-bold text-blue-900 mb-4 flex items-center gap-2">
                            <FileText className="w-6 h-6 text-blue-600" /> סיכומים נוספים
@@ -5456,7 +5477,7 @@ export default function App() {
                 </section>
 
                 {/* --- חתימה — עמוד אחרון --- */}
-                <section className="quote-print-page-break py-16 px-8 md:px-20 bg-white border-t border-slate-200 print:py-8">
+                <section className="quote-print-chapter-start quote-print-section py-16 px-8 md:px-20 bg-white border-t border-slate-200 print:py-8">
                    <div className="max-w-4xl mx-auto">
                      <div className="flex items-center gap-3 mb-6">
                         <div className="p-3 bg-blue-100 text-blue-600 rounded-xl"><PenTool className="w-6 h-6" /></div>

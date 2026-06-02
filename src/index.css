@@ -116,9 +116,22 @@ html, body {
 
   /* גרף תזרים — גובה מוגבל כדי לא לדחוף דף חצי ריק */
   #quote-presentation .quote-print-cashflow-chart {
-    height: 10rem !important;
+    height: 9.5rem !important;
     margin-top: 0.5rem !important;
-    margin-bottom: 0.25rem !important;
+    margin-bottom: 1.75rem !important;
+    overflow: visible !important;
+  }
+
+  #quote-presentation .quote-print-cashflow-chart > .absolute.-bottom-8,
+  #quote-presentation .quote-print-cashflow-chart .absolute.-bottom-8 {
+    position: relative !important;
+    bottom: auto !important;
+    margin-top: 0.15rem !important;
+  }
+
+  #quote-presentation .quote-print-cover h1 {
+    font-size: 20pt !important;
+    margin-bottom: 0.2em !important;
   }
 
   /* טבלת הלוואה — שורות צפופות יותר */
@@ -146,32 +159,55 @@ html, body {
     object-fit: contain !important;
   }
 
-  /* --- עמודים לוגיים ב-PDF (שמירה מהדפדפן) --- */
+  /* כותרות — לא לפצל בין עמודים (מונע דף עם שורת כותרת בלבד) */
+  #quote-presentation h2,
+  #quote-presentation h3,
+  #quote-presentation h4 {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  /* --- עמוד שער — קומפקטי, בלי כפיית דף ריק אחריו --- */
   #quote-presentation .quote-print-cover {
     min-height: 0 !important;
     height: auto !important;
     max-height: none !important;
-    padding-top: 5mm !important;
-    padding-bottom: 4mm !important;
-    break-after: page;
-    page-break-after: always;
+    padding-top: 4mm !important;
+    padding-bottom: 3mm !important;
+    break-after: auto;
+    page-break-after: auto;
     break-inside: avoid;
     page-break-inside: avoid;
   }
 
   #quote-presentation .quote-print-cover .quote-print-cover-hero-img {
-    max-height: 52mm !important;
-    height: 52mm !important;
+    max-height: 48mm !important;
+    height: 48mm !important;
   }
 
-  #quote-presentation .quote-print-page-break {
+  /* פרק חדש רק כשמסומן במפורש (חתימה וכו׳) */
+  #quote-presentation .quote-print-chapter-start {
     break-before: page;
     page-break-before: always;
+  }
+
+  /* מקטע רגיל — זרימה רציפה, בלי דף חדש אוטומטי */
+  #quote-presentation .quote-print-section {
+    break-before: auto;
+    page-break-before: auto;
+    break-inside: auto;
+    page-break-inside: auto;
   }
 
   #quote-presentation .quote-print-avoid-split {
     break-inside: avoid;
     page-break-inside: avoid;
+  }
+
+  /* ישן — לא לשבור עמוד לפני כל בלוק */
+  #quote-presentation .quote-print-page-break {
+    break-before: auto;
+    page-break-before: auto;
   }
 
   #quote-presentation .quote-print-summary {
@@ -192,8 +228,8 @@ html, body {
   }
 
   #quote-presentation .quote-print-loan-block table tr {
-    break-inside: avoid;
-    page-break-inside: avoid;
+    break-inside: auto;
+    page-break-inside: auto;
   }
 
   #quote-presentation .quote-print-tech-spec {
@@ -215,8 +251,14 @@ html, body {
   }
 
   #quote-presentation .quote-print-equipment-strip {
-    break-inside: avoid;
-    page-break-inside: avoid;
+    break-inside: auto;
+    page-break-inside: auto;
+  }
+
+  .animation-fade-in {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
   }
 }
 
