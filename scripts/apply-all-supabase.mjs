@@ -9,6 +9,7 @@
  */
 
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
@@ -72,14 +73,24 @@ const SQL_FILES = [
 function runViaSupabaseCli(file) {
   const sqlPath = path.join(root, 'supabase', file);
   const sql = fs.readFileSync(sqlPath, 'utf8');
-  const r = spawnSync(
-    'npx',
-    ['--yes', 'supabase@2', 'db', 'query', '--linked'],
-    { cwd: root, input: sql, stdio: ['pipe', 'pipe', 'pipe'], encoding: 'utf8', shell: false }
-  );
-  if (r.status !== 0) {
-    const err = (r.stderr || r.stdout || '').trim();
-    throw new Error(err || `supabase db query failed for ${file}`);
+  const tmpFile = path.join(os.tmpdir(), `supabase-apply-${file.replace(/[^\w.-]/g, '_')}`);
+  try {
+    fs.writeFileSync(tmpFile, sql, 'utf8');
+    const r = spawnSync(
+      'npx',
+      ['--yes', 'supabase@2', 'db', 'query', '--linked', '-f', tmpFile],
+      { cwd: root, stdio: 'pipe', encoding: 'utf8', shell: true }
+    );
+    if (r.status !== 0) {
+      const err = (r.stderr || r.stdout || '').trim();
+      throw new Error(err || `supabase db query failed for ${file}`);
+    }
+  } finally {
+    try {
+      fs.unlinkSync(tmpFile);
+    } catch {
+      /* ignore */
+    }
   }
 }
 
