@@ -129,7 +129,7 @@ const QUOTE_EQUIP_BELOW_CAPTION_CLASS =
   'block text-center text-sm font-bold leading-snug text-slate-50 md:text-base print:text-slate-900 px-1 [text-shadow:0_1px_3px_rgba(0,0,0,0.92),0_2px_10px_rgba(0,0,0,0.65)] print:[text-shadow:none]';
 
 const QUOTE_EQUIP_BELOW_HINT_CLASS =
-  'mt-1.5 block text-center text-xs font-bold leading-snug text-orange-100 md:text-sm print:text-blue-900 [text-shadow:0_1px_2px_rgba(0,0,0,0.9)] print:[text-shadow:none]';
+  'mt-1.5 block text-center text-xs font-bold leading-snug text-orange-100 md:text-sm print:hidden';
 
 /** מעטפת זהה לכל קוביות הציוד */
 const QUOTE_CARD_SHELL =
@@ -1310,7 +1310,7 @@ function QuoteEquipDatasheetCaption({ datasheet, datasheetTitle, onOpen, childre
     <button
       type="button"
       onClick={() => onOpen(datasheetTitle, datasheet)}
-      className={`${QUOTE_EQUIP_BELOW_CAPTION_CLASS} w-full max-w-full cursor-pointer rounded-lg border-0 bg-transparent p-0 text-inherit transition-colors hover:text-orange-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400/60 active:text-orange-300`}
+      className={`${QUOTE_EQUIP_BELOW_CAPTION_CLASS} w-full max-w-full cursor-pointer rounded-lg border-0 bg-transparent p-0 text-inherit transition-colors hover:text-orange-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400/60 active:text-orange-300 print:pointer-events-none print:cursor-default`}
     >
       {children}
       <span className={QUOTE_EQUIP_BELOW_HINT_CLASS}>לחץ לצפייה במפרט</span>
@@ -4678,7 +4678,7 @@ export default function App() {
 
                 {quoteShowEquipmentBrandsSection && (
                 <section
-                  className="quote-print-section relative overflow-hidden border-y border-white/5 print:border-slate-200"
+                  className="quote-print-section quote-print-chapter-equipment relative overflow-hidden border-y border-white/5 print:border-slate-200"
                   aria-labelledby="quote-equipment-brands-heading"
                 >
                   {/* מעבר חזותי משער כהה לעמוד בהיר — הרקע הכהה «מבטל» את מלבן השחור בקבצי PNG ונותן תחושת שקיפות */}
@@ -5065,11 +5065,11 @@ export default function App() {
                 )}
 
                 {/* --- תחזית כלכלית (עמוד נפרד) --- */}
-                <section className="quote-print-section py-8 px-4 sm:px-8 md:py-12 md:px-20 print:py-4">
+                <section className="quote-print-section quote-print-chapter-financial py-8 px-4 sm:px-8 md:py-12 md:px-20 print:py-4">
                    <h2 className="mb-6 text-center text-2xl font-black text-blue-900 sm:text-3xl">תחזית כלכלית מפורטת</h2>
 
                    {/* Custom Financial Chart (CSS Based) */}
-                   <div className="quote-print-avoid-split bg-white border border-slate-200 rounded-2xl p-5 mb-8 shadow-md print:mb-4 print:p-3">
+                   <div className="bg-white border border-slate-200 rounded-2xl p-5 mb-8 shadow-md print:mb-4 print:p-3 quote-print-avoid-split">
                       <h3 className="text-lg font-bold text-blue-900 mb-4 flex items-center gap-2 print:mb-2 print:text-base"><TrendingUp className="text-orange-500 w-5 h-5"/> תחזית תזרים מזומנים (25 שנה)</h3>
                       
                       <div className="quote-print-cashflow-chart h-48 sm:h-52 flex items-end justify-between gap-2 md:gap-6 mt-6 relative border-b-2 border-slate-300 pb-2 print:mt-3 print:h-36">
@@ -5194,7 +5194,7 @@ export default function App() {
                 </section>
 
                 {/* --- מי אנחנו --- */}
-                <section className="quote-print-section py-10 px-4 sm:px-8 md:px-20 bg-slate-50 print:py-5">
+                <section className="quote-print-section quote-print-chapter-about py-10 px-4 sm:px-8 md:px-20 bg-slate-50 print:py-5">
                    <div className="max-w-4xl mx-auto text-center mb-8">
                      <h2 className="text-2xl md:text-3xl font-black text-blue-900 mb-3">מי אנחנו? המומחים שלכם באנרגיה סולארית</h2>
                      <p className="text-base text-slate-600">אנו חברת בוטיק המתמחה בפתרונות אנרגיה מתקדמים — איכות, מקצועיות ושירות אישי.</p>
@@ -5252,7 +5252,7 @@ export default function App() {
                                    <span className="text-green-700">אופטימייזרים:</span>{' '}
                                    התקנת אופטימייזרים למיקסום תפוקה ({generatedQuote.optimizerDetails.type}).
                                  </p>
-                                 <span className="mt-2 block text-sm font-black text-orange-600 underline decoration-2 underline-offset-4 md:text-base">
+                                 <span className="mt-2 block text-sm font-black text-orange-600 underline decoration-2 underline-offset-4 md:text-base print:hidden">
                                    לחץ לצפייה במפרט
                                  </span>
                                </button>

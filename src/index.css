@@ -167,15 +167,15 @@ html, body {
     page-break-after: avoid;
   }
 
-  /* --- עמוד שער — קומפקטי, בלי כפיית דף ריק אחריו --- */
+  /* --- עמוד שער — עמוד 1 נפרד, סיכום מתחיל בעמוד 2 שלם --- */
   #quote-presentation .quote-print-cover {
     min-height: 0 !important;
     height: auto !important;
     max-height: none !important;
     padding-top: 4mm !important;
     padding-bottom: 3mm !important;
-    break-after: auto;
-    page-break-after: auto;
+    break-after: page;
+    page-break-after: always;
     break-inside: avoid;
     page-break-inside: avoid;
   }
@@ -185,18 +185,31 @@ html, body {
     height: 48mm !important;
   }
 
-  /* פרק חדש רק כשמסומן במפורש (חתימה וכו׳) */
-  #quote-presentation .quote-print-chapter-start {
-    break-before: page;
-    page-break-before: always;
+  #quote-presentation .quote-print-hide-interactive {
+    display: none !important;
   }
 
-  /* מקטע רגיל — זרימה רציפה, בלי דף חדש אוטומטי */
+  /* מקטע רגיל — זרימה רציפה */
   #quote-presentation .quote-print-section {
     break-before: auto;
     page-break-before: auto;
     break-inside: auto;
     page-break-inside: auto;
+  }
+
+  /* סיכום — מיד אחרי שער, בלי פיצול כותרת */
+  #quote-presentation .quote-print-section.quote-print-summary {
+    break-before: avoid;
+    page-break-before: avoid;
+  }
+
+  /* פרקים עיקריים — עמוד נפרד לכל אחד */
+  #quote-presentation .quote-print-section.quote-print-chapter-equipment,
+  #quote-presentation .quote-print-section.quote-print-chapter-financial,
+  #quote-presentation .quote-print-section.quote-print-chapter-about,
+  #quote-presentation .quote-print-section.quote-print-chapter-start {
+    break-before: page;
+    page-break-before: always;
   }
 
   #quote-presentation .quote-print-avoid-split {
@@ -210,12 +223,12 @@ html, body {
     page-break-before: auto;
   }
 
-  #quote-presentation .quote-print-summary {
+  #quote-presentation .quote-print-section.quote-print-summary {
     padding-top: 0.4rem !important;
     padding-bottom: 0.45rem !important;
   }
 
-  #quote-presentation .quote-print-summary h2 {
+  #quote-presentation .quote-print-section.quote-print-summary h2 {
     margin-bottom: 0.35rem !important;
   }
 
