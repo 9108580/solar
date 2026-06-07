@@ -63,6 +63,49 @@ function quoteShareAbsoluteUrl(quoteId) {
   return `${window.location.origin}${base}/q/${quoteId}`;
 }
 
+/** העתקה סינכרונית ללוח (fallback: textarea + execCommand) */
+async function copyTextSync(text) {
+  const value = String(text ?? '');
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(value);
+    return;
+  }
+  const textarea = document.createElement('textarea');
+  textarea.value = value;
+  textarea.setAttribute('readonly', '');
+  textarea.style.position = 'fixed';
+  textarea.style.left = '-9999px';
+  document.body.appendChild(textarea);
+  textarea.select();
+  try {
+    const ok = document.execCommand('copy');
+    if (!ok) throw new Error('execCommand copy failed');
+  } finally {
+    document.body.removeChild(textarea);
+  }
+}
+
+/**
+ * העתקה אחרי פעולה אסינכרונית — Safari/iOS דורש ClipboardItem עם Promise
+ * כדי לשמור על user gesture בזמן insert ל-Supabase.
+ */
+async function copyTextRespectingUserGesture(textPromise) {
+  if (navigator.clipboard?.write && typeof ClipboardItem !== 'undefined') {
+    await navigator.clipboard.write([
+      new ClipboardItem({
+        'text/plain': textPromise.then((t) => new Blob([String(t)], { type: 'text/plain' })),
+      }),
+    ]);
+    return;
+  }
+  const text = await textPromise;
+  await copyTextSync(text);
+}
+
+function canUseNativeShare() {
+  return typeof navigator !== 'undefined' && typeof navigator.share === 'function';
+}
+
 function buildWhatsappMeLink(rawPhone, message) {
   const digits = String(rawPhone || '').replace(/\D/g, '');
   let clean = digits;
@@ -2320,14 +2363,20 @@ export default function App() {
     return undefined;
   }, [shareQuoteId, urbanPremiumCities]);
 
+  const scheduleShareLinkFeedbackClear = useCallback((ms) => {
+    window.setTimeout(() => setShareLinkFeedback(null), ms);
+  }, []);
+
   const handleCreateShareLink = useCallback(async () => {
     if (!generatedQuote) return;
     if (!supabase) {
       setShareLinkFeedback({ type: 'error', text: 'אין חיבור ל-Supabase.' });
+      scheduleShareLinkFeedbackClear(12000);
       return;
     }
     if (typeof crypto === 'undefined' || !crypto.randomUUID) {
       setShareLinkFeedback({ type: 'error', text: 'הדפדפן לא תומך ביצירת מזהה בטוח.' });
+      scheduleShareLinkFeedbackClear(12000);
       return;
     }
     setShareLinkBusy(true);
@@ -2338,7 +2387,8 @@ export default function App() {
     const agentPhone = String(generatedQuote?.agentDetails?.phone || adminPrices.companyPhone || '').trim();
     const agentName = String(generatedQuote?.agentDetails?.name || '').trim();
     const companyPhone = String(adminPrices.companyPhone || '').trim();
-    try {
+
+    const urlPromise = (async () => {
       const { error } = await supabase.from('shared_quotes').insert({
         id,
         payload: generatedQuote,
@@ -2348,21 +2398,28 @@ export default function App() {
         company_phone: companyPhone || null,
       });
       if (error) throw error;
-      const url = quoteShareAbsoluteUrl(id);
+      return quoteShareAbsoluteUrl(id);
+    })();
+
+    try {
+      let copied = false;
       try {
-        await navigator.clipboard.writeText(url);
-        setShareLinkFeedback({
-          type: 'success',
-          text: 'הקישור הועתק ללוח. תוקף: 14 ימים.',
-          url,
-        });
+        await copyTextRespectingUserGesture(urlPromise);
+        copied = true;
       } catch {
-        setShareLinkFeedback({
-          type: 'success',
-          text: 'הקישור נוצר (תוקף 14 ימים) — העתק ידנית:',
-          url,
-        });
+        copied = false;
       }
+
+      const url = await urlPromise;
+      setShareLinkFeedback({
+        type: 'success',
+        text: copied
+          ? 'הקישור הועתק ללוח. תוקף: 14 ימים.'
+          : 'הקישור נוצר (תוקף 14 ימים) — לחצו «העתק קישור»:',
+        url,
+        copied,
+      });
+      scheduleShareLinkFeedbackClear(copied ? 12000 : 60000);
     } catch (err) {
       const raw = err?.message != null ? String(err.message) : String(err);
       const code = err?.code != null ? String(err.code) : '';
@@ -2388,11 +2445,51 @@ export default function App() {
         type: 'error',
         text,
       });
+      scheduleShareLinkFeedbackClear(12000);
     } finally {
       setShareLinkBusy(false);
-      window.setTimeout(() => setShareLinkFeedback(null), 12000);
     }
-  }, [supabase, generatedQuote, adminPrices]);
+  }, [supabase, generatedQuote, adminPrices, scheduleShareLinkFeedbackClear]);
+
+  const handleRetryCopyShareLink = useCallback(async () => {
+    const url = shareLinkFeedback?.url;
+    if (!url) return;
+    try {
+      await copyTextSync(url);
+      setShareLinkFeedback((prev) =>
+        prev
+          ? {
+              ...prev,
+              type: 'success',
+              text: 'הקישור הועתק ללוח. תוקף: 14 ימים.',
+              copied: true,
+            }
+          : prev
+      );
+      scheduleShareLinkFeedbackClear(12000);
+    } catch {
+      setShareLinkFeedback((prev) =>
+        prev
+          ? {
+              ...prev,
+              type: 'success',
+              text: 'לא ניתן להעתיק אוטומטית — בחרו את הקישור למטה והעתיקו ידנית:',
+              copied: false,
+            }
+          : prev
+      );
+      scheduleShareLinkFeedbackClear(60000);
+    }
+  }, [shareLinkFeedback?.url, scheduleShareLinkFeedbackClear]);
+
+  const handleShareQuoteLink = useCallback(async (url) => {
+    if (!url || !canUseNativeShare()) return;
+    try {
+      await navigator.share({ title: 'הצעת מחיר', url });
+    } catch (err) {
+      if (err?.name === 'AbortError') return;
+    }
+  }, []);
 
   useEffect(() => {
     let interval = null;
@@ -4616,7 +4713,31 @@ export default function App() {
                 >
                   <p className="text-sm font-semibold">{shareLinkFeedback.text}</p>
                   {shareLinkFeedback.url && (
-                    <p className="mt-1 break-all text-xs font-mono text-slate-400">{shareLinkFeedback.url}</p>
+                    <div className="mt-2 space-y-2">
+                      <p className="break-all text-xs font-mono text-slate-400">{shareLinkFeedback.url}</p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {!shareLinkFeedback.copied && (
+                          <button
+                            type="button"
+                            onClick={handleRetryCopyShareLink}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-600/25 px-3 py-1.5 text-xs font-bold text-emerald-100 transition-colors hover:bg-emerald-600/35"
+                          >
+                            <Copy className="h-3.5 w-3.5" aria-hidden />
+                            העתק קישור
+                          </button>
+                        )}
+                        {canUseNativeShare() && (
+                          <button
+                            type="button"
+                            onClick={() => handleShareQuoteLink(shareLinkFeedback.url)}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-blue-500/35 bg-blue-600/20 px-3 py-1.5 text-xs font-bold text-blue-100 transition-colors hover:bg-blue-600/30"
+                          >
+                            <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+                            שתף
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   )}
                 </div>
               )}
