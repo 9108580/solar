@@ -72,11 +72,23 @@ async function copyTextSync(text) {
   }
   const textarea = document.createElement('textarea');
   textarea.value = value;
-  textarea.setAttribute('readonly', '');
   textarea.style.position = 'fixed';
-  textarea.style.left = '-9999px';
+  textarea.style.top = '0';
+  textarea.style.left = '0';
+  textarea.style.width = '2em';
+  textarea.style.height = '2em';
+  textarea.style.padding = '0';
+  textarea.style.border = 'none';
+  textarea.style.outline = 'none';
+  textarea.style.boxShadow = 'none';
+  textarea.style.background = 'transparent';
+  textarea.style.fontSize = '16px';
   document.body.appendChild(textarea);
+  textarea.focus();
   textarea.select();
+  if (typeof textarea.setSelectionRange === 'function') {
+    textarea.setSelectionRange(0, value.length);
+  }
   try {
     const ok = document.execCommand('copy');
     if (!ok) throw new Error('execCommand copy failed');
@@ -90,7 +102,16 @@ async function copyTextSync(text) {
  * כדי לשמור על user gesture בזמן insert ל-Supabase.
  */
 async function copyTextRespectingUserGesture(textPromise) {
-  if (navigator.clipboard?.write && typeof ClipboardItem !== 'undefined') {
+  const hasClipboardItem =
+    Boolean(navigator.clipboard?.write) && typeof ClipboardItem !== 'undefined';
+  // #region agent log
+  emitShareLinkDebugLog('H2', 'copy-strategy', {
+    hasClipboardItem,
+    hasWriteText: Boolean(navigator.clipboard?.writeText),
+    ua: typeof navigator !== 'undefined' ? navigator.userAgent.slice(0, 80) : '',
+  });
+  // #endregion
+  if (hasClipboardItem) {
     await navigator.clipboard.write([
       new ClipboardItem({
         'text/plain': textPromise.then((t) => new Blob([String(t)], { type: 'text/plain' })),
@@ -196,6 +217,23 @@ const QUOTE_PROJECTS_MAP_VIEWER_URL = `https://www.google.com/maps/d/u/0/viewer?
 const QUOTE_PROJECTS_MAP_EMBED_URL = `https://www.google.com/maps/d/embed?mid=${QUOTE_PROJECTS_MAP_ID}&hl=iw&ll=31.93778024868962%2C35.098651000000025&z=8`;
 
 /** PDF print layout — debug session c91eed */
+function emitShareLinkDebugLog(hypothesisId, message, data) {
+  if (typeof window === 'undefined' || typeof fetch !== 'function') return;
+  fetch('http://127.0.0.1:7414/ingest/0129d7ab-3eb6-46ad-add7-b5ee7cb6277d', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'c91eed' },
+    body: JSON.stringify({
+      sessionId: 'c91eed',
+      runId: 'share-link',
+      hypothesisId,
+      location: 'App.js:share-link',
+      message,
+      data,
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+}
+
 function emitPdfDebugLog(hypothesisId, message, data) {
   if (typeof window === 'undefined' || typeof fetch !== 'function') return;
   fetch('http://127.0.0.1:7414/ingest/0129d7ab-3eb6-46ad-add7-b5ee7cb6277d', {
@@ -2279,6 +2317,7 @@ export default function App() {
   const [shareQuoteLoad, setShareQuoteLoad] = useState({ phase: 'idle', message: '', waHref: null });
   const [shareLinkFeedback, setShareLinkFeedback] = useState(null);
   const [shareLinkBusy, setShareLinkBusy] = useState(false);
+  const shareLinkFeedbackClearTimerRef = useRef(null);
 
   useEffect(() => {
     if (!shareQuoteId) {
@@ -2364,7 +2403,13 @@ export default function App() {
   }, [shareQuoteId, urbanPremiumCities]);
 
   const scheduleShareLinkFeedbackClear = useCallback((ms) => {
-    window.setTimeout(() => setShareLinkFeedback(null), ms);
+    if (shareLinkFeedbackClearTimerRef.current != null) {
+      window.clearTimeout(shareLinkFeedbackClearTimerRef.current);
+    }
+    shareLinkFeedbackClearTimerRef.current = window.setTimeout(() => {
+      shareLinkFeedbackClearTimerRef.current = null;
+      setShareLinkFeedback(null);
+    }, ms);
   }, []);
 
   const handleCreateShareLink = useCallback(async () => {
@@ -2401,16 +2446,32 @@ export default function App() {
       return quoteShareAbsoluteUrl(id);
     })();
 
+    // #region agent log
+    emitShareLinkDebugLog('H1', 'share-link-start', {
+      hasSupabase: Boolean(supabase),
+      hasClipboardWrite: Boolean(navigator.clipboard?.write),
+      hasClipboardItem: typeof ClipboardItem !== 'undefined',
+    });
+    // #endregion
     try {
       let copied = false;
+      let copyErrorName = null;
       try {
         await copyTextRespectingUserGesture(urlPromise);
         copied = true;
-      } catch {
+      } catch (copyErr) {
         copied = false;
+        copyErrorName = copyErr?.name || copyErr?.message || 'unknown';
       }
 
       const url = await urlPromise;
+      // #region agent log
+      emitShareLinkDebugLog('H1-H3', 'share-link-success', {
+        copied,
+        copyErrorName,
+        urlLength: url?.length ?? 0,
+      });
+      // #endregion
       setShareLinkFeedback({
         type: 'success',
         text: copied
@@ -2421,6 +2482,13 @@ export default function App() {
       });
       scheduleShareLinkFeedbackClear(copied ? 12000 : 60000);
     } catch (err) {
+      // #region agent log
+      emitShareLinkDebugLog('H4', 'share-link-supabase-error', {
+        errorName: err?.name,
+        errorCode: err?.code,
+        message: err?.message ? String(err.message).slice(0, 120) : null,
+      });
+      // #endregion
       const raw = err?.message != null ? String(err.message) : String(err);
       const code = err?.code != null ? String(err.code) : '';
       const combined = `${raw} ${code}`.toLowerCase();
@@ -2454,8 +2522,14 @@ export default function App() {
   const handleRetryCopyShareLink = useCallback(async () => {
     const url = shareLinkFeedback?.url;
     if (!url) return;
+    // #region agent log
+    emitShareLinkDebugLog('H3', 'retry-copy-start', { urlLength: url.length });
+    // #endregion
     try {
       await copyTextSync(url);
+      // #region agent log
+      emitShareLinkDebugLog('H3', 'retry-copy-success', { urlLength: url.length });
+      // #endregion
       setShareLinkFeedback((prev) =>
         prev
           ? {
@@ -2467,7 +2541,13 @@ export default function App() {
           : prev
       );
       scheduleShareLinkFeedbackClear(12000);
-    } catch {
+    } catch (retryErr) {
+      // #region agent log
+      emitShareLinkDebugLog('H3', 'retry-copy-failed', {
+        errorName: retryErr?.name,
+        message: retryErr?.message ? String(retryErr.message).slice(0, 80) : null,
+      });
+      // #endregion
       setShareLinkFeedback((prev) =>
         prev
           ? {
