@@ -63,6 +63,10 @@ function quoteShareAbsoluteUrl(quoteId) {
   return `${window.location.origin}${base}/q/${quoteId}`;
 }
 
+/** תוקף קישור הצעה ללקוח (לא קשור להטבת 7 ימים בהצעה) */
+const SHARE_LINK_VALIDITY_DAYS = 90;
+const SHARE_LINK_VALIDITY_LABEL_HE = '90 ימים';
+
 /** העתקה סינכרונית ללוח (fallback: textarea + execCommand) */
 async function copyTextSync(text) {
   const value = String(text ?? '');
@@ -2370,12 +2374,12 @@ export default function App() {
         const agentName = String(row.agent_name || '').trim();
         const phone = String(row.agent_phone || row.company_phone || '').trim();
         const greet = agentName ? `שלום ${agentName},` : 'שלום,';
-        const waText = `${greet} הקישור להצעת המחיר שקיבלתי כבר לא פעיל (פג תוקף של 14 ימים). אשמח לקבל שוב את ההצעה או להמשיך לשלב הבא. תודה!`;
+        const waText = `${greet} הקישור להצעת המחיר שקיבלתי כבר לא פעיל (פג תוקף של ${SHARE_LINK_VALIDITY_LABEL_HE}). אשמח לקבל שוב את ההצעה או להמשיך לשלב הבא. תודה!`;
         const waHref = buildWhatsappMeLink(phone, waText);
         setShareQuoteLoad({
           phase: 'expired',
           message:
-            'פג תוקף הקישור (14 ימים). לקבלת ההצעה מחדש — שלחו הודעה בוואטסאפ לסוכן/ת או למשרד.',
+            `פג תוקף הקישור (${SHARE_LINK_VALIDITY_LABEL_HE}). לקבלת ההצעה מחדש — שלחו הודעה בוואטסאפ לסוכן/ת או למשרד.`,
           waHref,
         });
         return;
@@ -2428,7 +2432,7 @@ export default function App() {
     setShareLinkFeedback(null);
     const id = crypto.randomUUID();
     const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 14);
+    expiresAt.setDate(expiresAt.getDate() + SHARE_LINK_VALIDITY_DAYS);
     const agentPhone = String(generatedQuote?.agentDetails?.phone || adminPrices.companyPhone || '').trim();
     const agentName = String(generatedQuote?.agentDetails?.name || '').trim();
     const companyPhone = String(adminPrices.companyPhone || '').trim();
@@ -2475,8 +2479,8 @@ export default function App() {
       setShareLinkFeedback({
         type: 'success',
         text: copied
-          ? 'הקישור הועתק ללוח. תוקף: 14 ימים.'
-          : 'הקישור נוצר (תוקף 14 ימים) — לחצו «העתק קישור»:',
+          ? `הקישור הועתק ללוח. תוקף: ${SHARE_LINK_VALIDITY_LABEL_HE}.`
+          : `הקישור נוצר (תוקף ${SHARE_LINK_VALIDITY_LABEL_HE}) — לחצו «העתק קישור»:`,
         url,
         copied,
       });
@@ -2535,7 +2539,7 @@ export default function App() {
           ? {
               ...prev,
               type: 'success',
-              text: 'הקישור הועתק ללוח. תוקף: 14 ימים.',
+              text: `הקישור הועתק ללוח. תוקף: ${SHARE_LINK_VALIDITY_LABEL_HE}.`,
               copied: true,
             }
           : prev

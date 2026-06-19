@@ -7,7 +7,7 @@
 --    "Reload schema" (אם קיים), או הריצו שוב רק את השורה NOTIFY למטה
 -- =============================================================================
 -- Per-quote share links (/q/:id). Idempotent — safe to re-run.
--- Links are valid 14 days; after expiry the client sees WhatsApp to the agent (no payload leak).
+-- Links are valid 90 days (set in app on insert); after expiry the client sees WhatsApp to the agent (no payload leak).
 
 create extension if not exists "pgcrypto";
 
