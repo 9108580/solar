@@ -39,7 +39,7 @@ create policy "shared_quotes_insert_anon"
   with check (true);
 
 -- Returns JSON: { ok, reason?, payload?, agent_phone?, agent_name?, company_phone? }
--- On expired: returns contact fields only, deletes row (one-time notice + cleanup).
+-- On expired: returns contact fields only; row is kept so TTL can be extended retroactively.
 create or replace function public.get_shared_quote(p_id uuid)
 returns jsonb
 language plpgsql
@@ -67,7 +67,6 @@ begin
       'agent_name', coalesce(r.agent_name, ''),
       'company_phone', coalesce(r.company_phone, '')
     );
-    delete from public.shared_quotes where id = p_id;
     return out;
   end if;
 

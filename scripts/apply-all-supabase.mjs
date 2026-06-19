@@ -65,6 +65,7 @@ function resolveDatabaseUrl() {
 const SQL_FILES = [
   'schema.sql',
   'shared_quotes.sql',
+  'extend_shared_quotes_ttl_90_days.sql',
   'admin_assets_storage.sql',
   'urban_premium_cities.sql',
   'remove_admin_settings_history.sql',
