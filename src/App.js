@@ -204,6 +204,9 @@ const QUOTE_PANELS_GENERIC_TITLE_HE = 'פאנלים סולאריים';
 const QUOTE_PANELS_GENERIC_BODY_HE =
   'מרשימת Tier 1 — עשרת המובילים בעולם, בטכנולוגיה המתקדמת ביותר.';
 
+/** תמונת פאנלים גנרית בהצעת לקוח (ללא מותג) */
+const QUOTE_PANELS_GENERIC_IMG = `${process.env.PUBLIC_URL}/hero-solar-rooftop.png`;
+
 /** תא פאנלים — מעט רחב יותר לטקסט דו-שורתי */
 const QUOTE_PANELS_STRIP_CELL =
   'flex w-[8.5rem] shrink-0 flex-col items-center gap-1 sm:w-[9.25rem] md:w-[10rem]';
@@ -5216,18 +5219,19 @@ export default function App() {
                       )}
                       {(generatedQuote.calculatedNumPanels || 0) > 0 && (
                         <div className={QUOTE_PANELS_STRIP_CELL}>
-                          <div className={`${QUOTE_BRAND_CARD_COMPACT_CLASS} gap-1.5 md:gap-2`}>
-                            <Sun
-                              className="h-9 w-9 shrink-0 text-amber-400 drop-shadow-md print:text-amber-600 md:h-10 md:w-10"
-                              aria-hidden
+                          <div className={QUOTE_EQUIP_LOGO_TILE_CLASS}>
+                            <img
+                              src={QUOTE_PANELS_GENERIC_IMG}
+                              alt=""
+                              className={`${QUOTE_EQUIP_PHOTO_TILE_IMG_CLASS} object-[50%_72%]`}
                             />
-                            <span className="px-1 text-center text-sm font-extrabold leading-tight text-white print:text-slate-900 md:text-base">
-                              {QUOTE_PANELS_GENERIC_TITLE_HE}
-                            </span>
-                            <span className="line-clamp-4 px-1 text-center text-[10px] font-semibold leading-snug text-slate-200 print:text-slate-700 md:text-[11px]">
-                              {QUOTE_PANELS_GENERIC_BODY_HE}
-                            </span>
                           </div>
+                          <span className={QUOTE_EQUIP_BELOW_CAPTION_CLASS}>
+                            {QUOTE_PANELS_GENERIC_TITLE_HE}
+                          </span>
+                          <span className="block px-1 text-center text-[10px] font-semibold leading-snug text-slate-300 md:text-xs print:text-slate-600 [text-shadow:0_1px_3px_rgba(0,0,0,0.85)] print:[text-shadow:none]">
+                            {QUOTE_PANELS_GENERIC_BODY_HE}
+                          </span>
                         </div>
                       )}
                       {generatedQuote.feesPayer === 'company' && (
