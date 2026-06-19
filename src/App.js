@@ -199,6 +199,15 @@ const QUOTE_EQUIP_BELOW_CAPTION_CLASS =
 const QUOTE_EQUIP_BELOW_HINT_CLASS =
   'mt-1.5 block text-center text-xs font-bold leading-snug text-orange-100 md:text-sm print:hidden';
 
+/** טקסט גנרי לפאנלים בהצעת לקוח — ללא מותג ספציפי */
+const QUOTE_PANELS_GENERIC_TITLE_HE = 'פאנלים סולאריים';
+const QUOTE_PANELS_GENERIC_BODY_HE =
+  'מרשימת Tier 1 — עשרת המובילים בעולם, בטכנולוגיה המתקדמת ביותר.';
+
+/** תא פאנלים — מעט רחב יותר לטקסט דו-שורתי */
+const QUOTE_PANELS_STRIP_CELL =
+  'flex w-[8.5rem] shrink-0 flex-col items-center gap-1 sm:w-[9.25rem] md:w-[10rem]';
+
 /** מעטפת זהה לכל קוביות הציוד */
 const QUOTE_CARD_SHELL =
   'relative box-border flex h-[12rem] w-full shrink-0 flex-col items-center justify-center gap-1 overflow-hidden rounded-[1.75rem] px-3 py-3 shadow-[0_24px_60px_-20px_rgba(0,0,0,0.65),inset_0_1px_0_0_rgba(255,255,255,0.06)] backdrop-blur-md md:h-[13rem] md:gap-1.5 md:px-4 md:py-4 print:shadow-md print:backdrop-blur-none';
@@ -3506,11 +3515,6 @@ export default function App() {
     return joinHebrewEquipmentTitle(parts);
   }, [generatedQuote, quoteOptimizerQuoteCard]);
 
-  const quotePanelBrandLogoSrc = useMemo(() => {
-    const up = datasheetToSrc(normalizeDatasheet(generatedQuote?.panelLogo));
-    return up || `${process.env.PUBLIC_URL}/panels/solarspace.png`;
-  }, [generatedQuote?.panelLogo]);
-
   // חישוב זמן נותר להטבה (לתצוגת הטיימר)
   let timeLeft = { days: 0, hours: 0, minutes: 0, seconds: 0, expired: true };
   const quoteShowsLimitedOffer =
@@ -4850,17 +4854,7 @@ export default function App() {
                      <img
                        src={`${process.env.PUBLIC_URL}/hero-solar-rooftop.png`}
                        alt=""
-                       className={`h-full w-full object-cover object-[50%_65%] md:object-[50%_60%] scale-105 print:scale-100 print:max-h-[56mm] print:object-[50%_55%] ${generatedQuote.panelDatasheet ? 'cursor-pointer' : ''}`}
-                       onClick={() => generatedQuote.panelDatasheet && openQuoteDatasheet(`מפרט טכני — פאנלים ${generatedQuote.panelPowerWatts}W`, generatedQuote.panelDatasheet)}
-                       onKeyDown={(e) => {
-                         if (!generatedQuote.panelDatasheet) return;
-                         if (e.key === 'Enter' || e.key === ' ') {
-                           e.preventDefault();
-                           openQuoteDatasheet(`מפרט טכני — פאנלים ${generatedQuote.panelPowerWatts}W`, generatedQuote.panelDatasheet);
-                         }
-                       }}
-                       role={generatedQuote.panelDatasheet ? 'button' : undefined}
-                       tabIndex={generatedQuote.panelDatasheet ? 0 : undefined}
+                       className="h-full w-full object-cover object-[50%_65%] md:object-[50%_60%] scale-105 print:scale-100 print:max-h-[56mm] print:object-[50%_55%]"
                      />
                      <div
                        className="absolute inset-0"
@@ -4872,12 +4866,11 @@ export default function App() {
                    </div>
 
                    {/* כרטיס תמונה ממוסגר — דקורציה במסכים רחבים בלבד */}
-                   <div className={`hidden xl:block absolute z-[2] bottom-[18%] left-8 lg:left-14 w-[min(340px,28vw)] rounded-3xl overflow-hidden border border-white/25 shadow-2xl ring-1 ring-white/10 print:hidden ${generatedQuote.panelDatasheet ? '' : 'pointer-events-none'}`}>
+                   <div className="hidden xl:block absolute z-[2] bottom-[18%] left-8 lg:left-14 w-[min(340px,28vw)] rounded-3xl overflow-hidden border border-white/25 shadow-2xl ring-1 ring-white/10 print:hidden pointer-events-none">
                      <img
                        src={`${process.env.PUBLIC_URL}/hero-solar-rooftop.png`}
                        alt=""
-                       className={`w-full h-44 object-cover object-[50%_75%] ${generatedQuote.panelDatasheet ? 'cursor-pointer' : ''}`}
-                       onClick={() => generatedQuote.panelDatasheet && openQuoteDatasheet(`מפרט טכני — פאנלים ${generatedQuote.panelPowerWatts}W`, generatedQuote.panelDatasheet)}
+                       className="w-full h-44 object-cover object-[50%_75%]"
                      />
                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/90 to-transparent h-16" />
                      <p className="absolute bottom-3 right-4 left-4 text-white text-xs font-bold drop-shadow-md text-center">פאנלים על הגג — אנרגיה נקייה</p>
@@ -5222,40 +5215,19 @@ export default function App() {
                         </div>
                       )}
                       {(generatedQuote.calculatedNumPanels || 0) > 0 && (
-                        <div className={QUOTE_EQUIPMENT_STRIP_CELL}>
-                          {isDatasheetViewable(generatedQuote.panelDatasheet) ? (
-                            <button
-                              type="button"
-                              className={`${QUOTE_EQUIP_LOGO_TILE_CLASS} cursor-pointer transition-transform hover:scale-[1.02] hover:border-orange-400/35 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400/70`}
-                              onClick={() =>
-                                openQuoteDatasheet(
-                                  `מפרט טכני — פאנלים ${generatedQuote.panelPowerWatts}W`,
-                                  generatedQuote.panelDatasheet
-                                )
-                              }
-                            >
-                              <img
-                                src={quotePanelBrandLogoSrc}
-                                alt="SolarSpace"
-                                className={QUOTE_BRAND_LOGO_IMG_FILL_CLASS}
-                              />
-                            </button>
-                          ) : (
-                            <div className={QUOTE_EQUIP_LOGO_TILE_CLASS}>
-                              <img
-                                src={quotePanelBrandLogoSrc}
-                                alt="SolarSpace"
-                                className={QUOTE_BRAND_LOGO_IMG_FILL_CLASS}
-                              />
-                            </div>
-                          )}
-                          <QuoteEquipDatasheetCaption
-                            datasheet={generatedQuote.panelDatasheet}
-                            datasheetTitle={`מפרט טכני — פאנלים ${generatedQuote.panelPowerWatts}W`}
-                            onOpen={openQuoteDatasheet}
-                          >
-                            פאנלים דו צדדיים SolarSpace {generatedQuote.panelPowerWatts}W מרשימת Tier1
-                          </QuoteEquipDatasheetCaption>
+                        <div className={QUOTE_PANELS_STRIP_CELL}>
+                          <div className={`${QUOTE_BRAND_CARD_COMPACT_CLASS} gap-1.5 md:gap-2`}>
+                            <Sun
+                              className="h-9 w-9 shrink-0 text-amber-400 drop-shadow-md print:text-amber-600 md:h-10 md:w-10"
+                              aria-hidden
+                            />
+                            <span className="px-1 text-center text-sm font-extrabold leading-tight text-white print:text-slate-900 md:text-base">
+                              {QUOTE_PANELS_GENERIC_TITLE_HE}
+                            </span>
+                            <span className="line-clamp-4 px-1 text-center text-[10px] font-semibold leading-snug text-slate-200 print:text-slate-700 md:text-[11px]">
+                              {QUOTE_PANELS_GENERIC_BODY_HE}
+                            </span>
+                          </div>
                         </div>
                       )}
                       {generatedQuote.feesPayer === 'company' && (
