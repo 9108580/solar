@@ -1969,6 +1969,61 @@ function loadAdminSettingsFromStorage() {
   }
 }
 
+function normalizeInvName(s) {
+  return String(s || '').trim().toUpperCase().replace(/\s+/g, ' ');
+}
+
+function effectiveInverterKw(inv) {
+  const fromField = Number(inv?.capacityKw);
+  if (Number.isFinite(fromField)) return fromField;
+  const raw = String(inv?.name || '');
+  const mKw = raw.match(/(\d+(?:\.\d+)?)\s*kW\b/i);
+  if (mKw) return Number(mKw[1]);
+  const mHe = raw.match(/(\d+(?:\.\d+)?)\s*קוטל/i);
+  if (mHe) return Number(mHe[1]);
+  return NaN;
+}
+
+function isSolisInverter(inv) {
+  const name = String(inv?.name || '');
+  return /\bSOLIS\b/i.test(normalizeInvName(name)) || /סוליס/.test(name);
+}
+
+/** ברירת מחדל לפי סוג מערכת — ביתית: SOLIS 15, מסחרית: SOLIS 50 (בלי סינון הרשימה) */
+function findDefaultInverterId(adminList, systemType) {
+  const pool = adminList || [];
+  if (!pool.length) return '';
+
+  const targetKw = systemType === 'residential' ? 15 : 50;
+  const targetLabel = `SOLIS ${targetKw}`;
+
+  const exact = pool.find((inv) => normalizeInvName(inv.name) === targetLabel);
+  if (exact) return exact.id;
+
+  const solisCandidates = pool.filter(isSolisInverter);
+  if (solisCandidates.length) {
+    const kwMatch = solisCandidates.find((inv) => effectiveInverterKw(inv) === targetKw);
+    if (kwMatch) return kwMatch.id;
+
+    const nameHasKw = solisCandidates.find((inv) =>
+      new RegExp(`\\b${targetKw}\\b`).test(normalizeInvName(inv.name))
+    );
+    if (nameHasKw) return nameHasKw.id;
+
+    const byNearest = [...solisCandidates].sort(
+      (a, b) =>
+        Math.abs(effectiveInverterKw(a) - targetKw) - Math.abs(effectiveInverterKw(b) - targetKw)
+    );
+    return byNearest[0].id;
+  }
+
+  const byNearestAll = [...pool].sort(
+    (a, b) =>
+      Math.abs(effectiveInverterKw(a) - targetKw) - Math.abs(effectiveInverterKw(b) - targetKw)
+  );
+  return byNearestAll[0]?.id || pool[0].id;
+}
+
 export default function App() {
   const routeParams = useParams();
   const navigate = useNavigate();
@@ -2165,13 +2220,19 @@ export default function App() {
     inverterSystemType: 'ongrid',
     selectedInverters: [
       {
-        id: DEFAULT_ADMIN_PRICES.inverters[0]?.id || '',
+        id:
+          findDefaultInverterId(DEFAULT_ADMIN_PRICES.inverters, 'residential') ||
+          DEFAULT_ADMIN_PRICES.inverters[0]?.id ||
+          '',
         quantity: 1,
       },
     ],
     selectedHybridInverters: [
       {
-        id: DEFAULT_ADMIN_PRICES.invertersHybrid[0]?.id || '',
+        id:
+          findDefaultInverterId(DEFAULT_ADMIN_PRICES.invertersHybrid, 'residential') ||
+          DEFAULT_ADMIN_PRICES.invertersHybrid[0]?.id ||
+          '',
         quantity: 1,
       },
     ],
@@ -2736,6 +2797,16 @@ export default function App() {
       if (['panelsSouth', 'panelsEastWest', 'panelsNorth'].includes(name)) {
         newState.optimizerAcknowledge = false;
       }
+      if (name === 'systemType') {
+        const defaultInv = findDefaultInverterId(adminPrices.inverters, val);
+        const defaultHyb = findDefaultInverterId(adminPrices.invertersHybrid, val);
+        if (defaultInv) {
+          newState.selectedInverters = prev.selectedInverters.map((r) => ({ ...r, id: defaultInv }));
+        }
+        if (defaultHyb) {
+          newState.selectedHybridInverters = prev.selectedHybridInverters.map((r) => ({ ...r, id: defaultHyb }));
+        }
+      }
       return newState;
     });
     
@@ -2763,7 +2834,10 @@ export default function App() {
   const addQuoteListItem = (formListName, adminListName) => {
     const full = adminPrices[adminListName];
     if (!full || full.length === 0) return;
-    const newId = full[0].id;
+    let newId = full[0].id;
+    if (adminListName === 'inverters' || adminListName === 'invertersHybrid') {
+      newId = findDefaultInverterId(full, quoteForm.systemType) || newId;
+    }
     setQuoteForm((prev) => ({
       ...prev,
       [formListName]: [...prev[formListName], { id: newId, quantity: 1 }],
