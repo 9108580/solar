@@ -1969,122 +1969,6 @@ function loadAdminSettingsFromStorage() {
   }
 }
 
-/** סף קוט״ל להפרדת ממירים בין מערכת ביתית / מסחרית (כולל 30 בשני הצדדים לפי ההגדרה) */
-const INVERTER_CAPACITY_SPLIT_KW = 30;
-
-function normalizeInvName(s) {
-  return String(s || '').trim().toUpperCase().replace(/\s+/g, ' ');
-}
-
-/** קוטל למיון לפי סוג מערכת — קודם מהשדה, אחרת ניסיון מתוך השם (למשל «100kW», «15 קוטל») */
-function effectiveInverterKw(inv) {
-  const fromField = Number(inv?.capacityKw);
-  if (Number.isFinite(fromField)) return fromField;
-  const raw = String(inv?.name || '');
-  const mKw = raw.match(/(\d+(?:\.\d+)?)\s*kW\b/i);
-  if (mKw) return Number(mKw[1]);
-  const mHe = raw.match(/(\d+(?:\.\d+)?)\s*קוטל/i);
-  if (mHe) return Number(mHe[1]);
-  return NaN;
-}
-
-function inverterMatchesSystemCapacity(inv, systemType) {
-  const kw = effectiveInverterKw(inv);
-  if (!Number.isFinite(kw)) return false;
-  if (systemType === 'residential') return kw <= INVERTER_CAPACITY_SPLIT_KW;
-  return kw >= INVERTER_CAPACITY_SPLIT_KW;
-}
-
-function filterInvertersForQuote(adminList, systemType) {
-  return (adminList || []).filter((inv) => inverterMatchesSystemCapacity(inv, systemType));
-}
-
-function findDefaultInverterId(adminList, systemType) {
-  const pool = filterInvertersForQuote(adminList, systemType);
-  if (!pool.length) return '';
-
-  if (systemType === 'residential') {
-    const exact = pool.find((inv) => normalizeInvName(inv.name) === 'SOLIS 15');
-    if (exact) return exact.id;
-
-    const isSolisBrand = (inv) => /\bSOLIS\b/i.test(String(inv.name || ''));
-    const solisCandidates = pool.filter(isSolisBrand);
-    if (solisCandidates.length) {
-      const kw15 = solisCandidates.find((inv) => effectiveInverterKw(inv) === 15);
-      if (kw15) return kw15.id;
-      const nameHas15 = solisCandidates.find((inv) =>
-        /\b15\b/.test(normalizeInvName(inv.name).replace(/KW/g, ' KW'))
-      );
-      if (nameHas15) return nameHas15.id;
-      return solisCandidates[0].id;
-    }
-
-    /** אין SOLIS במחירון — דגם 15kW קרוב (לא סתם השורה הראשונה שיכולה להיות SolarEdge) */
-    const byNearest15 = [...pool].sort(
-      (a, b) =>
-        Math.abs(effectiveInverterKw(a) - 15) - Math.abs(effectiveInverterKw(b) - 15)
-    );
-    return byNearest15[0].id;
-  }
-
-  const compact = (inv) => normalizeInvName(inv.name).replace(/[^A-Z0-9]/g, '');
-
-  const exactMid = pool.find((inv) => normalizeInvName(inv.name) === 'MID30 HV GROWATT');
-  if (exactMid) return exactMid.id;
-
-  const midGrowatt = pool.find((inv) => {
-    const n = normalizeInvName(inv.name);
-    const c = compact(inv);
-    const hasMid =
-      c.includes('MID30') ||
-      /\bMID[\s._-]*30\b/i.test(String(inv.name || ''));
-    const hasGrowatt =
-      n.includes('GROWATT') ||
-      n.includes('GROWAT') ||
-      /גראו/.test(String(inv.name || ''));
-    return hasMid && hasGrowatt;
-  });
-  if (midGrowatt) return midGrowatt.id;
-
-  const midHv = pool.find((inv) => {
-    const n = normalizeInvName(inv.name);
-    const c = compact(inv);
-    return (c.includes('MID30') || /\bMID[\s._-]*30\b/i.test(String(inv.name || ''))) && n.includes('HV');
-  });
-  if (midHv) return midHv.id;
-
-  const midOnly = pool.find((inv) => {
-    const c = compact(inv);
-    return c.includes('MID30') || /\bMID[\s._-]*30\b/i.test(String(inv.name || ''));
-  });
-  if (midOnly) return midOnly.id;
-
-  /** קרוב לברירת המחדל המסחרית: העדפת הקוטל הנמוך ביותר שעדיין בטווח המסחרי */
-  const sorted = [...pool].sort(
-    (a, b) => effectiveInverterKw(a) - effectiveInverterKw(b)
-  );
-  return sorted[0].id;
-}
-
-function sanitizeQuoteInverterRows(selections, adminList, systemType) {
-  const filtered = filterInvertersForQuote(adminList, systemType);
-  if (!filtered.length) return selections || [];
-  const allowedIds = new Set(filtered.map((i) => i.id));
-  const defaultId = findDefaultInverterId(adminList, systemType) || filtered[0].id;
-  return (selections || []).map((row) =>
-    allowedIds.has(row.id) ? row : { ...row, id: defaultId }
-  );
-}
-
-/** ברירת מחדל לשורות הצעה לפי סוג מערכת — SOLIS / MID או אחרת ראשון בטווח */
-function resolveSegmentDefaultInverterId(adminList, systemType) {
-  return (
-    findDefaultInverterId(adminList, systemType) ||
-    filterInvertersForQuote(adminList, systemType)[0]?.id ||
-    ''
-  );
-}
-
 export default function App() {
   const routeParams = useParams();
   const navigate = useNavigate();
@@ -2126,8 +2010,6 @@ export default function App() {
   const supabase = useMemo(() => getSupabase(), []);
   const skipNextSupabasePersist = useRef(false);
   const supabaseHydrated = useRef(false);
-  /** למעקב אחרי מעבר ראשון ל-hydrated — אז מיישמים ברירות SOLIS/MID בלי לדרוס אחרי כל עדכון קטלוג */
-  const prevAdminHydratedForQuoteRef = useRef(false);
   const cloudPersistTimerRef = useRef(null);
 
   const [adminCloudSaving, setAdminCloudSaving] = useState(false);
@@ -2283,19 +2165,13 @@ export default function App() {
     inverterSystemType: 'ongrid',
     selectedInverters: [
       {
-        id:
-          findDefaultInverterId(DEFAULT_ADMIN_PRICES.inverters, 'residential') ||
-          DEFAULT_ADMIN_PRICES.inverters[0]?.id ||
-          '',
+        id: DEFAULT_ADMIN_PRICES.inverters[0]?.id || '',
         quantity: 1,
       },
     ],
     selectedHybridInverters: [
       {
-        id:
-          findDefaultInverterId(DEFAULT_ADMIN_PRICES.invertersHybrid, 'residential') ||
-          DEFAULT_ADMIN_PRICES.invertersHybrid[0]?.id ||
-          '',
+        id: DEFAULT_ADMIN_PRICES.invertersHybrid[0]?.id || '',
         quantity: 1,
       },
     ],
@@ -2626,53 +2502,6 @@ export default function App() {
     }
   }, [loginInput, rememberLogin]);
 
-  useEffect(() => {
-    const hydrated = supabaseHydrated.current;
-    const justBecameHydrated = hydrated && !prevAdminHydratedForQuoteRef.current;
-    prevAdminHydratedForQuoteRef.current = hydrated;
-
-    setQuoteForm((prev) => {
-      const cleanedInverters = sanitizeQuoteInverterRows(
-        prev.selectedInverters,
-        adminPrices.inverters,
-        prev.systemType
-      );
-      const cleanedHybrid = sanitizeQuoteInverterRows(
-        prev.selectedHybridInverters,
-        adminPrices.invertersHybrid,
-        prev.systemType
-      );
-
-      if (!hydrated) {
-        return {
-          ...prev,
-          selectedInverters: cleanedInverters,
-          selectedHybridInverters: cleanedHybrid,
-        };
-      }
-
-      if (justBecameHydrated) {
-        const idealInv = resolveSegmentDefaultInverterId(adminPrices.inverters, prev.systemType);
-        const idealHyb = resolveSegmentDefaultInverterId(adminPrices.invertersHybrid, prev.systemType);
-        return {
-          ...prev,
-          selectedInverters: idealInv
-            ? prev.selectedInverters.map((r) => ({ ...r, id: idealInv }))
-            : cleanedInverters,
-          selectedHybridInverters: idealHyb
-            ? prev.selectedHybridInverters.map((r) => ({ ...r, id: idealHyb }))
-            : cleanedHybrid,
-        };
-      }
-
-      return {
-        ...prev,
-        selectedInverters: cleanedInverters,
-        selectedHybridInverters: cleanedHybrid,
-      };
-    });
-  }, [adminPrices.inverters, adminPrices.invertersHybrid]);
-
   // --- פונקציית התחברות ---
   const handleLogin = (e) => {
     e.preventDefault();
@@ -2907,16 +2736,6 @@ export default function App() {
       if (['panelsSouth', 'panelsEastWest', 'panelsNorth'].includes(name)) {
         newState.optimizerAcknowledge = false;
       }
-      if (name === 'systemType') {
-        const idealInv = resolveSegmentDefaultInverterId(adminPrices.inverters, val);
-        const idealHyb = resolveSegmentDefaultInverterId(adminPrices.invertersHybrid, val);
-        newState.selectedInverters = idealInv
-          ? prev.selectedInverters.map((r) => ({ ...r, id: idealInv }))
-          : sanitizeQuoteInverterRows(prev.selectedInverters, adminPrices.inverters, val);
-        newState.selectedHybridInverters = idealHyb
-          ? prev.selectedHybridInverters.map((r) => ({ ...r, id: idealHyb }))
-          : sanitizeQuoteInverterRows(prev.selectedHybridInverters, adminPrices.invertersHybrid, val);
-      }
       return newState;
     });
     
@@ -2944,12 +2763,7 @@ export default function App() {
   const addQuoteListItem = (formListName, adminListName) => {
     const full = adminPrices[adminListName];
     if (!full || full.length === 0) return;
-    let newId = full[0].id;
-    if (adminListName === 'inverters' || adminListName === 'invertersHybrid') {
-      const filtered = filterInvertersForQuote(full, quoteForm.systemType);
-      if (!filtered.length) return;
-      newId = resolveSegmentDefaultInverterId(full, quoteForm.systemType) || filtered[0].id;
-    }
+    const newId = full[0].id;
     setQuoteForm((prev) => ({
       ...prev,
       [formListName]: [...prev[formListName], { id: newId, quantity: 1 }],
@@ -4473,22 +4287,14 @@ export default function App() {
                         const adminList = isHybrid ? adminPrices.invertersHybrid : adminPrices.inverters;
                         const formListName = isHybrid ? 'selectedHybridInverters' : 'selectedInverters';
                         const currentSelections = quoteForm[formListName];
-                        const inverterOptions = filterInvertersForQuote(adminList, quoteForm.systemType);
                         if (adminList.length === 0) return <p className="text-sm text-red-400">לא קיימים דגמים במערכת.</p>;
-                        if (inverterOptions.length === 0) {
-                          return (
-                            <p className="text-sm text-amber-400">
-                              אין ממירים המתאימים לסוג המערכת הנבחר (עד {INVERTER_CAPACITY_SPLIT_KW} קוטל לעומת החל מ-{INVERTER_CAPACITY_SPLIT_KW} קוטל). עדכן את רשימת הממירים בהגדרות אדמין.
-                            </p>
-                          );
-                        }
                         return (
                           <>
                             <div className="space-y-3">
                               {currentSelections.map((item, index) => (
                                 <div key={index} className="flex min-w-0 flex-wrap items-center gap-3">
                                   <select value={item.id} onChange={(e) => handleQuoteListChange(formListName, index, 'id', e.target.value)} className="min-w-0 flex-1 basis-[12rem] bg-slate-950 border border-white/15 rounded-xl p-2.5 text-slate-100 outline-none focus:border-blue-500/60 transition-all [color-scheme:dark]">
-                                    {inverterOptions.map(inv => (<option key={inv.id} value={inv.id} className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f1f5f9' }}>{inv.name}</option>))}
+                                    {adminList.map(inv => (<option key={inv.id} value={inv.id} className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f1f5f9' }}>{inv.name}</option>))}
                                   </select>
                                   <div className="w-28 flex items-center bg-white/5 border border-white/10 rounded-xl">
                                      <span className="pl-2 text-slate-500 text-sm">כמות:</span>
