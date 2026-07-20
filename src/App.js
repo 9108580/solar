@@ -227,10 +227,10 @@ const QUOTE_PROJECT_EXAMPLE_IMAGES = Array.from({ length: 14 }, (_, i) => {
   return `${process.env.PUBLIC_URL}/project-examples/project-${n}.jpg`;
 });
 
-/** מפת פרויקטים (Google My Maps) — viewer לחלון חדש, embed לתצוגה מוטמעת */
-const QUOTE_PROJECTS_MAP_ID = '1gmzO7k_SBVucywFFtwSgYE35ltMabc0';
-const QUOTE_PROJECTS_MAP_VIEWER_URL = `https://www.google.com/maps/d/u/0/viewer?mid=${QUOTE_PROJECTS_MAP_ID}&hl=iw`;
-const QUOTE_PROJECTS_MAP_EMBED_URL = `https://www.google.com/maps/d/embed?mid=${QUOTE_PROJECTS_MAP_ID}&hl=iw&ll=31.93778024868962%2C35.098651000000025&z=8`;
+/** מפת פרויקטים (Pipedrive Israel map) — viewer לחלון חדש, embed לתצוגה מוטמעת */
+const QUOTE_PROJECTS_MAP_URL = 'https://9108580.github.io/pipedrive-israel-map/';
+const QUOTE_PROJECTS_MAP_VIEWER_URL = QUOTE_PROJECTS_MAP_URL;
+const QUOTE_PROJECTS_MAP_EMBED_URL = QUOTE_PROJECTS_MAP_URL;
 
 /** PDF print layout — debug session c91eed */
 function emitShareLinkDebugLog(hypothesisId, message, data) {
@@ -298,7 +298,7 @@ function QuoteProjectsMap({ clientCity }) {
               <p className="text-lg font-bold leading-snug">פרויקטים של מומחי אנרגיה סולארית</p>
               <p className="mt-1 text-sm text-blue-100/95">
                 {cityLabel
-                  ? `חפשו נקודות כחולות ליד ${cityLabel} — זום וגררו במפה`
+                  ? `חפשו פרויקטים ליד ${cityLabel} — זום וגררו במפה`
                   : 'זום וגררו כדי לראות פרויקטים באזורכם'}
               </p>
             </div>
@@ -324,7 +324,7 @@ function QuoteProjectsMap({ clientCity }) {
           </div>
         </div>
       </div>
-      <div className="relative bg-slate-100" style={{ height: 'min(360px, 55vh)' }}>
+      <div className="relative bg-slate-100" style={{ height: 'min(420px, 60vh)' }}>
         <iframe
           key={mapKey}
           title="מפת פרויקטים בארץ"
@@ -336,8 +336,8 @@ function QuoteProjectsMap({ clientCity }) {
         />
       </div>
       <p className="border-t border-slate-200 bg-slate-50 px-4 py-2.5 text-xs leading-relaxed text-slate-600">
-        כל נקודה כחולה = פרויקט שביצענו. לחיצה על נקודה מציגה את שם הפרויקט — אם המסך נתקע (דף לבן), לחצו{' '}
-        <strong>חזרה למפה</strong> למעלה, או <strong>מפה מלאה</strong> לחיפוש נוח בגוגל מפות.
+        כל סימון = פרויקט שביצענו. לחיצה על סימון מציגה את שם הפרויקט — אם המסך נתקע, לחצו{' '}
+        <strong>חזרה למפה</strong> למעלה, או <strong>מפה מלאה</strong> לפתיחה בחלון חדש.
       </p>
     </div>
   );
