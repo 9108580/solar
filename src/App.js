@@ -324,7 +324,7 @@ function QuoteProjectsMap({ clientCity }) {
           </div>
         </div>
       </div>
-      <div className="relative bg-slate-100" style={{ height: 'min(420px, 60vh)' }}>
+      <div className="relative bg-slate-100" style={{ height: 'min(520px, 70vh)' }}>
         <iframe
           key={mapKey}
           title="מפת פרויקטים בארץ"
@@ -5609,16 +5609,15 @@ export default function App() {
                   </QuoteExpandableSection>
                 </section>
 
-                {/* --- MAP — נפתח בלחיצה, לא תופס שטח כשסגור --- */}
+                {/* --- MAP — תמיד גלויה (ללא תפריט נפתח) --- */}
                 <section className="px-4 sm:px-8 md:px-20 py-6 bg-white print:hidden border-t border-slate-100">
-                   <QuoteExpandableSection
-                     title="מצא לקוח ממליץ מאזורך"
-                     subtitle="מפה אינטראקטיבית של התקנות ברחבי הארץ"
-                     teaser="לחצו לפתיחת המפה"
-                     className="max-w-4xl"
-                   >
-                   <QuoteProjectsMap clientCity={generatedQuote?.clientCity} />
-                   </QuoteExpandableSection>
+                  <div className="mx-auto mb-4 max-w-4xl text-right">
+                    <h3 className="text-lg font-black text-blue-900">מצא לקוח ממליץ מאזורך</h3>
+                    <p className="mt-0.5 text-sm text-slate-600">מפה אינטראקטיבית של התקנות ברחבי הארץ</p>
+                  </div>
+                  <div className="mx-auto max-w-4xl">
+                    <QuoteProjectsMap clientCity={generatedQuote?.clientCity} />
+                  </div>
                 </section>
 
                 {/* --- חתימה — עמוד אחרון --- */}
