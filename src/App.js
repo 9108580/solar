@@ -2817,7 +2817,8 @@ export default function App() {
 
   const handleDcSizeChange = (e) => {
     const val = parseFloat(e.target.value) || 0;
-    const autoAc = val <= 15 ? 15 : (val / 3) * 2;
+    // DC ≤14 → AC 10; DC 15–24 → AC 15; DC >24 → (DC/3)×2
+    const autoAc = val <= 14 ? 10 : val <= 24 ? 15 : (val / 3) * 2;
     setQuoteForm(prev => ({ 
       ...prev, 
       systemSizeKw: e.target.value,
