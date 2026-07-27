@@ -1362,18 +1362,25 @@ function inverterLogoSrc(slug) {
 function inferInverterLogoSlug(name, isSolarEdge) {
   const raw = String(name || '');
   const lower = raw.toLowerCase();
-  if (isSolarEdge || /solaredge|סולאראדג/.test(raw)) return 'solaredge';
+  if (isSolarEdge || /solaredge|סולאראדג/i.test(raw)) return 'solaredge';
   if (/sungrow/.test(lower) || /סנגרואו|סאנגר/.test(raw)) return 'sungrow';
   if (/growatt/.test(lower) || /גרואט|גרוואט/.test(raw)) return 'growatt';
   if (/solis/.test(lower) || /סוליס/.test(raw)) return 'solis';
   return null;
 }
 
+/** SolarEdge: לפי שם (SolarEdge / סולאראדג') או דגל ישן ב־admin */
+function inverterIsSolarEdge(inv) {
+  if (!inv) return false;
+  if (inv.isSolarEdge) return true;
+  return /solaredge|סולאראדג/i.test(String(inv.name || ''));
+}
+
 function resolveInverterLogoSlug(inv) {
   const manual = inv.inverterLogoKey || 'auto';
   if (manual === 'none') return null;
   if (manual !== 'auto') return INVERTER_LOGO_KEYS.includes(manual) ? manual : null;
-  return inferInverterLogoSlug(inv.name, inv.isSolarEdge);
+  return inferInverterLogoSlug(inv.name, inverterIsSolarEdge(inv));
 }
 
 /** סטטיסטיקת לוגואים להצגה בהצעת מחיר (ממוזג לפי סוג לוגו + סכום כמויות) */
@@ -2856,7 +2863,7 @@ export default function App() {
 
     activeInvertersForm.forEach(sel => {
       const invData = activeInvertersAdmin.find(i => i.id === sel.id);
-      if (invData && invData.isSolarEdge && (Number(sel.quantity) || 0) > 0) {
+      if (invData && inverterIsSolarEdge(invData) && (Number(sel.quantity) || 0) > 0) {
         hasSolarEdge = true;
       }
     });
@@ -2952,7 +2959,7 @@ export default function App() {
           name: invData.name,
           quantity: sel.quantity,
           isHybrid: isHybridSystem,
-          isSolarEdge: invData.isSolarEdge,
+          isSolarEdge: inverterIsSolarEdge(invData),
           logoSlug: resolveInverterLogoSlug(invData),
           customLogo: normalizeDatasheet(invData.customLogo),
           datasheet: normalizeDatasheet(invData.datasheet),
@@ -3002,8 +3009,12 @@ export default function App() {
     let optimizerDetails = { type: 'ללא', quantity: 0 };
     /** מפתח דאטהשיט באופטימייזרים: se1to1 | se1to2 | tigo | sungrow */
     let optimizerKind = null;
-    if (quoteForm.includesOptimizers) {
-      const seStatus = getSolarEdgeStatus();
+    const seStatusForQuote = getSolarEdgeStatus();
+    /** SolarEdge — אופטימייזרים תמיד נכללים (בלי צ׳קבוקס לסוכן) */
+    const effectiveIncludesOptimizers =
+      Boolean(quoteForm.includesOptimizers) || seStatusForQuote.hasSolarEdge;
+    if (effectiveIncludesOptimizers) {
+      const seStatus = seStatusForQuote;
       const sgStatus = getSungrowStatus();
       if (seStatus.hasSolarEdge) {
         if (solarEdgeOptimizerUsesOneToTwo(acKw)) {
@@ -3202,6 +3213,7 @@ export default function App() {
 
     const quotePayload = {
       ...quoteForm,
+      includesOptimizers: effectiveIncludesOptimizers,
       calculatedNumPanels: numPanels,
       panelPowerWatts: adminPrices.panelPowerWatts,
       productionHoursValid,
@@ -4022,10 +4034,11 @@ export default function App() {
                               <div className="flex-1"><label className="text-slate-500 text-xs block">הספק (kW)</label><input type="number" value={inv.capacityKw} onChange={(e) => updateAdminListItem('inverters', inv.id, 'capacityKw', parseFloat(e.target.value)||0)} className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-white outline-none focus:border-blue-500/60 transition-all" /></div>
                               <div className="flex-1"><label className="text-slate-500 text-xs block">עלות (₪)</label><input type="number" value={inv.cost} onChange={(e) => updateAdminListItem('inverters', inv.id, 'cost', parseFloat(e.target.value)||0)} className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-white outline-none focus:border-blue-500/60 transition-all" /></div>
                             </div>
-                            <label className="flex items-center gap-2 cursor-pointer mt-1">
-                              <input type="checkbox" checked={inv.isSolarEdge} onChange={(e) => updateAdminListItem('inverters', inv.id, 'isSolarEdge', e.target.checked)} className="w-4 h-4 accent-blue-500" />
-                              <span className="text-xs text-blue-300">הגדר כממיר סולאראדג'</span>
-                            </label>
+                            <p className={`text-xs mt-1 ${inverterIsSolarEdge(inv) ? 'text-blue-300' : 'text-slate-500'}`}>
+                              {inverterIsSolarEdge(inv)
+                                ? "זוהה כ־SolarEdge לפי השם — אופטימייזרים יחושבו אוטומטית (1:1 / 1:2)."
+                                : "SolarEdge מזוהה אוטומטית אם השם כולל SolarEdge / סולאראדג' — אין צורך בסימון נפרד."}
+                            </p>
                             <div className="w-full mt-2">
                               <label className="text-slate-500 text-xs block mb-1">לוגו בהצעת מחיר</label>
                               <select
@@ -4073,10 +4086,11 @@ export default function App() {
                               <div className="flex-1"><label className="text-slate-500 text-xs block">הספק (kW)</label><input type="number" value={inv.capacityKw} onChange={(e) => updateAdminListItem('invertersHybrid', inv.id, 'capacityKw', parseFloat(e.target.value)||0)} className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-white outline-none focus:border-blue-500/60 transition-all" /></div>
                               <div className="flex-1"><label className="text-slate-500 text-xs block">עלות (₪)</label><input type="number" value={inv.cost} onChange={(e) => updateAdminListItem('invertersHybrid', inv.id, 'cost', parseFloat(e.target.value)||0)} className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-white outline-none focus:border-blue-500/60 transition-all" /></div>
                             </div>
-                            <label className="flex items-center gap-2 cursor-pointer mt-1">
-                              <input type="checkbox" checked={inv.isSolarEdge} onChange={(e) => updateAdminListItem('invertersHybrid', inv.id, 'isSolarEdge', e.target.checked)} className="w-4 h-4 accent-blue-500" />
-                              <span className="text-xs text-blue-300">הגדר כממיר סולאראדג'</span>
-                            </label>
+                            <p className={`text-xs mt-1 ${inverterIsSolarEdge(inv) ? 'text-blue-300' : 'text-slate-500'}`}>
+                              {inverterIsSolarEdge(inv)
+                                ? "זוהה כ־SolarEdge לפי השם — אופטימייזרים יחושבו אוטומטית (1:1 / 1:2)."
+                                : "SolarEdge מזוהה אוטומטית אם השם כולל SolarEdge / סולאראדג' — אין צורך בסימון נפרד."}
+                            </p>
                             <div className="w-full mt-2">
                               <label className="text-slate-500 text-xs block mb-1">לוגו בהצעת מחיר</label>
                               <select
@@ -4420,33 +4434,46 @@ export default function App() {
 
                     <div className="md:col-span-2 space-y-3 pt-2 border-t border-white/8 mt-2">
                       <div className="bg-black/15 border border-white/8 rounded-2xl overflow-hidden">
-                        <label className="flex items-center gap-3 p-4 cursor-pointer hover:bg-white/5 transition-colors">
-                          <input type="checkbox" name="includesOptimizers" checked={quoteForm.includesOptimizers} onChange={handleFormChange} className="w-5 h-5 accent-blue-500 rounded" />
-                          <span className="block text-white font-semibold">כולל אופטימייזרים (Optimizers)</span>
-                        </label>
-                        {quoteForm.includesOptimizers && (
-                          <div className="px-4 pb-4 pt-2 border-t border-white/8 bg-black/15 ml-12 space-y-3">
-                            {seStatusDisplay.hasSolarEdge ? (
-                               <p className="text-sm text-blue-300">זוהה ממיר SolarEdge במערכת — לפי הספק AC ({quoteForm.systemSizeAcKw} kWp): {solarEdgeOptimizerUsesOneToTwo(quoteForm.systemSizeAcKw) ? 'אופטימייזרים 1:2' : 'אופטימייזרים 1:1'}.</p>
-                            ) : sgStatusDisplay.hasSungrow ? (
-                               <>
-                                 <p className="text-sm text-orange-300">זוהה ממיר Sungrow — אופטימייזרים לפי מחירון Sungrow (ברירת מחדל: מספר הפאנלים).</p>
-                                 <div className="flex flex-wrap items-center gap-3 mt-1"><label className="text-sm text-slate-400">כמות Sungrow:</label><input type="number" min="1" name="sungrowQuantity" value={quoteForm.sungrowQuantity} onChange={handleFormChange} className="w-24 bg-white/5 border border-white/10 rounded-xl p-2 text-white focus:border-orange-500/60 transition-all" placeholder="פאנלים" /></div>
-                                 <label className="flex items-center gap-3 cursor-pointer rounded-xl bg-black/20 border border-white/10 p-3 hover:bg-white/5 transition-colors">
-                                   <input type="checkbox" name="showSungrowLogoOnQuote" checked={quoteForm.showSungrowLogoOnQuote} onChange={handleFormChange} className="w-5 h-5 accent-orange-500 rounded shrink-0" />
-                                   <span className="text-sm text-slate-200 font-medium">הצג לוגו Sungrow בהצעת המחיר (מערכת עם אופטימייזרים)</span>
-                                 </label>
-                               </>
-                            ) : (
-                               <>
-                                 <div className="flex flex-wrap items-center gap-3 mt-1"><label className="text-sm text-slate-400">כמות Tigo:</label><input type="number" min="1" name="tigoQuantity" value={quoteForm.tigoQuantity} onChange={handleFormChange} className="w-24 bg-white/5 border border-white/10 rounded-xl p-2 text-white focus:border-blue-500/60 transition-all" /></div>
-                                 <label className="flex items-center gap-3 cursor-pointer rounded-xl bg-black/20 border border-white/10 p-3 hover:bg-white/5 transition-colors">
-                                   <input type="checkbox" name="showTigoLogoOnQuote" checked={quoteForm.showTigoLogoOnQuote} onChange={handleFormChange} className="w-5 h-5 accent-emerald-600 rounded shrink-0" />
-                                   <span className="text-sm text-slate-200 font-medium">הצג לוגו Tigo בהצעת המחיר (מערכת עם אופטימייזרים)</span>
-                                 </label>
-                               </>
-                            )}
+                        {seStatusDisplay.hasSolarEdge ? (
+                          <div className="p-4 space-y-2">
+                            <p className="block text-white font-semibold">כולל אופטימייזרים (Optimizers)</p>
+                            <p className="text-sm text-blue-300">
+                              זוהה ממיר SolarEdge במערכת — לפי הספק AC ({quoteForm.systemSizeAcKw} kWp):{' '}
+                              {solarEdgeOptimizerUsesOneToTwo(quoteForm.systemSizeAcKw)
+                                ? 'אופטימייזרים 1:2'
+                                : 'אופטימייזרים 1:1'}
+                              . נכלל אוטומטית בהצעה.
+                            </p>
                           </div>
+                        ) : (
+                          <>
+                            <label className="flex items-center gap-3 p-4 cursor-pointer hover:bg-white/5 transition-colors">
+                              <input type="checkbox" name="includesOptimizers" checked={quoteForm.includesOptimizers} onChange={handleFormChange} className="w-5 h-5 accent-blue-500 rounded" />
+                              <span className="block text-white font-semibold">כולל אופטימייזרים (Optimizers)</span>
+                            </label>
+                            {quoteForm.includesOptimizers && (
+                              <div className="px-4 pb-4 pt-2 border-t border-white/8 bg-black/15 ml-12 space-y-3">
+                                {sgStatusDisplay.hasSungrow ? (
+                                  <>
+                                    <p className="text-sm text-orange-300">זוהה ממיר Sungrow — אופטימייזרים לפי מחירון Sungrow (ברירת מחדל: מספר הפאנלים).</p>
+                                    <div className="flex flex-wrap items-center gap-3 mt-1"><label className="text-sm text-slate-400">כמות Sungrow:</label><input type="number" min="1" name="sungrowQuantity" value={quoteForm.sungrowQuantity} onChange={handleFormChange} className="w-24 bg-white/5 border border-white/10 rounded-xl p-2 text-white focus:border-orange-500/60 transition-all" placeholder="פאנלים" /></div>
+                                    <label className="flex items-center gap-3 cursor-pointer rounded-xl bg-black/20 border border-white/10 p-3 hover:bg-white/5 transition-colors">
+                                      <input type="checkbox" name="showSungrowLogoOnQuote" checked={quoteForm.showSungrowLogoOnQuote} onChange={handleFormChange} className="w-5 h-5 accent-orange-500 rounded shrink-0" />
+                                      <span className="text-sm text-slate-200 font-medium">הצג לוגו Sungrow בהצעת המחיר (מערכת עם אופטימייזרים)</span>
+                                    </label>
+                                  </>
+                                ) : (
+                                  <>
+                                    <div className="flex flex-wrap items-center gap-3 mt-1"><label className="text-sm text-slate-400">כמות Tigo:</label><input type="number" min="1" name="tigoQuantity" value={quoteForm.tigoQuantity} onChange={handleFormChange} className="w-24 bg-white/5 border border-white/10 rounded-xl p-2 text-white focus:border-blue-500/60 transition-all" /></div>
+                                    <label className="flex items-center gap-3 cursor-pointer rounded-xl bg-black/20 border border-white/10 p-3 hover:bg-white/5 transition-colors">
+                                      <input type="checkbox" name="showTigoLogoOnQuote" checked={quoteForm.showTigoLogoOnQuote} onChange={handleFormChange} className="w-5 h-5 accent-emerald-600 rounded shrink-0" />
+                                      <span className="text-sm text-slate-200 font-medium">הצג לוגו Tigo בהצעת המחיר (מערכת עם אופטימייזרים)</span>
+                                    </label>
+                                  </>
+                                )}
+                              </div>
+                            )}
+                          </>
                         )}
                       </div>
                       <div className={`rounded-2xl border transition-all ${quoteForm.includesWashing ? 'border-amber-400/50 bg-amber-500/10' : 'border-white/8 bg-black/15'}`}>
