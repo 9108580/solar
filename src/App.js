@@ -4579,33 +4579,7 @@ export default function App() {
                       אפיון המערכת
                     </h3>
                   <div className="grid min-w-0 grid-cols-1 gap-6 md:grid-cols-2">
-                    <div className="min-w-0">
-                      <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">גודל מערכת DC (kWp)</label>
-                      <input required type="number" step="0.001" min="1" name="systemSizeKw" value={quoteForm.systemSizeKw} onChange={handleDcSizeChange}
-                        className="w-full min-w-0 max-w-full bg-white/5 border border-white/10 rounded-xl p-3.5 text-white text-2xl font-black outline-none transition-all duration-200 focus:border-blue-500/60"
-                        onFocus={e => e.target.style.boxShadow='0 0 0 3px rgba(59,130,246,0.18)'} onBlur={e => e.target.style.boxShadow='none'} />
-                      <p className="text-xs text-slate-500 mt-2">
-                        יחושב כ- <strong className="text-blue-400">{currentCalculatedPanels}</strong> פאנלים
-                        {' · '}שינוי כמות הפאנלים מעדכן את ה-DC אוטומטית
-                      </p>
-                    </div>
-                    <div className="min-w-0">
-                      <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">גודל מערכת AC (kWp)</label>
-                      <input required type="number" step="0.1" min="1" name="systemSizeAcKw" value={quoteForm.systemSizeAcKw} onChange={handleFormChange}
-                        className="w-full min-w-0 max-w-full bg-white/5 border border-white/10 rounded-xl p-3.5 text-white text-2xl font-black outline-none transition-all duration-200 focus:border-blue-500/60"
-                        onFocus={e => e.target.style.boxShadow='0 0 0 3px rgba(59,130,246,0.18)'} onBlur={e => e.target.style.boxShadow='none'} />
-                      <p className="text-xs text-slate-500 mt-2">מחושב אוטומטית לפי ה-DC אך ניתן לשינוי</p>
-                    </div>
-                    <div className="mt-2 min-w-0 md:col-span-2">
-                      <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">סוג גג</label>
-                      <select name="roofType" value={quoteForm.roofType} onChange={handleFormChange}
-                        className="w-full min-w-0 max-w-full bg-slate-950 border border-white/15 rounded-xl p-3.5 text-slate-100 outline-none transition-all duration-200 focus:border-blue-500/60 [color-scheme:dark]">
-                        <option value="concrete" className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f1f5f9' }}>גג בטון (דורש משקולות)</option>
-                        <option value="other" className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f1f5f9' }}>גג רגיל (איסכורית / פאנל / רעפים)</option>
-                      </select>
-                    </div>
-
-                    {/* בחירת פאנלים */}
+                    {/* בחירת פאנלים — ראשון; ה-DC מחושב ממנה */}
                     <div className="min-w-0 md:col-span-2 rounded-2xl border border-white/10 bg-black/20 p-5">
                       <label className="block text-xs font-semibold text-blue-400 uppercase tracking-wider mb-3">בחירת פאנלים</label>
                       {(adminPrices.panels || []).length === 0 ? (
@@ -4662,6 +4636,32 @@ export default function App() {
                           </button>
                         </>
                       )}
+                    </div>
+
+                    <div className="min-w-0">
+                      <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">גודל מערכת DC (kWp)</label>
+                      <input required type="number" step="0.001" min="1" name="systemSizeKw" value={quoteForm.systemSizeKw} onChange={handleDcSizeChange}
+                        className="w-full min-w-0 max-w-full bg-white/5 border border-white/10 rounded-xl p-3.5 text-white text-2xl font-black outline-none transition-all duration-200 focus:border-blue-500/60"
+                        onFocus={e => e.target.style.boxShadow='0 0 0 3px rgba(59,130,246,0.18)'} onBlur={e => e.target.style.boxShadow='none'} />
+                      <p className="text-xs text-slate-500 mt-2">
+                        יחושב כ- <strong className="text-blue-400">{currentCalculatedPanels}</strong> פאנלים
+                        {' · '}שינוי כמות הפאנלים מעדכן את ה-DC אוטומטית
+                      </p>
+                    </div>
+                    <div className="min-w-0">
+                      <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">גודל מערכת AC (kWp)</label>
+                      <input required type="number" step="0.1" min="1" name="systemSizeAcKw" value={quoteForm.systemSizeAcKw} onChange={handleFormChange}
+                        className="w-full min-w-0 max-w-full bg-white/5 border border-white/10 rounded-xl p-3.5 text-white text-2xl font-black outline-none transition-all duration-200 focus:border-blue-500/60"
+                        onFocus={e => e.target.style.boxShadow='0 0 0 3px rgba(59,130,246,0.18)'} onBlur={e => e.target.style.boxShadow='none'} />
+                      <p className="text-xs text-slate-500 mt-2">מחושב אוטומטית לפי ה-DC אך ניתן לשינוי</p>
+                    </div>
+                    <div className="mt-2 min-w-0 md:col-span-2">
+                      <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">סוג גג</label>
+                      <select name="roofType" value={quoteForm.roofType} onChange={handleFormChange}
+                        className="w-full min-w-0 max-w-full bg-slate-950 border border-white/15 rounded-xl p-3.5 text-slate-100 outline-none transition-all duration-200 focus:border-blue-500/60 [color-scheme:dark]">
+                        <option value="concrete" className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f1f5f9' }}>גג בטון (דורש משקולות)</option>
+                        <option value="other" className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f1f5f9' }}>גג רגיל (איסכורית / פאנל / רעפים)</option>
+                      </select>
                     </div>
                   
                     {/* סוג ממיר */}
