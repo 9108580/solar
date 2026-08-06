@@ -1511,6 +1511,21 @@ function formatDcKwForInput(kw) {
   return String(parseFloat(Number(kw).toFixed(3)));
 }
 
+/** בחירת פאנלים התחלתית + DC מדויק (כמות × וואט), לא יעד מעוגל */
+function buildInitialPanelsAndDc(panelsCatalog, targetDcKw = 22.5) {
+  const panel = (panelsCatalog || [])[0];
+  const id = panel?.id || 'pnl-std';
+  const quantity = suggestedPanelQuantityForDc(targetDcKw, panel?.powerWatts);
+  const selectedPanels = [{ id, quantity }];
+  const dc = dcKwFromSelectedPanels(selectedPanels, panelsCatalog);
+  const sizeKw = dc != null ? dc : targetDcKw;
+  return {
+    selectedPanels,
+    systemSizeKw: formatDcKwForInput(sizeKw),
+    systemSizeAcKw: autoAcFromDcKw(sizeKw).toFixed(2),
+  };
+}
+
 const DATASHEET_MAX_BYTES = 8 * 1024 * 1024;
 const QUOTE_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 /** ריבוע אחיד ללוגואים בהצעת מחיר (contain בתוך הריבוע) */
@@ -2299,20 +2314,17 @@ export default function App() {
     return () => { cancelled = true; };
   }, [supabase]);
 
-  const [quoteForm, setQuoteForm] = useState({
+  const [quoteForm, setQuoteForm] = useState(() => {
+    const panelsInit = buildInitialPanelsAndDc(DEFAULT_ADMIN_PRICES.panels, 22.5);
+    return {
     systemType: 'residential', 
     clientName: '',
     clientCity: '', 
-    systemSizeKw: 22.5,
-    systemSizeAcKw: 15, 
+    systemSizeKw: panelsInit.systemSizeKw,
+    systemSizeAcKw: panelsInit.systemSizeAcKw, 
     roofType: 'concrete', 
     inverterSystemType: 'ongrid',
-    selectedPanels: [
-      {
-        id: DEFAULT_ADMIN_PRICES.panels[0]?.id || 'pnl-std',
-        quantity: suggestedPanelQuantityForDc(22.5, DEFAULT_ADMIN_PRICES.panels[0]?.powerWatts),
-      },
-    ],
+    selectedPanels: panelsInit.selectedPanels,
     selectedInverters: [
       {
         id:
@@ -2351,32 +2363,44 @@ export default function App() {
     showTigoLogoOnQuote: true,
     /** לוגו Sungrow בהצעה — כשממיר Sungrow ואופטימייזרים */
     showSungrowLogoOnQuote: true,
+  };
   });
 
-  /** התאמת בחירת פאנלים במקרה שמחירון הענן/לוקאלי משתמש ב-id אחר אחרי מיגרציה */
+  /** התאמת בחירת פאנלים + סנכרון DC מדויק אחרי טעינת מחירון */
   useEffect(() => {
     const panels = adminPrices.panels || [];
     if (!panels.length) return undefined;
     setQuoteForm((prev) => {
       const rows = prev.selectedPanels || [];
+      let nextRows = rows;
+      let idsChanged = false;
       if (rows.length === 0) {
-        return {
-          ...prev,
-          selectedPanels: [
-            {
-              id: panels[0].id,
-              quantity: suggestedPanelQuantityForDc(prev.systemSizeKw, panels[0].powerWatts),
-            },
-          ],
-        };
+        nextRows = [
+          {
+            id: panels[0].id,
+            quantity: suggestedPanelQuantityForDc(22.5, panels[0].powerWatts),
+          },
+        ];
+        idsChanged = true;
+      } else {
+        nextRows = rows.map((row) => {
+          if (panels.some((p) => p.id === row.id)) return row;
+          idsChanged = true;
+          return { ...row, id: panels[0].id };
+        });
       }
-      let changed = false;
-      const next = rows.map((row) => {
-        if (panels.some((p) => p.id === row.id)) return row;
-        changed = true;
-        return { ...row, id: panels[0].id };
-      });
-      return changed ? { ...prev, selectedPanels: next } : prev;
+      const dc = dcKwFromSelectedPanels(nextRows, panels);
+      const nextKw = dc != null ? formatDcKwForInput(dc) : prev.systemSizeKw;
+      const dcChanged = String(prev.systemSizeKw) !== String(nextKw);
+      if (!idsChanged && !dcChanged) return prev;
+      return {
+        ...prev,
+        selectedPanels: nextRows,
+        systemSizeKw: nextKw,
+        ...(dcChanged && dc != null
+          ? { systemSizeAcKw: autoAcFromDcKw(dc).toFixed(2) }
+          : {}),
+      };
     });
     return undefined;
   }, [adminPrices.panels]);
@@ -2925,28 +2949,6 @@ export default function App() {
     if (name === 'specifyOrientation' && !checked) {
       setErrorMsg('');
     }
-  };
-
-  const handleDcSizeChange = (e) => {
-    const val = parseFloat(e.target.value) || 0;
-    const autoAc = autoAcFromDcKw(val);
-    setQuoteForm((prev) => {
-      let selectedPanels = prev.selectedPanels || [];
-      // כשיש בחירת פאנל אחת — מסנכרנים כמות לפי הספק ה-DC
-      if (selectedPanels.length === 1) {
-        const panel =
-          (adminPrices.panels || []).find((p) => p.id === selectedPanels[0].id) ||
-          (adminPrices.panels || [])[0];
-        const autoQty = suggestedPanelQuantityForDc(val, panel?.powerWatts);
-        selectedPanels = [{ ...selectedPanels[0], quantity: autoQty }];
-      }
-      return {
-        ...prev,
-        systemSizeKw: e.target.value,
-        systemSizeAcKw: autoAc.toFixed(2),
-        selectedPanels,
-      };
-    });
   };
 
   const applyDcFromSelectedPanels = (prev, selectedPanels) => {
@@ -4640,12 +4642,16 @@ export default function App() {
 
                     <div className="min-w-0">
                       <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">גודל מערכת DC (kWp)</label>
-                      <input required type="number" step="0.001" min="1" name="systemSizeKw" value={quoteForm.systemSizeKw} onChange={handleDcSizeChange}
-                        className="w-full min-w-0 max-w-full bg-white/5 border border-white/10 rounded-xl p-3.5 text-white text-2xl font-black outline-none transition-all duration-200 focus:border-blue-500/60"
-                        onFocus={e => e.target.style.boxShadow='0 0 0 3px rgba(59,130,246,0.18)'} onBlur={e => e.target.style.boxShadow='none'} />
+                      <div
+                        className="w-full min-w-0 max-w-full rounded-xl border border-white/10 bg-black/30 p-3.5 text-2xl font-black text-white tabular-nums select-none"
+                        aria-live="polite"
+                        title="מחושב אוטומטית לפי כמות הפאנלים והספק הדגם"
+                      >
+                        {quoteForm.systemSizeKw}
+                      </div>
                       <p className="text-xs text-slate-500 mt-2">
-                        יחושב כ- <strong className="text-blue-400">{currentCalculatedPanels}</strong> פאנלים
-                        {' · '}שינוי כמות הפאנלים מעדכן את ה-DC אוטומטית
+                        מחושב אוטומטית מ־<strong className="text-blue-400">{currentCalculatedPanels}</strong> פאנלים
+                        {' · '}לא ניתן לשינוי ידני
                       </p>
                     </div>
                     <div className="min-w-0">
