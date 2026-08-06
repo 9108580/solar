@@ -8,7 +8,7 @@ import {
 } from './urbanPremiumCities';
 import { 
   Calculator, Settings, Sun, User, FileText, CheckCircle, Zap, DollarSign, 
-  Trash2, Plus, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, HardHat, BatteryCharging, ExternalLink, 
+  Trash2, Plus, Minus, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, HardHat, BatteryCharging, ExternalLink, 
   ShieldCheck, Activity, MapPin, Phone, TrendingUp, Award, Clock, Wrench, AlertCircle,
   Home, Gift, Users, LogOut, PenTool, Loader2, CloudUpload, Copy, Globe
 } from 'lucide-react';
@@ -1509,6 +1509,47 @@ function dcKwFromSelectedPanels(selectedPanels, panelsCatalog) {
 function formatDcKwForInput(kw) {
   if (kw == null || !Number.isFinite(Number(kw))) return '';
   return String(parseFloat(Number(kw).toFixed(3)));
+}
+
+/** כמות עם כפתורי +/− — עובד גם במובייל (בלי חיצי number של דסקטופ) */
+function QuoteQuantityStepper({ value, onChange, min = 1, label = 'כמות' }) {
+  const qty = Math.max(min, parseInt(value, 10) || min);
+  const bump = (delta) => {
+    const next = Math.max(min, qty + delta);
+    onChange(String(next));
+  };
+  return (
+    <div className="flex shrink-0 items-center gap-1 rounded-xl border border-white/10 bg-white/5 p-1">
+      <span className="hidden pl-1.5 text-slate-500 text-xs sm:inline">{label}:</span>
+      <button
+        type="button"
+        onClick={() => bump(-1)}
+        disabled={qty <= min}
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white/10 text-white transition-colors hover:bg-white/20 active:bg-blue-500/40 disabled:cursor-not-allowed disabled:opacity-35"
+        aria-label="הקטן כמות"
+      >
+        <Minus className="h-4 w-4" aria-hidden />
+      </button>
+      <input
+        type="number"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        min={min}
+        value={qty}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-12 appearance-none bg-transparent p-1 text-center text-base font-bold tabular-nums text-white outline-none [-moz-appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+        aria-label={label}
+      />
+      <button
+        type="button"
+        onClick={() => bump(1)}
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-500/30 text-blue-100 transition-colors hover:bg-blue-500/50 active:bg-blue-500/60"
+        aria-label="הגדל כמות"
+      >
+        <Plus className="h-4 w-4" aria-hidden />
+      </button>
+    </div>
+  );
 }
 
 /** בחירת פאנלים התחלתית + DC מדויק (כמות × וואט), לא יעד מעוגל */
@@ -4667,18 +4708,10 @@ export default function App() {
                                     </option>
                                   ))}
                                 </select>
-                                <div className="w-28 flex items-center bg-white/5 border border-white/10 rounded-xl">
-                                  <span className="pl-2 text-slate-500 text-sm">כמות:</span>
-                                  <input
-                                    type="number"
-                                    min="1"
-                                    value={item.quantity}
-                                    onChange={(e) =>
-                                      handleQuoteListChange('selectedPanels', index, 'quantity', e.target.value)
-                                    }
-                                    className="w-full bg-transparent p-2 text-white outline-none"
-                                  />
-                                </div>
+                                <QuoteQuantityStepper
+                                  value={item.quantity}
+                                  onChange={(v) => handleQuoteListChange('selectedPanels', index, 'quantity', v)}
+                                />
                                 <button
                                   type="button"
                                   onClick={() => removeQuoteListItem('selectedPanels', index)}
@@ -4764,10 +4797,10 @@ export default function App() {
                                   <select value={item.id} onChange={(e) => handleQuoteListChange(formListName, index, 'id', e.target.value)} className="min-w-0 flex-1 basis-[12rem] bg-slate-950 border border-white/15 rounded-xl p-2.5 text-slate-100 outline-none focus:border-blue-500/60 transition-all [color-scheme:dark]">
                                     {adminList.map(inv => (<option key={inv.id} value={inv.id} className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f1f5f9' }}>{inv.name}</option>))}
                                   </select>
-                                  <div className="w-28 flex items-center bg-white/5 border border-white/10 rounded-xl">
-                                     <span className="pl-2 text-slate-500 text-sm">כמות:</span>
-                                     <input type="number" min="1" value={item.quantity} onChange={(e) => handleQuoteListChange(formListName, index, 'quantity', e.target.value)} className="w-full bg-transparent p-2 text-white outline-none" />
-                                  </div>
+                                  <QuoteQuantityStepper
+                                    value={item.quantity}
+                                    onChange={(v) => handleQuoteListChange(formListName, index, 'quantity', v)}
+                                  />
                                   <button type="button" onClick={() => removeQuoteListItem(formListName, index)} className="p-2 text-slate-500 hover:text-red-400 rounded-xl transition-colors"><Trash2 className="w-5 h-5" /></button>
                                 </div>
                               ))}
@@ -4798,7 +4831,10 @@ export default function App() {
                                        <select value={item.id} onChange={(e) => handleQuoteListChange('selectedBatteries', index, 'id', e.target.value)} className="min-w-0 flex-1 basis-[12rem] bg-slate-950 border border-white/15 rounded-xl p-2.5 text-slate-100 outline-none focus:border-blue-500/60 transition-all [color-scheme:dark]">
                                          {adminPrices.batteries.map(bat => (<option key={bat.id} value={bat.id} className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f1f5f9' }}>{bat.name}</option>))}
                                        </select>
-                                       <div className="w-28 flex items-center bg-white/5 border border-white/10 rounded-xl"><span className="pl-2 text-slate-500 text-sm">כמות:</span><input type="number" min="1" value={item.quantity} onChange={(e) => handleQuoteListChange('selectedBatteries', index, 'quantity', e.target.value)} className="w-full bg-transparent p-2 text-white outline-none" /></div>
+                                       <QuoteQuantityStepper
+                                         value={item.quantity}
+                                         onChange={(v) => handleQuoteListChange('selectedBatteries', index, 'quantity', v)}
+                                       />
                                        <button type="button" onClick={() => removeQuoteListItem('selectedBatteries', index)} className="p-2 text-slate-500 hover:text-red-400 rounded-xl transition-colors"><Trash2 className="w-5 h-5" /></button>
                                      </div>
                                    ))}
