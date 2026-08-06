@@ -618,12 +618,25 @@ function QuoteSystemSpecSummary({ quote }) {
     .map((inv) => `${inv.name}${inv.quantity > 1 ? ` ×${inv.quantity}` : ''}`)
     .join(' · ');
   const batterySummary = aggregateBatteryStorageSummary(quote.batteryDetailsList);
+  const panelDetails = quote.panelDetailsList || [];
+  const panelsSummary =
+    panelDetails.length > 0
+      ? panelDetails
+          .map((p) => {
+            const qty = Number(p.quantity) || 0;
+            const watts = Number(p.powerWatts) || Number(quote.panelPowerWatts) || 0;
+            const name = (p.name || '').trim();
+            if (name) return `${qty}× ${name}${watts ? ` (${watts}W)` : ''}`;
+            return `${qty} × ${watts || '?'}W`;
+          })
+          .join(' · ')
+      : `${quote.calculatedNumPanels} × ${quote.panelPowerWatts}W`;
   const rows = [
     { label: 'הספק DC', value: `${quote.systemSizeKw} kWp`, Icon: Zap, iconClass: 'text-orange-400' },
     { label: 'הספק AC', value: `${quote.systemSizeAcKw} kWp`, Icon: Activity, iconClass: 'text-sky-400' },
     {
       label: 'פאנלים',
-      value: `${quote.calculatedNumPanels} × ${quote.panelPowerWatts}W`,
+      value: panelsSummary,
       Icon: Sun,
       iconClass: 'text-amber-300',
     },
@@ -1479,6 +1492,41 @@ function aggregateInverterLogosForQuote(inverterDetailsList) {
   return [...map.values()];
 }
 
+function aggregatePanelLogosForQuote(panelDetailsList) {
+  const map = new Map();
+  (panelDetailsList || []).forEach((row) => {
+    const qty = Number(row.quantity) || 0;
+    if (qty <= 0) return;
+    const logo = normalizeDatasheet(row.logo);
+    const hasLogoImg = Boolean(logo?.mimeType?.startsWith('image/'));
+    if (!hasLogoImg) return;
+    const imageSrc = datasheetToSrc(logo);
+    if (!imageSrc) return;
+    const aggregateKey = `panel:${row.id}`;
+    const prev = map.get(aggregateKey);
+    if (prev) {
+      prev.quantity += qty;
+      if (!prev.datasheet && row.datasheet) prev.datasheet = row.datasheet;
+    } else {
+      map.set(aggregateKey, {
+        aggregateKey,
+        imageSrc,
+        quantity: qty,
+        displayName: row.name || 'פאנל',
+        powerWatts: Number(row.powerWatts) || 0,
+        datasheet: normalizeDatasheet(row.datasheet),
+      });
+    }
+  });
+  return [...map.values()];
+}
+
+function suggestedPanelQuantityForDc(systemSizeKw, powerWatts) {
+  const watts = Number(powerWatts) > 0 ? Number(powerWatts) : 640;
+  const kw = parseFloat(systemSizeKw) || 0;
+  return Math.max(1, Math.round((kw * 1000) / watts));
+}
+
 const DATASHEET_MAX_BYTES = 8 * 1024 * 1024;
 const QUOTE_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 /** ריבוע אחיד ללוגואים בהצעת מחיר (contain בתוך הריבוע) */
@@ -1876,17 +1924,31 @@ function migrateLegacyStorageKey(nextKey, legacyKey) {
 }
 
 const DEFAULT_ADMIN_PRICES = {
+  /** @deprecated — נשמר לתאימות לאחור; המקור הוא panels[] */
   panelPricePerWattUsd: 0.11,
+  /** @deprecated — נשמר לתאימות לאחור; המקור הוא panels[] */
   panelPowerWatts: 640,
-  /** דאטהשיט לפאנל (סוג יחיד לפי מחירון) — אופציונלי */
+  /** @deprecated — נשמר לתאימות לאחור; המקור הוא panels[] */
   panelDatasheet: null,
-  /** לוגו פאנלים בהצעה — JPEG מנורמל מהעלאה */
+  /** @deprecated — נשמר לתאימות לאחור; המקור הוא panels[] */
   panelLogo: null,
   usdExchangeRate: 3.75,
   constructionConcretePerKw: 350,
   constructionOtherPerKw: 200,
   constructionLogo: null,
   constructionDatasheet: null,
+
+  /** מחירון פאנלים — כמו ממירים: דגם, הספק, מחיר, לוגו, דאטהשיט */
+  panels: [
+    {
+      id: 'pnl-std',
+      name: 'פאנל סטנדרטי',
+      powerWatts: 640,
+      pricePerWattUsd: 0.11,
+      logo: null,
+      datasheet: null,
+    },
+  ],
 
   inverters: [
     { id: 'inv-se100', name: 'סולאראדג\' 100kW', cost: 15000, capacityKw: 100, isSolarEdge: true, inverterLogoKey: 'auto', customLogo: null, datasheet: null },
@@ -1927,8 +1989,40 @@ const DEFAULT_ADMIN_PRICES = {
   ]
 };
 
+/** ממיר הגדרות פאנל ישנות (שדות גלובליים) לרשימת מוצרים כמו ממירים */
+function migratePanelsCatalog(saved, defaults) {
+  if (Array.isArray(saved?.panels) && saved.panels.length > 0) {
+    return saved.panels.map((p, idx) => ({
+      id: p?.id || `pnl-${idx}`,
+      name: typeof p?.name === 'string' && p.name.trim() ? p.name : `פאנל ${idx + 1}`,
+      powerWatts: Number(p?.powerWatts) > 0 ? Number(p.powerWatts) : Number(defaults.panelPowerWatts) || 640,
+      pricePerWattUsd:
+        Number(p?.pricePerWattUsd) > 0
+          ? Number(p.pricePerWattUsd)
+          : Number(defaults.panelPricePerWattUsd) || 0.11,
+      logo: p?.logo != null ? p.logo : null,
+      datasheet: p?.datasheet != null ? p.datasheet : null,
+    }));
+  }
+  return [
+    {
+      id: 'pnl-migrated',
+      name: 'פאנל סטנדרטי',
+      powerWatts: Number(saved?.panelPowerWatts) > 0 ? Number(saved.panelPowerWatts) : Number(defaults.panelPowerWatts) || 640,
+      pricePerWattUsd:
+        Number(saved?.panelPricePerWattUsd) > 0
+          ? Number(saved.panelPricePerWattUsd)
+          : Number(defaults.panelPricePerWattUsd) || 0.11,
+      logo: saved?.panelLogo != null ? saved.panelLogo : null,
+      datasheet: saved?.panelDatasheet != null ? saved.panelDatasheet : null,
+    },
+  ];
+}
+
 function mergeAdminSettingsFromStorage(saved, defaults) {
   if (!saved || typeof saved !== 'object') return defaults;
+  const panels = migratePanelsCatalog(saved, defaults);
+  const primaryPanel = panels[0] || defaults.panels[0];
   return {
     ...defaults,
     ...saved,
@@ -1944,8 +2038,12 @@ function mergeAdminSettingsFromStorage(saved, defaults) {
       ...defaults.optimizerLogos,
       ...(saved.optimizerLogos && typeof saved.optimizerLogos === 'object' ? saved.optimizerLogos : {})
     },
-    panelDatasheet: saved.panelDatasheet != null ? saved.panelDatasheet : defaults.panelDatasheet,
-    panelLogo: saved.panelLogo != null ? saved.panelLogo : defaults.panelLogo,
+    panels,
+    // שדות ישנים — מסונכרנים מהפאנל הראשון לתאימות לקוד/הצעות ישנות
+    panelPowerWatts: primaryPanel?.powerWatts ?? defaults.panelPowerWatts,
+    panelPricePerWattUsd: primaryPanel?.pricePerWattUsd ?? defaults.panelPricePerWattUsd,
+    panelDatasheet: primaryPanel?.datasheet ?? defaults.panelDatasheet,
+    panelLogo: primaryPanel?.logo ?? defaults.panelLogo,
     constructionLogo: saved.constructionLogo != null ? saved.constructionLogo : defaults.constructionLogo,
     constructionDatasheet:
       saved.constructionDatasheet != null ? saved.constructionDatasheet : defaults.constructionDatasheet,
@@ -2225,6 +2323,12 @@ export default function App() {
     systemSizeAcKw: 15, 
     roofType: 'concrete', 
     inverterSystemType: 'ongrid',
+    selectedPanels: [
+      {
+        id: DEFAULT_ADMIN_PRICES.panels[0]?.id || 'pnl-std',
+        quantity: suggestedPanelQuantityForDc(22.5, DEFAULT_ADMIN_PRICES.panels[0]?.powerWatts),
+      },
+    ],
     selectedInverters: [
       {
         id:
@@ -2264,6 +2368,34 @@ export default function App() {
     /** לוגו Sungrow בהצעה — כשממיר Sungrow ואופטימייזרים */
     showSungrowLogoOnQuote: true,
   });
+
+  /** התאמת בחירת פאנלים במקרה שמחירון הענן/לוקאלי משתמש ב-id אחר אחרי מיגרציה */
+  useEffect(() => {
+    const panels = adminPrices.panels || [];
+    if (!panels.length) return undefined;
+    setQuoteForm((prev) => {
+      const rows = prev.selectedPanels || [];
+      if (rows.length === 0) {
+        return {
+          ...prev,
+          selectedPanels: [
+            {
+              id: panels[0].id,
+              quantity: suggestedPanelQuantityForDc(prev.systemSizeKw, panels[0].powerWatts),
+            },
+          ],
+        };
+      }
+      let changed = false;
+      const next = rows.map((row) => {
+        if (panels.some((p) => p.id === row.id)) return row;
+        changed = true;
+        return { ...row, id: panels[0].id };
+      });
+      return changed ? { ...prev, selectedPanels: next } : prev;
+    });
+    return undefined;
+  }, [adminPrices.panels]);
 
   const [generatedQuote, setGeneratedQuote] = useState(null);
   /** טיוטת הצעה אחרי חישוב — לפני אישור מחיר ללקוח */
@@ -2621,8 +2753,15 @@ export default function App() {
   };
 
   // --- עזרי תצוגה טרום-חישוב (לשימוש בטופס הסוכן) ---
-  const panelPowerConst = Number(adminPrices.panelPowerWatts) || 640;
-  const currentCalculatedPanels = Math.round(((parseFloat(quoteForm.systemSizeKw) || 0) * 1000) / panelPowerConst) || 0;
+  const primarySelectedPanel =
+    (adminPrices.panels || []).find((p) => p.id === quoteForm.selectedPanels?.[0]?.id) ||
+    (adminPrices.panels || [])[0] ||
+    null;
+  const panelPowerConst = Number(primarySelectedPanel?.powerWatts) || Number(adminPrices.panelPowerWatts) || 640;
+  const currentCalculatedPanels =
+    (quoteForm.selectedPanels || []).reduce((sum, row) => sum + (Number(row.quantity) || 0), 0) ||
+    Math.round(((parseFloat(quoteForm.systemSizeKw) || 0) * 1000) / panelPowerConst) ||
+    0;
   
   const pSouthInput = Number(quoteForm.panelsSouth) || 0;
   const pEWInput = Number(quoteForm.panelsEastWest) || 0;
@@ -2714,15 +2853,6 @@ export default function App() {
     }
   };
 
-  const attachPanelDatasheetFile = async (file) => {
-    try {
-      const ds = await readAdminDatasheetFileSmart(file);
-      setAdminPrices(prev => ({ ...prev, panelDatasheet: ds }));
-    } catch (err) {
-      alert(err.message || 'שגיאה בהעלאת הקובץ');
-    }
-  };
-
   const attachOptimizerDatasheetFile = async (key, file) => {
     try {
       const ds = await readAdminDatasheetFileSmart(file);
@@ -2742,15 +2872,6 @@ export default function App() {
         ...prev,
         optimizerLogos: { ...(prev.optimizerLogos || {}), [key]: raster },
       }));
-    } catch (err) {
-      alert(err.message || 'שגיאה בהעלאת הלוגו');
-    }
-  };
-
-  const attachPanelLogoFile = async (file) => {
-    try {
-      const raster = await readFileAsNormalizedQuoteRaster(file, 'logo');
-      setAdminPrices((prev) => ({ ...prev, panelLogo: raster }));
     } catch (err) {
       alert(err.message || 'שגיאה בהעלאת הלוגו');
     }
@@ -2826,17 +2947,42 @@ export default function App() {
     const val = parseFloat(e.target.value) || 0;
     // DC ≤14 → AC 10; DC 15–24 → AC 15; DC >24 → (DC/3)×2
     const autoAc = val <= 14 ? 10 : val <= 24 ? 15 : (val / 3) * 2;
-    setQuoteForm(prev => ({ 
-      ...prev, 
-      systemSizeKw: e.target.value,
-      systemSizeAcKw: autoAc.toFixed(2)
-    }));
+    setQuoteForm((prev) => {
+      let selectedPanels = prev.selectedPanels || [];
+      // כשיש בחירת פאנל אחת — מסנכרנים כמות לפי הספק ה-DC (כמו החישוב הישן)
+      if (selectedPanels.length === 1) {
+        const panel =
+          (adminPrices.panels || []).find((p) => p.id === selectedPanels[0].id) ||
+          (adminPrices.panels || [])[0];
+        const autoQty = suggestedPanelQuantityForDc(val, panel?.powerWatts);
+        selectedPanels = [{ ...selectedPanels[0], quantity: autoQty }];
+      }
+      return {
+        ...prev,
+        systemSizeKw: e.target.value,
+        systemSizeAcKw: autoAc.toFixed(2),
+        selectedPanels,
+      };
+    });
   };
 
   const handleQuoteListChange = (listName, index, field, value) => {
-    const updatedList = [...quoteForm[listName]];
-    updatedList[index][field] = field === 'quantity' ? (parseInt(value) || 1) : value;
-    setQuoteForm(prev => ({ ...prev, [listName]: updatedList }));
+    setQuoteForm((prev) => {
+      const updatedList = [...(prev[listName] || [])];
+      const nextValue = field === 'quantity' ? (parseInt(value, 10) || 1) : value;
+      updatedList[index] = { ...updatedList[index], [field]: nextValue };
+
+      // החלפת דגם פאנל בשורה בודדת — עדכון כמות לפי DC
+      if (listName === 'selectedPanels' && field === 'id' && updatedList.length === 1) {
+        const panel = (adminPrices.panels || []).find((p) => p.id === nextValue);
+        updatedList[0] = {
+          ...updatedList[0],
+          quantity: suggestedPanelQuantityForDc(prev.systemSizeKw, panel?.powerWatts),
+        };
+      }
+
+      return { ...prev, [listName]: updatedList };
+    });
   };
 
   const addQuoteListItem = (formListName, adminListName) => {
@@ -2923,10 +3069,47 @@ export default function App() {
     
     const sizeKw = parseFloat(quoteForm.systemSizeKw) || 0;
     const acKw = parseFloat(quoteForm.systemSizeAcKw) || 15;
-    const systemSizeWatts = sizeKw * 1000; 
-    
-    const panelPower = Number(adminPrices.panelPowerWatts) || 640;
-    const numPanels = Math.round(systemSizeWatts / panelPower);
+    const systemSizeWatts = sizeKw * 1000;
+    const usdRate = Number(adminPrices.usdExchangeRate) || 3.75;
+
+    let panelsCost = 0;
+    let numPanels = 0;
+    const panelDetailsList = [];
+    (quoteForm.selectedPanels || []).forEach((sel) => {
+      const panelData = (adminPrices.panels || []).find((p) => p.id === sel.id);
+      const qty = Number(sel.quantity) || 0;
+      if (panelData && qty > 0) {
+        const powerWatts = Number(panelData.powerWatts) > 0 ? Number(panelData.powerWatts) : 640;
+        const pricePerWattUsd =
+          Number(panelData.pricePerWattUsd) > 0 ? Number(panelData.pricePerWattUsd) : 0.11;
+        panelsCost += qty * powerWatts * pricePerWattUsd * usdRate;
+        numPanels += qty;
+        panelDetailsList.push({
+          id: panelData.id,
+          name: panelData.name,
+          quantity: qty,
+          powerWatts,
+          pricePerWattUsd,
+          logo: normalizeDatasheet(panelData.logo),
+          datasheet: normalizeDatasheet(panelData.datasheet),
+        });
+      }
+    });
+
+    // נפילה לאחור אם לא נבחרו פאנלים — לפי גודל DC והגדרה גלובלית ישנה
+    if (numPanels <= 0) {
+      const fallbackPower = Number(adminPrices.panelPowerWatts) || 640;
+      const fallbackPrice = Number(adminPrices.panelPricePerWattUsd) || 0.11;
+      numPanels = Math.round(systemSizeWatts / fallbackPower) || 0;
+      panelsCost = systemSizeWatts * fallbackPrice * usdRate;
+    }
+
+    const primaryPanelPower =
+      panelDetailsList[0]?.powerWatts || Number(adminPrices.panelPowerWatts) || 640;
+    const primaryPanelLogo =
+      panelDetailsList[0]?.logo || normalizeDatasheet(adminPrices.panelLogo);
+    const primaryPanelDatasheet =
+      panelDetailsList[0]?.datasheet || normalizeDatasheet(adminPrices.panelDatasheet);
 
     const rawAmps = acKw * 1.44 * 1.10;
     const standardAmps = [25, 40, 63, 80, 100, 160, 200, 250, 315, 400, 630, 800, 1000, 1250, 1600];
@@ -2941,7 +3124,6 @@ export default function App() {
        requiredConnectionAmps = Math.ceil(rawAmps);
     }
 
-    const panelsCost = systemSizeWatts * (Number(adminPrices.panelPricePerWattUsd) || 0.11) * (Number(adminPrices.usdExchangeRate) || 3.75);
     const constructionCost = sizeKw * (quoteForm.roofType === 'concrete' ? (Number(adminPrices.constructionConcretePerKw) || 350) : (Number(adminPrices.constructionOtherPerKw) || 200));
     
     let totalInvertersCost = 0;
@@ -3215,7 +3397,8 @@ export default function App() {
       ...quoteForm,
       includesOptimizers: effectiveIncludesOptimizers,
       calculatedNumPanels: numPanels,
-      panelPowerWatts: adminPrices.panelPowerWatts,
+      panelPowerWatts: primaryPanelPower,
+      panelDetailsList,
       productionHoursValid,
       orientationDetails,
       inverterDetailsList,
@@ -3224,8 +3407,8 @@ export default function App() {
       optimizerKind,
       optimizerDatasheet: optimizerKind ? normalizeDatasheet(adminPrices.optimizerDatasheets?.[optimizerKind]) : null,
       optimizerLogoUpload: optimizerKind ? normalizeDatasheet(adminPrices.optimizerLogos?.[optimizerKind]) : null,
-      panelDatasheet: normalizeDatasheet(adminPrices.panelDatasheet),
-      panelLogo: normalizeDatasheet(adminPrices.panelLogo),
+      panelDatasheet: primaryPanelDatasheet,
+      panelLogo: primaryPanelLogo,
       constructionLogo: normalizeDatasheet(adminPrices.constructionLogo),
       constructionDatasheet: normalizeDatasheet(adminPrices.constructionDatasheet),
       hasBatteries,
@@ -3322,6 +3505,20 @@ export default function App() {
     () => aggregateInverterLogosForQuote(generatedQuote?.inverterDetailsList),
     [generatedQuote?.inverterDetailsList]
   );
+
+  const aggregatedQuotePanelLogos = useMemo(
+    () => aggregatePanelLogosForQuote(generatedQuote?.panelDetailsList),
+    [generatedQuote?.panelDetailsList]
+  );
+
+  /** פאנלים ללא לוגו — כרטיס טקסט / תמונה כללית */
+  const quotePanelsWithoutLogoAsset = useMemo(() => {
+    const list = generatedQuote?.panelDetailsList || [];
+    return list.filter((panel) => {
+      const logo = normalizeDatasheet(panel.logo);
+      return !(logo?.mimeType?.startsWith('image/') && datasheetToSrc(logo));
+    });
+  }, [generatedQuote?.panelDetailsList]);
 
   /** ממירים ללא קובץ לוגו ב־public — עדיין מוצגים כרטיס טקסט */
   const quoteInvertersWithoutLogoAsset = useMemo(() => {
@@ -3866,36 +4063,94 @@ export default function App() {
                   <div className="p-6 pt-2 border-t border-white/8 space-y-4">
                     <div className="flex gap-4">
                       <div className="flex-1">
-                        <label className="block text-sm text-slate-400 mb-1">הספק פאנל בודד (וואט)</label>
-                        <input type="number" name="panelPowerWatts" value={adminPrices.panelPowerWatts} onChange={handleAdminChange} className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-blue-500/60 transition-all" />
-                      </div>
-                      <div className="flex-1">
                         <label className="block text-sm text-slate-400 mb-1">שעות שמש בשנה (לחישוב הכנסה)</label>
                         <input type="number" name="productionHours" value={adminPrices.productionHours} onChange={handleAdminChange} className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-blue-500/60 transition-all" />
-                      </div>
-                    </div>
-                    <div className="flex gap-4">
-                      <div className="flex-1">
-                        <label className="block text-sm text-slate-400 mb-1">מחיר פאנלים (וואט/$)</label>
-                        <input type="number" step="0.001" name="panelPricePerWattUsd" value={adminPrices.panelPricePerWattUsd} onChange={handleAdminChange} className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-blue-500/60 transition-all" />
                       </div>
                       <div className="flex-1">
                         <label className="block text-sm text-slate-400 mb-1">שער דולר (₪)</label>
                         <input type="number" step="0.01" name="usdExchangeRate" value={adminPrices.usdExchangeRate} onChange={handleAdminChange} className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-blue-500/60 transition-all" />
                       </div>
                     </div>
-                    <AdminLogoRow
-                      label="לוגו פאנלים להצעת מחיר (מותאם אוטומטית למלבן אחיד)"
-                      logo={adminPrices.panelLogo}
-                      onFile={attachPanelLogoFile}
-                      onClear={() => setAdminPrices((prev) => ({ ...prev, panelLogo: null }))}
-                    />
-                    <AdminDatasheetRow
-                      label="דאטהשיט / מפרט טכני לפאנל (PDF או תמונה)"
-                      datasheet={adminPrices.panelDatasheet}
-                      onFile={attachPanelDatasheetFile}
-                      onClear={() => setAdminPrices(prev => ({ ...prev, panelDatasheet: null }))}
-                    />
+                    <p className="text-sm text-slate-400">הוסיפו דגמי פאנלים — לכל דגם מחיר, לוגו ודאטהשיט נפרדים (כמו ממירים).</p>
+                    <div className="space-y-3">
+                      {(adminPrices.panels || []).map((panel) => (
+                        <div key={panel.id} className="p-3 bg-black/20 border border-white/8 rounded-xl space-y-3">
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={panel.name}
+                              onChange={(e) => updateAdminListItem('panels', panel.id, 'name', e.target.value)}
+                              className="flex-1 bg-transparent border-b border-white/15 p-1 text-white outline-none focus:border-blue-400 transition-all"
+                              placeholder="שם / דגם הפאנל"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => removeAdminListItem('panels', panel.id)}
+                              className="p-1 text-slate-500 hover:text-red-400 transition-colors"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                          <div className="flex gap-2 text-sm">
+                            <div className="flex-1">
+                              <label className="text-slate-500 text-xs block">הספק (וואט)</label>
+                              <input
+                                type="number"
+                                value={panel.powerWatts}
+                                onChange={(e) =>
+                                  updateAdminListItem('panels', panel.id, 'powerWatts', parseFloat(e.target.value) || 0)
+                                }
+                                className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-white outline-none focus:border-blue-500/60 transition-all"
+                              />
+                            </div>
+                            <div className="flex-1">
+                              <label className="text-slate-500 text-xs block">מחיר (וואט/$)</label>
+                              <input
+                                type="number"
+                                step="0.001"
+                                value={panel.pricePerWattUsd}
+                                onChange={(e) =>
+                                  updateAdminListItem(
+                                    'panels',
+                                    panel.id,
+                                    'pricePerWattUsd',
+                                    parseFloat(e.target.value) || 0
+                                  )
+                                }
+                                className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-white outline-none focus:border-blue-500/60 transition-all"
+                              />
+                            </div>
+                          </div>
+                          <AdminLogoRow
+                            label="לוגו פאנל להצעת מחיר (מותאם אוטומטית למלבן אחיד)"
+                            logo={panel.logo}
+                            onFile={(f) => attachRasterToAdminListItem('panels', panel.id, 'logo', f)}
+                            onClear={() => updateAdminListItem('panels', panel.id, 'logo', null)}
+                          />
+                          <AdminDatasheetRow
+                            label="דאטהשיט / מפרט טכני לפאנל (PDF או תמונה)"
+                            datasheet={panel.datasheet}
+                            onFile={(f) => attachDatasheetToListItem('panels', panel.id, f)}
+                            onClear={() => updateAdminListItem('panels', panel.id, 'datasheet', null)}
+                          />
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          addAdminListItem('panels', {
+                            name: 'פאנל חדש',
+                            powerWatts: 650,
+                            pricePerWattUsd: 0.14,
+                            logo: null,
+                            datasheet: null,
+                          })
+                        }
+                        className="w-full mt-2 flex items-center justify-center gap-2 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 text-blue-400 p-2 rounded-xl text-sm transition-all"
+                      >
+                        <Plus className="w-4 h-4" /> הוסף דגם פאנל
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -4349,6 +4604,65 @@ export default function App() {
                         <option value="concrete" className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f1f5f9' }}>גג בטון (דורש משקולות)</option>
                         <option value="other" className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f1f5f9' }}>גג רגיל (איסכורית / פאנל / רעפים)</option>
                       </select>
+                    </div>
+
+                    {/* בחירת פאנלים */}
+                    <div className="min-w-0 md:col-span-2 rounded-2xl border border-white/10 bg-black/20 p-5">
+                      <label className="block text-xs font-semibold text-blue-400 uppercase tracking-wider mb-3">בחירת פאנלים</label>
+                      {(adminPrices.panels || []).length === 0 ? (
+                        <p className="text-sm text-red-400">לא הוגדרו דגמי פאנלים באדמין.</p>
+                      ) : (
+                        <>
+                          <div className="space-y-3">
+                            {(quoteForm.selectedPanels || []).map((item, index) => (
+                              <div key={index} className="flex min-w-0 flex-wrap items-center gap-3">
+                                <select
+                                  value={item.id}
+                                  onChange={(e) => handleQuoteListChange('selectedPanels', index, 'id', e.target.value)}
+                                  className="min-w-0 flex-1 basis-[12rem] bg-slate-950 border border-white/15 rounded-xl p-2.5 text-slate-100 outline-none focus:border-blue-500/60 transition-all [color-scheme:dark]"
+                                >
+                                  {(adminPrices.panels || []).map((panel) => (
+                                    <option
+                                      key={panel.id}
+                                      value={panel.id}
+                                      className="bg-slate-900 text-slate-100"
+                                      style={{ backgroundColor: '#0f172a', color: '#f1f5f9' }}
+                                    >
+                                      {panel.name} ({panel.powerWatts}W)
+                                    </option>
+                                  ))}
+                                </select>
+                                <div className="w-28 flex items-center bg-white/5 border border-white/10 rounded-xl">
+                                  <span className="pl-2 text-slate-500 text-sm">כמות:</span>
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    value={item.quantity}
+                                    onChange={(e) =>
+                                      handleQuoteListChange('selectedPanels', index, 'quantity', e.target.value)
+                                    }
+                                    className="w-full bg-transparent p-2 text-white outline-none"
+                                  />
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => removeQuoteListItem('selectedPanels', index)}
+                                  className="p-2 text-slate-500 hover:text-red-400 rounded-xl transition-colors"
+                                >
+                                  <Trash2 className="w-5 h-5" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => addQuoteListItem('selectedPanels', 'panels')}
+                            className="mt-4 flex items-center gap-1 text-sm text-blue-400 hover:text-blue-300 transition-colors"
+                          >
+                            <Plus className="w-4 h-4" /> הוסף פאנל
+                          </button>
+                        </>
+                      )}
                     </div>
                   
                     {/* סוג ממיר */}
@@ -4895,6 +5209,93 @@ export default function App() {
                       <div className="mx-auto mt-5 h-px w-24 rounded-full bg-gradient-to-l from-transparent via-orange-400/80 to-transparent print:via-blue-400/60" aria-hidden />
                     </div>
                     <div className="quote-print-equipment-strip mx-auto flex max-w-5xl flex-wrap items-start justify-center gap-3 md:gap-4 print:gap-2">
+                      {aggregatedQuotePanelLogos.map((row) => (
+                        <div key={row.aggregateKey} className={QUOTE_EQUIPMENT_STRIP_CELL}>
+                          {isDatasheetViewable(row.datasheet) ? (
+                            <button
+                              type="button"
+                              className={`${QUOTE_BRAND_CARD_LOGO_ONLY_CLASS} cursor-pointer transition-transform hover:scale-[1.02] hover:border-orange-400/35 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400/70`}
+                              onClick={() => openQuoteDatasheet(`מפרט טכני — ${row.displayName}`, row.datasheet)}
+                            >
+                              <img src={row.imageSrc} alt="" className={QUOTE_BRAND_LOGO_IMG_FILL_CLASS} />
+                            </button>
+                          ) : (
+                            <div className={QUOTE_BRAND_CARD_LOGO_ONLY_CLASS}>
+                              <img src={row.imageSrc} alt="" className={QUOTE_BRAND_LOGO_IMG_FILL_CLASS} />
+                            </div>
+                          )}
+                          {row.quantity > 1 && (
+                            <span className="rounded-full bg-white/10 text-white font-black text-sm md:text-base px-3.5 py-1 border border-white/20 backdrop-blur-sm print:bg-blue-50 print:text-blue-900 print:border-blue-200">
+                              ×{row.quantity}
+                            </span>
+                          )}
+                          <QuoteEquipDatasheetCaption
+                            datasheet={row.datasheet}
+                            datasheetTitle={`מפרט טכני — ${row.displayName}`}
+                            onOpen={openQuoteDatasheet}
+                          >
+                            {row.displayName}
+                            {row.powerWatts ? ` · ${row.powerWatts}W` : ''}
+                          </QuoteEquipDatasheetCaption>
+                        </div>
+                      ))}
+                      {quotePanelsWithoutLogoAsset.map((panel) => {
+                        const inner = (
+                          <>
+                            <Sun className="h-10 w-10 shrink-0 text-amber-300 print:text-amber-600 md:h-12 md:w-12" aria-hidden />
+                            <span className="line-clamp-3 px-1 text-center text-xs font-bold leading-snug text-white print:text-slate-900 md:text-sm">
+                              {panel.name || 'פאנל'}
+                            </span>
+                          </>
+                        );
+                        return (
+                          <div key={`panel-plain-${panel.id}`} className={QUOTE_EQUIPMENT_STRIP_CELL}>
+                            {isDatasheetViewable(panel.datasheet) ? (
+                              <button
+                                type="button"
+                                className={`${QUOTE_PLAIN_EQUIP_CARD_COMPACT_CLASS} cursor-pointer transition-transform hover:scale-[1.02] hover:border-orange-400/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400/60`}
+                                onClick={() => openQuoteDatasheet(`מפרט טכני — ${panel.name || 'פאנל'}`, panel.datasheet)}
+                              >
+                                {inner}
+                              </button>
+                            ) : (
+                              <div className={QUOTE_PLAIN_EQUIP_CARD_COMPACT_CLASS}>{inner}</div>
+                            )}
+                            {panel.quantity > 1 && (
+                              <span className="rounded-full border border-white/20 bg-white/10 px-3 py-0.5 text-xs font-black text-white backdrop-blur-sm print:border-slate-300 print:bg-slate-100 print:text-slate-900 md:text-sm">
+                                ×{panel.quantity}
+                              </span>
+                            )}
+                            <QuoteEquipDatasheetCaption
+                              datasheet={panel.datasheet}
+                              datasheetTitle={`מפרט טכני — ${panel.name || 'פאנל'}`}
+                              onOpen={openQuoteDatasheet}
+                            >
+                              {panel.name || 'פאנל'}
+                              {panel.powerWatts ? ` · ${panel.powerWatts}W` : ''}
+                            </QuoteEquipDatasheetCaption>
+                          </div>
+                        );
+                      })}
+                      {(aggregatedQuotePanelLogos.length === 0 &&
+                        quotePanelsWithoutLogoAsset.length === 0 &&
+                        (generatedQuote.calculatedNumPanels || 0) > 0) && (
+                        <div className={QUOTE_PANELS_STRIP_CELL}>
+                          <div className={QUOTE_EQUIP_LOGO_TILE_CLASS}>
+                            <img
+                              src={QUOTE_PANELS_GENERIC_IMG}
+                              alt=""
+                              className={`${QUOTE_EQUIP_PHOTO_TILE_IMG_CLASS} object-[50%_72%]`}
+                            />
+                          </div>
+                          <span className={QUOTE_EQUIP_BELOW_CAPTION_CLASS}>
+                            {QUOTE_PANELS_GENERIC_TITLE_HE}
+                          </span>
+                          <span className="block px-1 text-center text-[10px] font-semibold leading-snug text-slate-300 md:text-xs print:text-slate-600 [text-shadow:0_1px_3px_rgba(0,0,0,0.85)] print:[text-shadow:none]">
+                            {QUOTE_PANELS_GENERIC_BODY_HE}
+                          </span>
+                        </div>
+                      )}
                       {aggregatedQuoteInverterLogos.map((row) => {
                         return (
                         <div
@@ -5123,23 +5524,6 @@ export default function App() {
                             />
                           </div>
                           <span className={QUOTE_EQUIP_BELOW_CAPTION_CLASS}>מערכת שטיפה אוטומטית לפאנלים</span>
-                        </div>
-                      )}
-                      {(generatedQuote.calculatedNumPanels || 0) > 0 && (
-                        <div className={QUOTE_PANELS_STRIP_CELL}>
-                          <div className={QUOTE_EQUIP_LOGO_TILE_CLASS}>
-                            <img
-                              src={QUOTE_PANELS_GENERIC_IMG}
-                              alt=""
-                              className={`${QUOTE_EQUIP_PHOTO_TILE_IMG_CLASS} object-[50%_72%]`}
-                            />
-                          </div>
-                          <span className={QUOTE_EQUIP_BELOW_CAPTION_CLASS}>
-                            {QUOTE_PANELS_GENERIC_TITLE_HE}
-                          </span>
-                          <span className="block px-1 text-center text-[10px] font-semibold leading-snug text-slate-300 md:text-xs print:text-slate-600 [text-shadow:0_1px_3px_rgba(0,0,0,0.85)] print:[text-shadow:none]">
-                            {QUOTE_PANELS_GENERIC_BODY_HE}
-                          </span>
                         </div>
                       )}
                       {generatedQuote.feesPayer === 'company' && (

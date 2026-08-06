@@ -78,8 +78,6 @@ export async function prepareAdminPricesForCloud(supabase, payload) {
   if (!supabase || !payload || typeof payload !== 'object') return payload;
   const next = clonePayload(payload);
 
-  next.panelDatasheet = await maybeExternalize(supabase, next.panelDatasheet, 'panel/datasheet');
-  next.panelLogo = await maybeExternalize(supabase, next.panelLogo, 'panel/logo');
   next.constructionDatasheet = await maybeExternalize(
     supabase,
     next.constructionDatasheet,
@@ -101,6 +99,30 @@ export async function prepareAdminPricesForCloud(supabase, payload) {
       ol[key] = await maybeExternalize(supabase, ol[key], `optimizers/${safeStorageSegment(key)}/logo`);
     }
     next.optimizerLogos = ol;
+  }
+
+  if (Array.isArray(next.panels)) {
+    next.panels = await Promise.all(
+      next.panels.map(async (panel) => {
+        const id = safeStorageSegment(panel?.id || 'panel');
+        return {
+          ...panel,
+          logo: await maybeExternalize(supabase, panel.logo, `panels/${id}/logo`),
+          datasheet: await maybeExternalize(supabase, panel.datasheet, `panels/${id}/datasheet`),
+        };
+      }),
+    );
+    // שמירת שדות ישנים מסונכרנים מהפאנל הראשון (תאימות לאחור)
+    const primary = next.panels[0];
+    if (primary) {
+      next.panelPowerWatts = primary.powerWatts;
+      next.panelPricePerWattUsd = primary.pricePerWattUsd;
+      next.panelLogo = primary.logo ?? null;
+      next.panelDatasheet = primary.datasheet ?? null;
+    }
+  } else {
+    next.panelDatasheet = await maybeExternalize(supabase, next.panelDatasheet, 'panel/datasheet');
+    next.panelLogo = await maybeExternalize(supabase, next.panelLogo, 'panel/logo');
   }
 
   const mapInverterList = async (list, prefix) => {
