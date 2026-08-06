@@ -1485,6 +1485,32 @@ function suggestedPanelQuantityForDc(systemSizeKw, powerWatts) {
   return Math.max(1, Math.round((kw * 1000) / watts));
 }
 
+/** AC אוטומטי לפי DC: ≤14 → 10; 15–24 → 15; >24 → (DC/3)×2 */
+function autoAcFromDcKw(dcKw) {
+  const val = parseFloat(dcKw) || 0;
+  if (val <= 14) return 10;
+  if (val <= 24) return 15;
+  return (val / 3) * 2;
+}
+
+/** הספק DC (kWp) מדויק לפי כמות × הספק פאנל */
+function dcKwFromSelectedPanels(selectedPanels, panelsCatalog) {
+  let totalWatts = 0;
+  for (const sel of selectedPanels || []) {
+    const panel = (panelsCatalog || []).find((p) => p.id === sel.id);
+    const qty = Number(sel.quantity) || 0;
+    const power = Number(panel?.powerWatts) > 0 ? Number(panel.powerWatts) : 0;
+    if (qty > 0 && power > 0) totalWatts += qty * power;
+  }
+  if (totalWatts <= 0) return null;
+  return Math.round((totalWatts / 1000) * 1000) / 1000;
+}
+
+function formatDcKwForInput(kw) {
+  if (kw == null || !Number.isFinite(Number(kw))) return '';
+  return String(parseFloat(Number(kw).toFixed(3)));
+}
+
 const DATASHEET_MAX_BYTES = 8 * 1024 * 1024;
 const QUOTE_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 /** ריבוע אחיד ללוגואים בהצעת מחיר (contain בתוך הריבוע) */
@@ -2903,11 +2929,10 @@ export default function App() {
 
   const handleDcSizeChange = (e) => {
     const val = parseFloat(e.target.value) || 0;
-    // DC ≤14 → AC 10; DC 15–24 → AC 15; DC >24 → (DC/3)×2
-    const autoAc = val <= 14 ? 10 : val <= 24 ? 15 : (val / 3) * 2;
+    const autoAc = autoAcFromDcKw(val);
     setQuoteForm((prev) => {
       let selectedPanels = prev.selectedPanels || [];
-      // כשיש בחירת פאנל אחת — מסנכרנים כמות לפי הספק ה-DC (כמו החישוב הישן)
+      // כשיש בחירת פאנל אחת — מסנכרנים כמות לפי הספק ה-DC
       if (selectedPanels.length === 1) {
         const panel =
           (adminPrices.panels || []).find((p) => p.id === selectedPanels[0].id) ||
@@ -2924,19 +2949,26 @@ export default function App() {
     });
   };
 
+  const applyDcFromSelectedPanels = (prev, selectedPanels) => {
+    const dc = dcKwFromSelectedPanels(selectedPanels, adminPrices.panels);
+    if (dc == null) return { ...prev, selectedPanels };
+    return {
+      ...prev,
+      selectedPanels,
+      systemSizeKw: formatDcKwForInput(dc),
+      systemSizeAcKw: autoAcFromDcKw(dc).toFixed(2),
+    };
+  };
+
   const handleQuoteListChange = (listName, index, field, value) => {
     setQuoteForm((prev) => {
       const updatedList = [...(prev[listName] || [])];
       const nextValue = field === 'quantity' ? (parseInt(value, 10) || 1) : value;
       updatedList[index] = { ...updatedList[index], [field]: nextValue };
 
-      // החלפת דגם פאנל בשורה בודדת — עדכון כמות לפי DC
-      if (listName === 'selectedPanels' && field === 'id' && updatedList.length === 1) {
-        const panel = (adminPrices.panels || []).find((p) => p.id === nextValue);
-        updatedList[0] = {
-          ...updatedList[0],
-          quantity: suggestedPanelQuantityForDc(prev.systemSizeKw, panel?.powerWatts),
-        };
+      // שינוי דגם/כמות פאנלים → עדכון DC מדויק (כמות × וואט) והמחיר נגזר מכך
+      if (listName === 'selectedPanels' && (field === 'quantity' || field === 'id')) {
+        return applyDcFromSelectedPanels(prev, updatedList);
       }
 
       return { ...prev, [listName]: updatedList };
@@ -2950,14 +2982,23 @@ export default function App() {
     if (adminListName === 'inverters' || adminListName === 'invertersHybrid') {
       newId = findDefaultInverterId(full, quoteForm.systemType) || newId;
     }
-    setQuoteForm((prev) => ({
-      ...prev,
-      [formListName]: [...prev[formListName], { id: newId, quantity: 1 }],
-    }));
+    setQuoteForm((prev) => {
+      const nextList = [...prev[formListName], { id: newId, quantity: 1 }];
+      if (formListName === 'selectedPanels') {
+        return applyDcFromSelectedPanels(prev, nextList);
+      }
+      return { ...prev, [formListName]: nextList };
+    });
   };
 
   const removeQuoteListItem = (formListName, index) => {
-    setQuoteForm(prev => ({ ...prev, [formListName]: prev[formListName].filter((_, i) => i !== index) }));
+    setQuoteForm((prev) => {
+      const nextList = prev[formListName].filter((_, i) => i !== index);
+      if (formListName === 'selectedPanels') {
+        return applyDcFromSelectedPanels(prev, nextList);
+      }
+      return { ...prev, [formListName]: nextList };
+    });
   };
 
   const getSolarEdgeStatus = () => {
@@ -3024,9 +3065,15 @@ export default function App() {
 
   const calculateQuote = (e) => {
     e.preventDefault();
-    
-    const sizeKw = parseFloat(quoteForm.systemSizeKw) || 0;
-    const acKw = parseFloat(quoteForm.systemSizeAcKw) || 15;
+
+    // DC מדויק לפי כמות הפאנלים שנבחרו (אם יש) — המחיר נגזר מכך
+    const panelsDerivedKw = dcKwFromSelectedPanels(quoteForm.selectedPanels, adminPrices.panels);
+    const sizeKw =
+      panelsDerivedKw != null ? panelsDerivedKw : parseFloat(quoteForm.systemSizeKw) || 0;
+    const acKw =
+      panelsDerivedKw != null
+        ? autoAcFromDcKw(panelsDerivedKw)
+        : parseFloat(quoteForm.systemSizeAcKw) || 15;
     const systemSizeWatts = sizeKw * 1000;
     const usdRate = Number(adminPrices.usdExchangeRate) || 3.75;
 
@@ -3353,6 +3400,11 @@ export default function App() {
 
     const quotePayload = {
       ...quoteForm,
+      systemSizeKw: formatDcKwForInput(sizeKw) || quoteForm.systemSizeKw,
+      systemSizeAcKw:
+        panelsDerivedKw != null
+          ? autoAcFromDcKw(panelsDerivedKw).toFixed(2)
+          : quoteForm.systemSizeAcKw,
       includesOptimizers: effectiveIncludesOptimizers,
       calculatedNumPanels: numPanels,
       panelPowerWatts: primaryPanelPower,
@@ -4529,10 +4581,13 @@ export default function App() {
                   <div className="grid min-w-0 grid-cols-1 gap-6 md:grid-cols-2">
                     <div className="min-w-0">
                       <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">גודל מערכת DC (kWp)</label>
-                      <input required type="number" step="0.1" min="1" name="systemSizeKw" value={quoteForm.systemSizeKw} onChange={handleDcSizeChange}
+                      <input required type="number" step="0.001" min="1" name="systemSizeKw" value={quoteForm.systemSizeKw} onChange={handleDcSizeChange}
                         className="w-full min-w-0 max-w-full bg-white/5 border border-white/10 rounded-xl p-3.5 text-white text-2xl font-black outline-none transition-all duration-200 focus:border-blue-500/60"
                         onFocus={e => e.target.style.boxShadow='0 0 0 3px rgba(59,130,246,0.18)'} onBlur={e => e.target.style.boxShadow='none'} />
-                      <p className="text-xs text-slate-500 mt-2">יחושב כ- <strong className="text-blue-400">{currentCalculatedPanels}</strong> פאנלים</p>
+                      <p className="text-xs text-slate-500 mt-2">
+                        יחושב כ- <strong className="text-blue-400">{currentCalculatedPanels}</strong> פאנלים
+                        {' · '}שינוי כמות הפאנלים מעדכן את ה-DC אוטומטית
+                      </p>
                     </div>
                     <div className="min-w-0">
                       <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">גודל מערכת AC (kWp)</label>
