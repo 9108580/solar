@@ -618,25 +618,12 @@ function QuoteSystemSpecSummary({ quote }) {
     .map((inv) => `${inv.name}${inv.quantity > 1 ? ` ×${inv.quantity}` : ''}`)
     .join(' · ');
   const batterySummary = aggregateBatteryStorageSummary(quote.batteryDetailsList);
-  const panelDetails = quote.panelDetailsList || [];
-  const panelsSummary =
-    panelDetails.length > 0
-      ? panelDetails
-          .map((p) => {
-            const qty = Number(p.quantity) || 0;
-            const watts = Number(p.powerWatts) || Number(quote.panelPowerWatts) || 0;
-            const name = (p.name || '').trim();
-            if (name) return `${qty}× ${name}${watts ? ` (${watts}W)` : ''}`;
-            return `${qty} × ${watts || '?'}W`;
-          })
-          .join(' · ')
-      : `${quote.calculatedNumPanels} × ${quote.panelPowerWatts}W`;
   const rows = [
     { label: 'הספק DC', value: `${quote.systemSizeKw} kWp`, Icon: Zap, iconClass: 'text-orange-400' },
     { label: 'הספק AC', value: `${quote.systemSizeAcKw} kWp`, Icon: Activity, iconClass: 'text-sky-400' },
     {
       label: 'פאנלים',
-      value: panelsSummary,
+      value: `${quote.calculatedNumPanels} × ${quote.panelPowerWatts}W`,
       Icon: Sun,
       iconClass: 'text-amber-300',
     },
@@ -1485,35 +1472,6 @@ function aggregateInverterLogosForQuote(inverterDetailsList) {
         imageSrc,
         quantity: qty,
         displayName: row.name,
-        datasheet: normalizeDatasheet(row.datasheet),
-      });
-    }
-  });
-  return [...map.values()];
-}
-
-function aggregatePanelLogosForQuote(panelDetailsList) {
-  const map = new Map();
-  (panelDetailsList || []).forEach((row) => {
-    const qty = Number(row.quantity) || 0;
-    if (qty <= 0) return;
-    const logo = normalizeDatasheet(row.logo);
-    const hasLogoImg = Boolean(logo?.mimeType?.startsWith('image/'));
-    if (!hasLogoImg) return;
-    const imageSrc = datasheetToSrc(logo);
-    if (!imageSrc) return;
-    const aggregateKey = `panel:${row.id}`;
-    const prev = map.get(aggregateKey);
-    if (prev) {
-      prev.quantity += qty;
-      if (!prev.datasheet && row.datasheet) prev.datasheet = row.datasheet;
-    } else {
-      map.set(aggregateKey, {
-        aggregateKey,
-        imageSrc,
-        quantity: qty,
-        displayName: row.name || 'פאנל',
-        powerWatts: Number(row.powerWatts) || 0,
         datasheet: normalizeDatasheet(row.datasheet),
       });
     }
@@ -3506,20 +3464,6 @@ export default function App() {
     [generatedQuote?.inverterDetailsList]
   );
 
-  const aggregatedQuotePanelLogos = useMemo(
-    () => aggregatePanelLogosForQuote(generatedQuote?.panelDetailsList),
-    [generatedQuote?.panelDetailsList]
-  );
-
-  /** פאנלים ללא לוגו — כרטיס טקסט / תמונה כללית */
-  const quotePanelsWithoutLogoAsset = useMemo(() => {
-    const list = generatedQuote?.panelDetailsList || [];
-    return list.filter((panel) => {
-      const logo = normalizeDatasheet(panel.logo);
-      return !(logo?.mimeType?.startsWith('image/') && datasheetToSrc(logo));
-    });
-  }, [generatedQuote?.panelDetailsList]);
-
   /** ממירים ללא קובץ לוגו ב־public — עדיין מוצגים כרטיס טקסט */
   const quoteInvertersWithoutLogoAsset = useMemo(() => {
     const list = generatedQuote?.inverterDetailsList || [];
@@ -5209,77 +5153,7 @@ export default function App() {
                       <div className="mx-auto mt-5 h-px w-24 rounded-full bg-gradient-to-l from-transparent via-orange-400/80 to-transparent print:via-blue-400/60" aria-hidden />
                     </div>
                     <div className="quote-print-equipment-strip mx-auto flex max-w-5xl flex-wrap items-start justify-center gap-3 md:gap-4 print:gap-2">
-                      {aggregatedQuotePanelLogos.map((row) => (
-                        <div key={row.aggregateKey} className={QUOTE_EQUIPMENT_STRIP_CELL}>
-                          {isDatasheetViewable(row.datasheet) ? (
-                            <button
-                              type="button"
-                              className={`${QUOTE_BRAND_CARD_LOGO_ONLY_CLASS} cursor-pointer transition-transform hover:scale-[1.02] hover:border-orange-400/35 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400/70`}
-                              onClick={() => openQuoteDatasheet(`מפרט טכני — ${row.displayName}`, row.datasheet)}
-                            >
-                              <img src={row.imageSrc} alt="" className={QUOTE_BRAND_LOGO_IMG_FILL_CLASS} />
-                            </button>
-                          ) : (
-                            <div className={QUOTE_BRAND_CARD_LOGO_ONLY_CLASS}>
-                              <img src={row.imageSrc} alt="" className={QUOTE_BRAND_LOGO_IMG_FILL_CLASS} />
-                            </div>
-                          )}
-                          {row.quantity > 1 && (
-                            <span className="rounded-full bg-white/10 text-white font-black text-sm md:text-base px-3.5 py-1 border border-white/20 backdrop-blur-sm print:bg-blue-50 print:text-blue-900 print:border-blue-200">
-                              ×{row.quantity}
-                            </span>
-                          )}
-                          <QuoteEquipDatasheetCaption
-                            datasheet={row.datasheet}
-                            datasheetTitle={`מפרט טכני — ${row.displayName}`}
-                            onOpen={openQuoteDatasheet}
-                          >
-                            {row.displayName}
-                            {row.powerWatts ? ` · ${row.powerWatts}W` : ''}
-                          </QuoteEquipDatasheetCaption>
-                        </div>
-                      ))}
-                      {quotePanelsWithoutLogoAsset.map((panel) => {
-                        const inner = (
-                          <>
-                            <Sun className="h-10 w-10 shrink-0 text-amber-300 print:text-amber-600 md:h-12 md:w-12" aria-hidden />
-                            <span className="line-clamp-3 px-1 text-center text-xs font-bold leading-snug text-white print:text-slate-900 md:text-sm">
-                              {panel.name || 'פאנל'}
-                            </span>
-                          </>
-                        );
-                        return (
-                          <div key={`panel-plain-${panel.id}`} className={QUOTE_EQUIPMENT_STRIP_CELL}>
-                            {isDatasheetViewable(panel.datasheet) ? (
-                              <button
-                                type="button"
-                                className={`${QUOTE_PLAIN_EQUIP_CARD_COMPACT_CLASS} cursor-pointer transition-transform hover:scale-[1.02] hover:border-orange-400/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400/60`}
-                                onClick={() => openQuoteDatasheet(`מפרט טכני — ${panel.name || 'פאנל'}`, panel.datasheet)}
-                              >
-                                {inner}
-                              </button>
-                            ) : (
-                              <div className={QUOTE_PLAIN_EQUIP_CARD_COMPACT_CLASS}>{inner}</div>
-                            )}
-                            {panel.quantity > 1 && (
-                              <span className="rounded-full border border-white/20 bg-white/10 px-3 py-0.5 text-xs font-black text-white backdrop-blur-sm print:border-slate-300 print:bg-slate-100 print:text-slate-900 md:text-sm">
-                                ×{panel.quantity}
-                              </span>
-                            )}
-                            <QuoteEquipDatasheetCaption
-                              datasheet={panel.datasheet}
-                              datasheetTitle={`מפרט טכני — ${panel.name || 'פאנל'}`}
-                              onOpen={openQuoteDatasheet}
-                            >
-                              {panel.name || 'פאנל'}
-                              {panel.powerWatts ? ` · ${panel.powerWatts}W` : ''}
-                            </QuoteEquipDatasheetCaption>
-                          </div>
-                        );
-                      })}
-                      {(aggregatedQuotePanelLogos.length === 0 &&
-                        quotePanelsWithoutLogoAsset.length === 0 &&
-                        (generatedQuote.calculatedNumPanels || 0) > 0) && (
+                      {(generatedQuote.calculatedNumPanels || 0) > 0 && (
                         <div className={QUOTE_PANELS_STRIP_CELL}>
                           <div className={QUOTE_EQUIP_LOGO_TILE_CLASS}>
                             <img
