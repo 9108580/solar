@@ -1950,12 +1950,15 @@ const DEFAULT_ADMIN_PRICES = {
   ],
 
   inverters: [
+    { id: 'inv-solis15', name: 'SOLIS 15kW', cost: 4500, capacityKw: 15, isSolarEdge: false, inverterLogoKey: 'solis', customLogo: null, datasheet: null },
+    { id: 'inv-solis50', name: 'SOLIS 50kW', cost: 9000, capacityKw: 50, isSolarEdge: false, inverterLogoKey: 'solis', customLogo: null, datasheet: null },
     { id: 'inv-se100', name: 'סולאראדג\' 100kW', cost: 15000, capacityKw: 100, isSolarEdge: true, inverterLogoKey: 'auto', customLogo: null, datasheet: null },
     { id: 'inv-se12', name: 'סולאראדג\' 12kW', cost: 4500, capacityKw: 12, isSolarEdge: true, inverterLogoKey: 'auto', customLogo: null, datasheet: null },
     { id: 'inv-sma110', name: 'SMA 110kW', cost: 14000, capacityKw: 110, isSolarEdge: false, inverterLogoKey: 'none', customLogo: null, datasheet: null }
   ],
 
   invertersHybrid: [
+    { id: 'hinv-solis15', name: 'SOLIS Hybrid 15kW', cost: 7000, capacityKw: 15, isSolarEdge: false, inverterLogoKey: 'solis', customLogo: null, datasheet: null },
     { id: 'hinv-se10', name: 'סולאראדג\' Home Hub 10kW', cost: 8500, capacityKw: 10, isSolarEdge: true, inverterLogoKey: 'auto', customLogo: null, datasheet: null },
     { id: 'hinv-deye12', name: 'Deye 12kW', cost: 7000, capacityKw: 12, isSolarEdge: false, inverterLogoKey: 'none', customLogo: null, datasheet: null }
   ],
@@ -2093,7 +2096,7 @@ function isSolisInverter(inv) {
   return /\bSOLIS\b/i.test(normalizeInvName(name)) || /סוליס/.test(name);
 }
 
-/** ברירת מחדל לפי סוג מערכת — ביתית: SOLIS 15, מסחרית: SOLIS 50 (בלי סינון הרשימה) */
+/** ברירת מחדל לפי סוג מערכת — ביתית: SOLIS ~15kW, מסחרית: SOLIS ~50kW */
 function findDefaultInverterId(adminList, systemType) {
   const pool = adminList || [];
   if (!pool.length) return '';
@@ -2103,6 +2106,13 @@ function findDefaultInverterId(adminList, systemType) {
 
   const exact = pool.find((inv) => normalizeInvName(inv.name) === targetLabel);
   if (exact) return exact.id;
+
+  // גם "SOLIS 15kW" / "Solis 15 KW" וכו'
+  const exactWithUnit = pool.find((inv) => {
+    const n = normalizeInvName(inv.name);
+    return n === `SOLIS ${targetKw}KW` || n === `SOLIS ${targetKw} KW`;
+  });
+  if (exactWithUnit) return exactWithUnit.id;
 
   const solisCandidates = pool.filter(isSolisInverter);
   if (solisCandidates.length) {
@@ -2404,6 +2414,56 @@ export default function App() {
     });
     return undefined;
   }, [adminPrices.panels]);
+
+  /** אחרי טעינת מחירון — ברירת מחדל Solis (פעם אחת כשיש Solis במחירון); תמיד מתקנים id חסר */
+  const solisInverterDefaultAppliedRef = useRef(false);
+  useEffect(() => {
+    const ongrid = adminPrices.inverters || [];
+    const hybrid = adminPrices.invertersHybrid || [];
+    if (!ongrid.length && !hybrid.length) return undefined;
+
+    setQuoteForm((prev) => {
+      const syncKey = (formKey, list) => {
+        if (!list.length) return null;
+        const defaultId = findDefaultInverterId(list, prev.systemType);
+        if (!defaultId) return null;
+        const rows = prev[formKey] || [];
+        let changed = false;
+        let next =
+          rows.length === 0
+            ? [{ id: defaultId, quantity: 1 }]
+            : rows.map((r) => {
+                if (list.some((inv) => inv.id === r.id)) return r;
+                changed = true;
+                return { ...r, id: defaultId };
+              });
+        if (rows.length === 0) changed = true;
+
+        if (!solisInverterDefaultAppliedRef.current && list.some(isSolisInverter)) {
+          const first = list.find((inv) => inv.id === next[0]?.id);
+          if (!first || !isSolisInverter(first)) {
+            next = [{ ...next[0], id: defaultId, quantity: next[0]?.quantity || 1 }, ...next.slice(1)];
+            changed = true;
+          }
+        }
+        return changed ? next : null;
+      };
+
+      const nextOngrid = syncKey('selectedInverters', ongrid);
+      const nextHybrid = syncKey('selectedHybridInverters', hybrid);
+      if (!nextOngrid && !nextHybrid) return prev;
+      return {
+        ...prev,
+        ...(nextOngrid ? { selectedInverters: nextOngrid } : {}),
+        ...(nextHybrid ? { selectedHybridInverters: nextHybrid } : {}),
+      };
+    });
+
+    if (ongrid.some(isSolisInverter) || hybrid.some(isSolisInverter)) {
+      solisInverterDefaultAppliedRef.current = true;
+    }
+    return undefined;
+  }, [adminPrices.inverters, adminPrices.invertersHybrid]);
 
   const [generatedQuote, setGeneratedQuote] = useState(null);
   /** טיוטת הצעה אחרי חישוב — לפני אישור מחיר ללקוח */
