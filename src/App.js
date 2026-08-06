@@ -2417,7 +2417,7 @@ export default function App() {
   };
   });
 
-  /** התאמת בחירת פאנלים + סנכרון DC מדויק אחרי טעינת מחירון */
+  /** התאמת בחירת פאנלים + סנכרון DC מדויק אחרי טעינת מחירון — דגם אחד בלבד */
   useEffect(() => {
     const panels = adminPrices.panels || [];
     if (!panels.length) return undefined;
@@ -2434,11 +2434,16 @@ export default function App() {
         ];
         idsChanged = true;
       } else {
-        nextRows = rows.map((row) => {
-          if (panels.some((p) => p.id === row.id)) return row;
-          idsChanged = true;
-          return { ...row, id: panels[0].id };
-        });
+        // מערכת אחת = דגם פאנל אחד
+        const first = rows[0];
+        const idOk = panels.some((p) => p.id === first.id);
+        nextRows = [
+          {
+            id: idOk ? first.id : panels[0].id,
+            quantity: Number(first.quantity) > 0 ? Number(first.quantity) : 1,
+          },
+        ];
+        if (!idOk || rows.length > 1) idsChanged = true;
       }
       const dc = dcKwFromSelectedPanels(nextRows, panels);
       const nextKw = dc != null ? formatDcKwForInput(dc) : prev.systemSizeKw;
@@ -4682,54 +4687,34 @@ export default function App() {
                       אפיון המערכת
                     </h3>
                   <div className="grid min-w-0 grid-cols-1 gap-6 md:grid-cols-2">
-                    {/* בחירת פאנלים — ראשון; ה-DC מחושב ממנה */}
+                    {/* בחירת פאנלים — דגם אחד בלבד למערכת */}
                     <div className="min-w-0 md:col-span-2 rounded-2xl border border-white/10 bg-black/20 p-5">
                       <label className="block text-xs font-semibold text-blue-400 uppercase tracking-wider mb-3">בחירת פאנלים</label>
                       {(adminPrices.panels || []).length === 0 ? (
                         <p className="text-sm text-red-400">לא הוגדרו דגמי פאנלים באדמין.</p>
                       ) : (
-                        <>
-                          <div className="space-y-3">
-                            {(quoteForm.selectedPanels || []).map((item, index) => (
-                              <div key={index} className="flex min-w-0 flex-wrap items-center gap-3">
-                                <select
-                                  value={item.id}
-                                  onChange={(e) => handleQuoteListChange('selectedPanels', index, 'id', e.target.value)}
-                                  className="min-w-0 flex-1 basis-[12rem] bg-slate-950 border border-white/15 rounded-xl p-2.5 text-slate-100 outline-none focus:border-blue-500/60 transition-all [color-scheme:dark]"
-                                >
-                                  {(adminPrices.panels || []).map((panel) => (
-                                    <option
-                                      key={panel.id}
-                                      value={panel.id}
-                                      className="bg-slate-900 text-slate-100"
-                                      style={{ backgroundColor: '#0f172a', color: '#f1f5f9' }}
-                                    >
-                                      {panel.name} ({panel.powerWatts}W)
-                                    </option>
-                                  ))}
-                                </select>
-                                <QuoteQuantityStepper
-                                  value={item.quantity}
-                                  onChange={(v) => handleQuoteListChange('selectedPanels', index, 'quantity', v)}
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() => removeQuoteListItem('selectedPanels', index)}
-                                  className="p-2 text-slate-500 hover:text-red-400 rounded-xl transition-colors"
-                                >
-                                  <Trash2 className="w-5 h-5" />
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => addQuoteListItem('selectedPanels', 'panels')}
-                            className="mt-4 flex items-center gap-1 text-sm text-blue-400 hover:text-blue-300 transition-colors"
+                        <div className="flex min-w-0 flex-wrap items-center gap-3">
+                          <select
+                            value={(quoteForm.selectedPanels || [])[0]?.id || ''}
+                            onChange={(e) => handleQuoteListChange('selectedPanels', 0, 'id', e.target.value)}
+                            className="min-w-0 flex-1 basis-[12rem] bg-slate-950 border border-white/15 rounded-xl p-2.5 text-slate-100 outline-none focus:border-blue-500/60 transition-all [color-scheme:dark]"
                           >
-                            <Plus className="w-4 h-4" /> הוסף פאנל
-                          </button>
-                        </>
+                            {(adminPrices.panels || []).map((panel) => (
+                              <option
+                                key={panel.id}
+                                value={panel.id}
+                                className="bg-slate-900 text-slate-100"
+                                style={{ backgroundColor: '#0f172a', color: '#f1f5f9' }}
+                              >
+                                {panel.name} ({panel.powerWatts}W)
+                              </option>
+                            ))}
+                          </select>
+                          <QuoteQuantityStepper
+                            value={(quoteForm.selectedPanels || [])[0]?.quantity || 1}
+                            onChange={(v) => handleQuoteListChange('selectedPanels', 0, 'quantity', v)}
+                          />
+                        </div>
                       )}
                     </div>
 
