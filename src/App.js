@@ -2123,13 +2123,35 @@ function normalizeInvName(s) {
 
 function effectiveInverterKw(inv) {
   const fromField = Number(inv?.capacityKw);
-  if (Number.isFinite(fromField)) return fromField;
+  if (Number.isFinite(fromField) && fromField > 0) return fromField;
   const raw = String(inv?.name || '');
   const mKw = raw.match(/(\d+(?:\.\d+)?)\s*kW\b/i);
   if (mKw) return Number(mKw[1]);
   const mHe = raw.match(/(\d+(?:\.\d+)?)\s*קוטל/i);
   if (mHe) return Number(mHe[1]);
+  // "SOLAREDGE NEXIS 20" / "SE 15" — מספר בסוף השם בלי יחידה
+  const mTrail = raw.match(/(?:^|[\s\-_/])(\d+(?:\.\d+)?)\s*$/i);
+  if (mTrail) {
+    const n = Number(mTrail[1]);
+    if (Number.isFinite(n) && n >= 1 && n <= 300) return n;
+  }
   return NaN;
+}
+
+/** סה״כ הספק AC של ממירים שנבחרו בהצעה (capacityKw × כמות) */
+function selectedInvertersAcCapacityKw(selectedList, catalog) {
+  let total = 0;
+  let any = false;
+  for (const sel of selectedList || []) {
+    const inv = (catalog || []).find((i) => i.id === sel.id);
+    const qty = Number(sel.quantity) || 0;
+    if (!inv || qty <= 0) continue;
+    const kw = effectiveInverterKw(inv);
+    if (!Number.isFinite(kw) || kw <= 0) continue;
+    total += kw * qty;
+    any = true;
+  }
+  return any ? total : null;
 }
 
 function isSolisInverter(inv) {
@@ -2454,7 +2476,16 @@ export default function App() {
         selectedPanels: nextRows,
         systemSizeKw: nextKw,
         ...(dcChanged && dc != null
-          ? { systemSizeAcKw: autoAcFromDcKw(dc).toFixed(2) }
+          ? {
+              systemSizeAcKw: (() => {
+                const isHybrid = prev.inverterSystemType === 'hybrid';
+                const fromInv = selectedInvertersAcCapacityKw(
+                  isHybrid ? prev.selectedHybridInverters : prev.selectedInverters,
+                  isHybrid ? adminPrices.invertersHybrid : adminPrices.inverters
+                );
+                return (fromInv != null ? fromInv : autoAcFromDcKw(dc)).toFixed(2);
+              })(),
+            }
           : {}),
       };
     });
@@ -3030,6 +3061,21 @@ export default function App() {
     }
   };
 
+  const resolveQuoteAcKw = (formLike, panelsDcKw = null) => {
+    const isHybrid = formLike.inverterSystemType === 'hybrid';
+    const invList = isHybrid ? formLike.selectedHybridInverters : formLike.selectedInverters;
+    const invCatalog = isHybrid ? adminPrices.invertersHybrid : adminPrices.inverters;
+    const fromInverters = selectedInvertersAcCapacityKw(invList, invCatalog);
+    if (fromInverters != null) return fromInverters;
+    const dc =
+      panelsDcKw != null
+        ? panelsDcKw
+        : dcKwFromSelectedPanels(formLike.selectedPanels, adminPrices.panels);
+    if (dc != null) return autoAcFromDcKw(dc);
+    const manual = parseFloat(formLike.systemSizeAcKw);
+    return Number.isFinite(manual) && manual > 0 ? manual : 15;
+  };
+
   const handleFormChange = (e) => {
     const { name, value, type, checked } = e.target;
     const val = type === 'checkbox' ? checked : value;
@@ -3049,6 +3095,9 @@ export default function App() {
           newState.selectedHybridInverters = prev.selectedHybridInverters.map((r) => ({ ...r, id: defaultHyb }));
         }
       }
+      if (name === 'systemType' || name === 'inverterSystemType') {
+        newState.systemSizeAcKw = resolveQuoteAcKw(newState).toFixed(2);
+      }
       return newState;
     });
     
@@ -3060,17 +3109,22 @@ export default function App() {
   const applyDcFromSelectedPanels = (prev, selectedPanels) => {
     const dc = dcKwFromSelectedPanels(selectedPanels, adminPrices.panels);
     if (dc == null) return { ...prev, selectedPanels };
+    const next = { ...prev, selectedPanels, systemSizeKw: formatDcKwForInput(dc) };
     return {
-      ...prev,
-      selectedPanels,
-      systemSizeKw: formatDcKwForInput(dc),
-      systemSizeAcKw: autoAcFromDcKw(dc).toFixed(2),
+      ...next,
+      systemSizeAcKw: resolveQuoteAcKw(next, dc).toFixed(2),
     };
   };
 
   const handleQuoteListChange = (listName, index, field, value) => {
     setQuoteForm((prev) => {
-      const updatedList = [...(prev[listName] || [])];
+      let updatedList = [...(prev[listName] || [])];
+      // פאנלים: תמיד שורה אחת בלבד
+      if (listName === 'selectedPanels') {
+        const current = updatedList[0] || { id: (adminPrices.panels || [])[0]?.id, quantity: 1 };
+        updatedList = [current];
+        index = 0;
+      }
       const nextValue = field === 'quantity' ? (parseInt(value, 10) || 1) : value;
       updatedList[index] = { ...updatedList[index], [field]: nextValue };
 
@@ -3079,11 +3133,24 @@ export default function App() {
         return applyDcFromSelectedPanels(prev, updatedList);
       }
 
+      // שינוי ממיר → AC לפי הספק הממיר (לא לפי מדרגת DC אוטומטית)
+      if (
+        (listName === 'selectedInverters' || listName === 'selectedHybridInverters') &&
+        (field === 'quantity' || field === 'id')
+      ) {
+        const next = { ...prev, [listName]: updatedList };
+        return {
+          ...next,
+          systemSizeAcKw: resolveQuoteAcKw(next).toFixed(2),
+        };
+      }
+
       return { ...prev, [listName]: updatedList };
     });
   };
 
   const addQuoteListItem = (formListName, adminListName) => {
+    if (formListName === 'selectedPanels') return; // דגם פאנל אחד בלבד למערכת
     const full = adminPrices[adminListName];
     if (!full || full.length === 0) return;
     let newId = full[0].id;
@@ -3092,20 +3159,23 @@ export default function App() {
     }
     setQuoteForm((prev) => {
       const nextList = [...prev[formListName], { id: newId, quantity: 1 }];
-      if (formListName === 'selectedPanels') {
-        return applyDcFromSelectedPanels(prev, nextList);
+      const next = { ...prev, [formListName]: nextList };
+      if (formListName === 'selectedInverters' || formListName === 'selectedHybridInverters') {
+        return { ...next, systemSizeAcKw: resolveQuoteAcKw(next).toFixed(2) };
       }
-      return { ...prev, [formListName]: nextList };
+      return next;
     });
   };
 
   const removeQuoteListItem = (formListName, index) => {
+    if (formListName === 'selectedPanels') return; // לא מוחקים את שורת הפאנל היחידה
     setQuoteForm((prev) => {
       const nextList = prev[formListName].filter((_, i) => i !== index);
-      if (formListName === 'selectedPanels') {
-        return applyDcFromSelectedPanels(prev, nextList);
+      const next = { ...prev, [formListName]: nextList };
+      if (formListName === 'selectedInverters' || formListName === 'selectedHybridInverters') {
+        return { ...next, systemSizeAcKw: resolveQuoteAcKw(next).toFixed(2) };
       }
-      return { ...prev, [formListName]: nextList };
+      return next;
     });
   };
 
@@ -3123,12 +3193,15 @@ export default function App() {
     return { hasSolarEdge };
   };
 
-  /** SolarEdge אופטימייזרים: לפי גודל AC בהצעה — ≤15 kW → 1:1, מ-16 kW → 1:2 */
+  /** SolarEdge אופטימייזרים: לפי הספק AC של הממיר שנבחר — ≤15 kW → 1:1, מ-16 kW → 1:2 */
   const solarEdgeOptimizerUsesOneToTwo = (acKw) => {
     const ac = parseFloat(acKw);
     if (!Number.isFinite(ac)) return false;
     return ac >= 16;
   };
+
+  /** AC לקביעת יחס אופטימייזרים — ממיר נבחר קודם, אחרת AC בהצעה */
+  const solarEdgeOptimizerAcKw = () => resolveQuoteAcKw(quoteForm);
 
   const getSungrowStatus = () => {
     let hasSungrow = false;
@@ -3178,10 +3251,8 @@ export default function App() {
     const panelsDerivedKw = dcKwFromSelectedPanels(quoteForm.selectedPanels, adminPrices.panels);
     const sizeKw =
       panelsDerivedKw != null ? panelsDerivedKw : parseFloat(quoteForm.systemSizeKw) || 0;
-    const acKw =
-      panelsDerivedKw != null
-        ? autoAcFromDcKw(panelsDerivedKw)
-        : parseFloat(quoteForm.systemSizeAcKw) || 15;
+    // AC: הספק הממיר שנבחר קודם (למשל NEXIS 20) — לא מדרגת DC אוטומטית שקופצת ב־24 kWp
+    const acKw = resolveQuoteAcKw(quoteForm, panelsDerivedKw);
     const systemSizeWatts = sizeKw * 1000;
     const usdRate = Number(adminPrices.usdExchangeRate) || 3.75;
 
@@ -3509,10 +3580,7 @@ export default function App() {
     const quotePayload = {
       ...quoteForm,
       systemSizeKw: formatDcKwForInput(sizeKw) || quoteForm.systemSizeKw,
-      systemSizeAcKw:
-        panelsDerivedKw != null
-          ? autoAcFromDcKw(panelsDerivedKw).toFixed(2)
-          : quoteForm.systemSizeAcKw,
+      systemSizeAcKw: Number(acKw).toFixed(2),
       includesOptimizers: effectiveIncludesOptimizers,
       calculatedNumPanels: numPanels,
       panelPowerWatts: primaryPanelPower,
@@ -4838,8 +4906,8 @@ export default function App() {
                           <div className="p-4 space-y-2">
                             <p className="block text-white font-semibold">כולל אופטימייזרים (Optimizers)</p>
                             <p className="text-sm text-blue-300">
-                              זוהה ממיר SolarEdge במערכת — לפי הספק AC ({quoteForm.systemSizeAcKw} kWp):{' '}
-                              {solarEdgeOptimizerUsesOneToTwo(quoteForm.systemSizeAcKw)
+                              זוהה ממיר SolarEdge במערכת — לפי הספק ממיר AC ({Number(solarEdgeOptimizerAcKw()).toFixed(2)} kW):{' '}
+                              {solarEdgeOptimizerUsesOneToTwo(solarEdgeOptimizerAcKw())
                                 ? 'אופטימייזרים 1:2'
                                 : 'אופטימייזרים 1:1'}
                               . נכלל אוטומטית בהצעה.
