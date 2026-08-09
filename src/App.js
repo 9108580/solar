@@ -1499,15 +1499,19 @@ function autoAcFromDcKw(dcKw) {
   return (val / 3) * 2;
 }
 
-/** מסלול ירוק (ביתית) — AC לא מעל 15 */
+/** מסלול ירוק (ביתית) — AC קבוע 15 (גם עם כיוול) */
 function isResidentialGreenTrack(formLike) {
   return formLike?.systemType === 'residential' && formLike?.residentialTrack === 'green';
 }
 
+/** עם מונה ייצור — הסוכן בוחר AC ידנית */
+function isResidentialProductionMeter(formLike) {
+  return formLike?.systemType === 'residential' && formLike?.residentialTrack === 'production_meter';
+}
+
 function computeAutoAcKw(dcKw, formLike) {
-  let ac = autoAcFromDcKw(dcKw);
-  if (isResidentialGreenTrack(formLike)) ac = Math.min(ac, 15);
-  return ac;
+  if (isResidentialGreenTrack(formLike)) return 15;
+  return autoAcFromDcKw(dcKw);
 }
 
 function formatResidentialTrackLabel(track) {
@@ -2486,9 +2490,11 @@ export default function App() {
         ...prev,
         selectedPanels: nextRows,
         systemSizeKw: nextKw,
-        ...(dcChanged && dc != null && !prev.limitInverter
+        ...(dcChanged && dc != null && !prev.limitInverter && !isResidentialProductionMeter(prev)
           ? { systemSizeAcKw: computeAutoAcKw(dc, prev).toFixed(2) }
-          : {}),
+          : dcChanged && isResidentialGreenTrack(prev)
+            ? { systemSizeAcKw: '15.00' }
+            : {}),
       };
     });
     return undefined;
@@ -3063,18 +3069,18 @@ export default function App() {
     }
   };
 
-  /** AC אפקטיבי להצעה/אופטימייזרים: כיוול לממיר אם מסומן, אחרת שדה AC / אוטו׳ לפי DC (מסלול ירוק ≤15) */
+  /** AC אפקטיבי: מסלול ירוק = תמיד 15; כיוול; אחרת שדה AC / אוטו׳ לפי DC */
   const resolveQuoteAcKw = (formLike, panelsDcKw = null) => {
+    // מסלול ירוק — AC תמיד 15, גם אם סומן כיוול
+    if (isResidentialGreenTrack(formLike)) return 15;
     if (formLike.limitInverter) {
       const limited = parseFloat(formLike.inverterLimitAcKw);
-      if (Number.isFinite(limited) && limited > 0) {
-        return isResidentialGreenTrack(formLike) ? Math.min(limited, 15) : limited;
-      }
+      if (Number.isFinite(limited) && limited > 0) return limited;
     }
     const manual = parseFloat(formLike.systemSizeAcKw);
-    if (Number.isFinite(manual) && manual > 0) {
-      return isResidentialGreenTrack(formLike) ? Math.min(manual, 15) : manual;
-    }
+    if (Number.isFinite(manual) && manual > 0) return manual;
+    // עם מונה ייצור — אין אוטו׳ לפי DC; נשארים על מה שהסוכן הזין (או 15 כברירת מחדל)
+    if (isResidentialProductionMeter(formLike)) return Number.isFinite(manual) && manual > 0 ? manual : 15;
     const dc =
       panelsDcKw != null
         ? panelsDcKw
@@ -3103,51 +3109,52 @@ export default function App() {
         }
         if (val === 'residential') {
           newState.residentialTrack = prev.residentialTrack || 'green';
-        }
-        const dc = dcKwFromSelectedPanels(newState.selectedPanels, adminPrices.panels);
-        if (!newState.limitInverter && dc != null) {
-          newState.systemSizeAcKw = computeAutoAcKw(dc, newState).toFixed(2);
-        } else if (isResidentialGreenTrack(newState)) {
-          const ac = parseFloat(newState.systemSizeAcKw);
-          if (Number.isFinite(ac) && ac > 15) newState.systemSizeAcKw = '15.00';
-          const lim = parseFloat(newState.inverterLimitAcKw);
-          if (Number.isFinite(lim) && lim > 15) newState.inverterLimitAcKw = '15';
+          if (newState.residentialTrack === 'green') {
+            newState.systemSizeAcKw = '15.00';
+          }
+        } else {
+          // מסחרית — בלי מסלולים; AC אוטו׳ לפי DC
+          const dc = dcKwFromSelectedPanels(newState.selectedPanels, adminPrices.panels);
+          if (!newState.limitInverter && dc != null) {
+            newState.systemSizeAcKw = autoAcFromDcKw(dc).toFixed(2);
+          }
         }
       }
       if (name === 'residentialTrack') {
-        const dc = dcKwFromSelectedPanels(prev.selectedPanels, adminPrices.panels);
-        if (!prev.limitInverter && dc != null) {
-          newState.systemSizeAcKw = computeAutoAcKw(dc, newState).toFixed(2);
-        } else if (val === 'green') {
-          const ac = parseFloat(newState.systemSizeAcKw);
-          if (Number.isFinite(ac) && ac > 15) newState.systemSizeAcKw = '15.00';
-          const lim = parseFloat(newState.inverterLimitAcKw);
-          if (Number.isFinite(lim) && lim > 15) newState.inverterLimitAcKw = '15';
+        if (val === 'green') {
+          newState.systemSizeAcKw = '15.00';
         }
+        // production_meter — הסוכן בוחר AC ידנית; לא דורסים את הערך הקיים
       }
-      if (name === 'systemSizeAcKw' && isResidentialGreenTrack(newState)) {
-        const ac = parseFloat(val);
-        if (Number.isFinite(ac) && ac > 15) newState.systemSizeAcKw = '15';
+      if (name === 'systemSizeAcKw' && isResidentialGreenTrack({ ...newState, residentialTrack: newState.residentialTrack })) {
+        newState.systemSizeAcKw = '15';
       }
-      // סימון כיוול → AC לפי ערך הכיוול; ביטול → חזרה ל־AC אוטו׳ לפי DC
+      // סימון כיוול → AC לפי ערך הכיוול (מסלול ירוק נשאר 15); ביטול → אוטו׳ / ידני לפי מסלול
       if (name === 'limitInverter') {
         if (val) {
-          let lim = parseFloat(prev.inverterLimitAcKw);
-          if (!Number.isFinite(lim) || lim <= 0) lim = 15;
-          if (isResidentialGreenTrack(newState)) lim = Math.min(lim, 15);
-          newState.inverterLimitAcKw = String(lim);
-          newState.systemSizeAcKw = lim.toFixed(2);
-        } else {
+          if (isResidentialGreenTrack(newState)) {
+            newState.systemSizeAcKw = '15.00';
+          } else {
+            let lim = parseFloat(prev.inverterLimitAcKw);
+            if (!Number.isFinite(lim) || lim <= 0) lim = 15;
+            newState.inverterLimitAcKw = String(lim);
+            newState.systemSizeAcKw = lim.toFixed(2);
+          }
+        } else if (isResidentialGreenTrack(newState)) {
+          newState.systemSizeAcKw = '15.00';
+        } else if (!isResidentialProductionMeter(newState)) {
           const dc = dcKwFromSelectedPanels(prev.selectedPanels, adminPrices.panels);
-          if (dc != null) newState.systemSizeAcKw = computeAutoAcKw(dc, newState).toFixed(2);
+          if (dc != null) newState.systemSizeAcKw = autoAcFromDcKw(dc).toFixed(2);
         }
       }
       if (name === 'inverterLimitAcKw' && prev.limitInverter) {
-        let lim = parseFloat(val);
-        if (Number.isFinite(lim) && lim > 0) {
-          if (isResidentialGreenTrack(newState)) lim = Math.min(lim, 15);
-          newState.inverterLimitAcKw = String(lim);
-          newState.systemSizeAcKw = lim.toFixed(2);
+        if (isResidentialGreenTrack(newState)) {
+          newState.systemSizeAcKw = '15.00';
+        } else {
+          const lim = parseFloat(val);
+          if (Number.isFinite(lim) && lim > 0) {
+            newState.systemSizeAcKw = lim.toFixed(2);
+          }
         }
       }
       return newState;
@@ -3162,19 +3169,15 @@ export default function App() {
     const dc = dcKwFromSelectedPanels(selectedPanels, adminPrices.panels);
     if (dc == null) return { ...prev, selectedPanels };
     const next = { ...prev, selectedPanels, systemSizeKw: formatDcKwForInput(dc) };
-    // עם כיוול — לא לדרוס את ה־AC לפי מדרגת DC
-    if (prev.limitInverter) {
-      if (isResidentialGreenTrack(next)) {
-        const lim = parseFloat(prev.inverterLimitAcKw);
-        if (Number.isFinite(lim) && lim > 15) {
-          return { ...next, inverterLimitAcKw: '15', systemSizeAcKw: '15.00' };
-        }
-      }
-      return next;
+    // מסלול ירוק — AC תמיד 15
+    if (isResidentialGreenTrack(next)) {
+      return { ...next, systemSizeAcKw: '15.00' };
     }
+    // עם מונה ייצור / כיוול — לא לדרוס AC ידני
+    if (prev.limitInverter || isResidentialProductionMeter(next)) return next;
     return {
       ...next,
-      systemSizeAcKw: computeAutoAcKw(dc, next).toFixed(2),
+      systemSizeAcKw: autoAcFromDcKw(dc).toFixed(2),
     };
   };
 
@@ -4870,15 +4873,17 @@ export default function App() {
                     <div className="min-w-0">
                       <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">גודל מערכת AC (kWp)</label>
                       <input required type="number" step="0.1" min="1" max={isResidentialGreenTrack(quoteForm) ? 15 : undefined} name="systemSizeAcKw" value={quoteForm.systemSizeAcKw} onChange={handleFormChange}
-                        disabled={Boolean(quoteForm.limitInverter)}
-                        className={`w-full min-w-0 max-w-full rounded-xl border border-white/10 p-3.5 text-white text-2xl font-black outline-none transition-all duration-200 focus:border-blue-500/60 ${quoteForm.limitInverter ? 'bg-black/40 opacity-80 cursor-not-allowed' : 'bg-white/5'}`}
+                        disabled={Boolean(quoteForm.limitInverter) || isResidentialGreenTrack(quoteForm)}
+                        className={`w-full min-w-0 max-w-full rounded-xl border border-white/10 p-3.5 text-white text-2xl font-black outline-none transition-all duration-200 focus:border-blue-500/60 ${(quoteForm.limitInverter || isResidentialGreenTrack(quoteForm)) ? 'bg-black/40 opacity-80 cursor-not-allowed' : 'bg-white/5'}`}
                         onFocus={e => e.target.style.boxShadow='0 0 0 3px rgba(59,130,246,0.18)'} onBlur={e => e.target.style.boxShadow='none'} />
                       <p className="text-xs text-slate-500 mt-2">
-                        {quoteForm.limitInverter
-                          ? 'נקבע לפי כיוול הממיר למטה'
-                          : isResidentialGreenTrack(quoteForm)
-                            ? 'מסלול ירוק — AC אוטומטי עד 15 kW לכל היותר'
-                            : 'מחושב אוטומטית לפי ה-DC אך ניתן לשינוי'}
+                        {isResidentialGreenTrack(quoteForm)
+                          ? 'מסלול ירוק — AC קבוע 15 kW (גם עם כיוול)'
+                          : quoteForm.limitInverter
+                            ? 'נקבע לפי כיוול הממיר למטה'
+                            : isResidentialProductionMeter(quoteForm)
+                              ? 'עם מונה ייצור — הזינו ידנית את גודל ה־AC'
+                              : 'מחושב אוטומטית לפי ה-DC אך ניתן לשינוי'}
                       </p>
                     </div>
 
@@ -4996,7 +5001,7 @@ export default function App() {
                           />
                           <p className="text-xs text-slate-500 leading-snug">
                             {isResidentialGreenTrack(quoteForm)
-                              ? 'מסלול ירוק — כיוול עד 15 kW. לדוגמה: ממיר 20 עם כיוול 15 → אופטימייזרים 1:1.'
+                              ? 'מסלול ירוק — ה־AC בהצעה נשאר 15 kW גם אם סומן כיוול.'
                               : 'לדוגמה: ממיר 20 עם כיוול 15 → AC=15 ואופטימייזרים SolarEdge לפי 1:1 (לא 1:2).'}
                           </p>
                         </div>
