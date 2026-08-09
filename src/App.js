@@ -4793,6 +4793,90 @@ export default function App() {
                           : 'מחושב אוטומטית לפי ה-DC אך ניתן לשינוי'}
                       </p>
                     </div>
+
+                    {/* סוג ממיר + בחירת ממירים — מיד אחרי DC/AC */}
+                    <div className="mt-2 min-w-0 md:col-span-2">
+                      <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">סוג מערכת ההמרה</label>
+                      <div className="flex min-w-0 flex-wrap gap-3">
+                        <label className={`flex min-w-0 flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border p-3.5 text-center transition-all duration-200 ${quoteForm.inverterSystemType === 'ongrid' ? 'border-blue-500/60 text-blue-200' : 'border-white/8 text-slate-400 hover:border-white/20 hover:text-slate-300'}`}
+                               style={quoteForm.inverterSystemType === 'ongrid' ? { background: 'rgba(29,78,216,0.2)' } : { background: 'rgba(0,0,0,0.2)' }}>
+                          <input type="radio" name="inverterSystemType" value="ongrid" checked={quoteForm.inverterSystemType === 'ongrid'} onChange={handleFormChange} className="hidden" />
+                          <span className="min-w-0 break-words">מערכת אונגריד (On-Grid)</span>
+                        </label>
+                        <label className={`flex min-w-0 flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border p-3.5 text-center transition-all duration-200 ${quoteForm.inverterSystemType === 'hybrid' ? 'border-blue-500/60 text-blue-200' : 'border-white/8 text-slate-400 hover:border-white/20 hover:text-slate-300'}`}
+                               style={quoteForm.inverterSystemType === 'hybrid' ? { background: 'rgba(29,78,216,0.2)' } : { background: 'rgba(0,0,0,0.2)' }}>
+                          <input type="radio" name="inverterSystemType" value="hybrid" checked={quoteForm.inverterSystemType === 'hybrid'} onChange={handleFormChange} className="hidden" />
+                          <span className="min-w-0 break-words">מערכת היברידית (Hybrid)</span>
+                        </label>
+                      </div>
+                    </div>
+
+                    <div className="min-w-0 md:col-span-2 rounded-2xl border border-white/10 bg-black/20 p-5">
+                      <label className="block text-xs font-semibold text-blue-400 uppercase tracking-wider mb-3">בחירת ממירים</label>
+                      {(() => {
+                        const isHybrid = quoteForm.inverterSystemType === 'hybrid';
+                        const adminList = isHybrid ? adminPrices.invertersHybrid : adminPrices.inverters;
+                        const formListName = isHybrid ? 'selectedHybridInverters' : 'selectedInverters';
+                        const currentSelections = quoteForm[formListName];
+                        if (adminList.length === 0) return <p className="text-sm text-red-400">לא קיימים דגמים במערכת.</p>;
+                        return (
+                          <>
+                            <div className="space-y-3">
+                              {currentSelections.map((item, index) => (
+                                <div key={index} className="flex min-w-0 flex-wrap items-center gap-3">
+                                  <select value={item.id} onChange={(e) => handleQuoteListChange(formListName, index, 'id', e.target.value)} className="min-w-0 flex-1 basis-[12rem] bg-slate-950 border border-white/15 rounded-xl p-2.5 text-slate-100 outline-none focus:border-blue-500/60 transition-all [color-scheme:dark]">
+                                    {adminList.map(inv => (<option key={inv.id} value={inv.id} className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f1f5f9' }}>{inv.name}</option>))}
+                                  </select>
+                                  <QuoteQuantityStepper
+                                    value={item.quantity}
+                                    onChange={(v) => handleQuoteListChange(formListName, index, 'quantity', v)}
+                                  />
+                                  <button type="button" onClick={() => removeQuoteListItem(formListName, index)} className="p-2 text-slate-500 hover:text-red-400 rounded-xl transition-colors"><Trash2 className="w-5 h-5" /></button>
+                                </div>
+                              ))}
+                            </div>
+                            <button type="button" onClick={() => addQuoteListItem(formListName, isHybrid ? 'invertersHybrid' : 'inverters')} className="mt-4 flex items-center gap-1 text-sm text-blue-400 hover:text-blue-300 transition-colors">
+                              <Plus className="w-4 h-4" /> הוסף ממיר
+                            </button>
+                          </>
+                        );
+                      })()}
+                    </div>
+
+                    {/* סוללות — מיד אחרי בחירת ממיר היברידי */}
+                    {quoteForm.inverterSystemType === 'hybrid' && (
+                      <div className="md:col-span-2 p-5 bg-blue-950/20 border border-blue-500/20 rounded-2xl">
+                        <label className="flex items-center gap-3 cursor-pointer mb-4">
+                          <input type="checkbox" name="includesBatteries" checked={quoteForm.includesBatteries} onChange={handleFormChange} className="w-5 h-5 accent-blue-500 rounded" />
+                          <div><span className="block text-white font-semibold text-lg">המערכת כוללת סוללות אגירה</span></div>
+                        </label>
+                        {quoteForm.includesBatteries && (
+                           <div className="mt-4 border-t border-white/10 pt-4">
+                             <label className="block text-xs font-semibold text-blue-300 uppercase tracking-wider mb-3">בחירת סוללות אגירה</label>
+                             {adminPrices.batteries.length === 0 ? <p className="text-sm text-red-400">לא הוגדרו סוללות באדמין.</p> : (
+                               <>
+                                 <div className="space-y-3">
+                                   {quoteForm.selectedBatteries.map((item, index) => (
+                                     <div key={index} className="flex min-w-0 flex-wrap items-center gap-3">
+                                       <select value={item.id} onChange={(e) => handleQuoteListChange('selectedBatteries', index, 'id', e.target.value)} className="min-w-0 flex-1 basis-[12rem] bg-slate-950 border border-white/15 rounded-xl p-2.5 text-slate-100 outline-none focus:border-blue-500/60 transition-all [color-scheme:dark]">
+                                         {adminPrices.batteries.map(bat => (<option key={bat.id} value={bat.id} className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f1f5f9' }}>{bat.name}</option>))}
+                                       </select>
+                                       <QuoteQuantityStepper
+                                         value={item.quantity}
+                                         onChange={(v) => handleQuoteListChange('selectedBatteries', index, 'quantity', v)}
+                                       />
+                                       <button type="button" onClick={() => removeQuoteListItem('selectedBatteries', index)} className="p-2 text-slate-500 hover:text-red-400 rounded-xl transition-colors"><Trash2 className="w-5 h-5" /></button>
+                                     </div>
+                                   ))}
+                                 </div>
+                                 <button type="button" onClick={() => addQuoteListItem('selectedBatteries', 'batteries')} className="mt-4 flex items-center gap-1 text-sm text-blue-400 hover:text-blue-300 transition-colors"><Plus className="w-4 h-4" /> הוסף סוללה</button>
+                               </>
+                             )}
+                           </div>
+                        )}
+                      </div>
+                    )}
+
                     <div className="mt-2 min-w-0 md:col-span-2 rounded-2xl border border-white/10 bg-black/20 p-4">
                       <label className="flex items-center gap-3 cursor-pointer">
                         <input
@@ -4835,90 +4919,6 @@ export default function App() {
                         <option value="other" className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f1f5f9' }}>גג רגיל (איסכורית / פאנל / רעפים)</option>
                       </select>
                     </div>
-                  
-                    {/* סוג ממיר */}
-                    <div className="mt-2 min-w-0 md:col-span-2">
-                      <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">סוג מערכת ההמרה</label>
-                      <div className="flex min-w-0 flex-wrap gap-3">
-                        <label className={`flex min-w-0 flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border p-3.5 text-center transition-all duration-200 ${quoteForm.inverterSystemType === 'ongrid' ? 'border-blue-500/60 text-blue-200' : 'border-white/8 text-slate-400 hover:border-white/20 hover:text-slate-300'}`}
-                               style={quoteForm.inverterSystemType === 'ongrid' ? { background: 'rgba(29,78,216,0.2)' } : { background: 'rgba(0,0,0,0.2)' }}>
-                          <input type="radio" name="inverterSystemType" value="ongrid" checked={quoteForm.inverterSystemType === 'ongrid'} onChange={handleFormChange} className="hidden" />
-                          <span className="min-w-0 break-words">מערכת אונגריד (On-Grid)</span>
-                        </label>
-                        <label className={`flex min-w-0 flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border p-3.5 text-center transition-all duration-200 ${quoteForm.inverterSystemType === 'hybrid' ? 'border-blue-500/60 text-blue-200' : 'border-white/8 text-slate-400 hover:border-white/20 hover:text-slate-300'}`}
-                               style={quoteForm.inverterSystemType === 'hybrid' ? { background: 'rgba(29,78,216,0.2)' } : { background: 'rgba(0,0,0,0.2)' }}>
-                          <input type="radio" name="inverterSystemType" value="hybrid" checked={quoteForm.inverterSystemType === 'hybrid'} onChange={handleFormChange} className="hidden" />
-                          <span className="min-w-0 break-words">מערכת היברידית (Hybrid)</span>
-                        </label>
-                      </div>
-                    </div>
-
-                    {/* בחירת ממירים */}
-                    <div className="min-w-0 md:col-span-2 rounded-2xl border border-white/10 bg-black/20 p-5">
-                      <label className="block text-xs font-semibold text-blue-400 uppercase tracking-wider mb-3">בחירת ממירים</label>
-                      {(() => {
-                        const isHybrid = quoteForm.inverterSystemType === 'hybrid';
-                        const adminList = isHybrid ? adminPrices.invertersHybrid : adminPrices.inverters;
-                        const formListName = isHybrid ? 'selectedHybridInverters' : 'selectedInverters';
-                        const currentSelections = quoteForm[formListName];
-                        if (adminList.length === 0) return <p className="text-sm text-red-400">לא קיימים דגמים במערכת.</p>;
-                        return (
-                          <>
-                            <div className="space-y-3">
-                              {currentSelections.map((item, index) => (
-                                <div key={index} className="flex min-w-0 flex-wrap items-center gap-3">
-                                  <select value={item.id} onChange={(e) => handleQuoteListChange(formListName, index, 'id', e.target.value)} className="min-w-0 flex-1 basis-[12rem] bg-slate-950 border border-white/15 rounded-xl p-2.5 text-slate-100 outline-none focus:border-blue-500/60 transition-all [color-scheme:dark]">
-                                    {adminList.map(inv => (<option key={inv.id} value={inv.id} className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f1f5f9' }}>{inv.name}</option>))}
-                                  </select>
-                                  <QuoteQuantityStepper
-                                    value={item.quantity}
-                                    onChange={(v) => handleQuoteListChange(formListName, index, 'quantity', v)}
-                                  />
-                                  <button type="button" onClick={() => removeQuoteListItem(formListName, index)} className="p-2 text-slate-500 hover:text-red-400 rounded-xl transition-colors"><Trash2 className="w-5 h-5" /></button>
-                                </div>
-                              ))}
-                            </div>
-                            <button type="button" onClick={() => addQuoteListItem(formListName, isHybrid ? 'invertersHybrid' : 'inverters')} className="mt-4 flex items-center gap-1 text-sm text-blue-400 hover:text-blue-300 transition-colors">
-                              <Plus className="w-4 h-4" /> הוסף ממיר
-                            </button>
-                          </>
-                        );
-                      })()}
-                    </div>
-
-                    {/* סוללות */}
-                    {quoteForm.inverterSystemType === 'hybrid' && (
-                      <div className="md:col-span-2 p-5 bg-blue-950/20 border border-blue-500/20 rounded-2xl">
-                        <label className="flex items-center gap-3 cursor-pointer mb-4">
-                          <input type="checkbox" name="includesBatteries" checked={quoteForm.includesBatteries} onChange={handleFormChange} className="w-5 h-5 accent-blue-500 rounded" />
-                          <div><span className="block text-white font-semibold text-lg">המערכת כוללת סוללות אגירה</span></div>
-                        </label>
-                        {quoteForm.includesBatteries && (
-                           <div className="mt-4 border-t border-white/10 pt-4">
-                             <label className="block text-xs font-semibold text-blue-300 uppercase tracking-wider mb-3">בחירת סוללות אגירה</label>
-                             {adminPrices.batteries.length === 0 ? <p className="text-sm text-red-400">לא הוגדרו סוללות באדמין.</p> : (
-                               <>
-                                 <div className="space-y-3">
-                                   {quoteForm.selectedBatteries.map((item, index) => (
-                                     <div key={index} className="flex min-w-0 flex-wrap items-center gap-3">
-                                       <select value={item.id} onChange={(e) => handleQuoteListChange('selectedBatteries', index, 'id', e.target.value)} className="min-w-0 flex-1 basis-[12rem] bg-slate-950 border border-white/15 rounded-xl p-2.5 text-slate-100 outline-none focus:border-blue-500/60 transition-all [color-scheme:dark]">
-                                         {adminPrices.batteries.map(bat => (<option key={bat.id} value={bat.id} className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f1f5f9' }}>{bat.name}</option>))}
-                                       </select>
-                                       <QuoteQuantityStepper
-                                         value={item.quantity}
-                                         onChange={(v) => handleQuoteListChange('selectedBatteries', index, 'quantity', v)}
-                                       />
-                                       <button type="button" onClick={() => removeQuoteListItem('selectedBatteries', index)} className="p-2 text-slate-500 hover:text-red-400 rounded-xl transition-colors"><Trash2 className="w-5 h-5" /></button>
-                                     </div>
-                                   ))}
-                                 </div>
-                                 <button type="button" onClick={() => addQuoteListItem('selectedBatteries', 'batteries')} className="mt-4 flex items-center gap-1 text-sm text-blue-400 hover:text-blue-300 transition-colors"><Plus className="w-4 h-4" /> הוסף סוללה</button>
-                               </>
-                             )}
-                           </div>
-                        )}
-                      </div>
-                    )}
 
                     <div className="md:col-span-2 space-y-3 pt-2 border-t border-white/8 mt-2">
                       <div className="bg-black/15 border border-white/8 rounded-2xl overflow-hidden">
