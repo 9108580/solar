@@ -2379,7 +2379,7 @@ export default function App() {
     clientCity: '', 
     systemSizeKw: panelsInit.systemSizeKw,
     systemSizeAcKw: panelsInit.systemSizeAcKw,
-    /** הגבלת הספק ממיר (קיוול) — אם מסומן, AC והאופטימייזרים לפי הערך */
+    /** הגבלת הספק ממיר (כיוול) — אם מסומן, AC והאופטימייזרים לפי הערך */
     limitInverter: false,
     inverterLimitAcKw: '15',
     roofType: 'concrete', 
@@ -3039,7 +3039,7 @@ export default function App() {
     }
   };
 
-  /** AC אפקטיבי להצעה/אופטימייזרים: קיוול לממיר אם מסומן, אחרת שדה AC / אוטו׳ לפי DC */
+  /** AC אפקטיבי להצעה/אופטימייזרים: כיוול לממיר אם מסומן, אחרת שדה AC / אוטו׳ לפי DC */
   const resolveQuoteAcKw = (formLike, panelsDcKw = null) => {
     if (formLike.limitInverter) {
       const limited = parseFloat(formLike.inverterLimitAcKw);
@@ -3074,7 +3074,7 @@ export default function App() {
           newState.selectedHybridInverters = prev.selectedHybridInverters.map((r) => ({ ...r, id: defaultHyb }));
         }
       }
-      // סימון קיוול → AC לפי ערך הקיוול; ביטול → חזרה ל־AC אוטו׳ לפי DC
+      // סימון כיוול → AC לפי ערך הכיוול; ביטול → חזרה ל־AC אוטו׳ לפי DC
       if (name === 'limitInverter') {
         if (val) {
           const lim = parseFloat(prev.inverterLimitAcKw);
@@ -3102,7 +3102,7 @@ export default function App() {
     const dc = dcKwFromSelectedPanels(selectedPanels, adminPrices.panels);
     if (dc == null) return { ...prev, selectedPanels };
     const next = { ...prev, selectedPanels, systemSizeKw: formatDcKwForInput(dc) };
-    // עם קיוול — לא לדרוס את ה־AC לפי מדרגת DC
+    // עם כיוול — לא לדרוס את ה־AC לפי מדרגת DC
     if (prev.limitInverter) return next;
     return {
       ...next,
@@ -3167,14 +3167,14 @@ export default function App() {
     return { hasSolarEdge };
   };
 
-  /** SolarEdge אופטימייזרים: לפי AC אפקטיבי (כולל קיוול) — ≤15 kW → 1:1, מ-16 kW → 1:2 */
+  /** SolarEdge אופטימייזרים: לפי AC אפקטיבי (כולל כיוול) — ≤15 kW → 1:1, מ-16 kW → 1:2 */
   const solarEdgeOptimizerUsesOneToTwo = (acKw) => {
     const ac = parseFloat(acKw);
     if (!Number.isFinite(ac)) return false;
     return ac >= 16;
   };
 
-  /** AC לקביעת יחס אופטימייזרים — קיוול לממיר אם מסומן, אחרת AC בהצעה */
+  /** AC לקביעת יחס אופטימייזרים — כיוול לממיר אם מסומן, אחרת AC בהצעה */
   const solarEdgeOptimizerAcKw = () => resolveQuoteAcKw(quoteForm);
 
   const getSungrowStatus = () => {
@@ -3228,11 +3228,11 @@ export default function App() {
     if (quoteForm.limitInverter) {
       const lim = parseFloat(quoteForm.inverterLimitAcKw);
       if (!Number.isFinite(lim) || lim <= 0) {
-        setErrorMsg('נא להזין קיוול תקין לממיר (kW AC).');
+        setErrorMsg('נא להזין כיוול תקין לממיר (kW AC).');
         return;
       }
     }
-    // AC: קיוול לממיר אם מסומן, אחרת שדה AC / אוטו׳ לפי DC
+    // AC: כיוול לממיר אם מסומן, אחרת שדה AC / אוטו׳ לפי DC
     const acKw = resolveQuoteAcKw(quoteForm, panelsDerivedKw);
     const systemSizeWatts = sizeKw * 1000;
     const usdRate = Number(adminPrices.usdExchangeRate) || 3.75;
@@ -4789,7 +4789,7 @@ export default function App() {
                         onFocus={e => e.target.style.boxShadow='0 0 0 3px rgba(59,130,246,0.18)'} onBlur={e => e.target.style.boxShadow='none'} />
                       <p className="text-xs text-slate-500 mt-2">
                         {quoteForm.limitInverter
-                          ? 'נקבע לפי קיוול הממיר למטה'
+                          ? 'נקבע לפי כיוול הממיר למטה'
                           : 'מחושב אוטומטית לפי ה-DC אך ניתן לשינוי'}
                       </p>
                     </div>
@@ -4807,7 +4807,7 @@ export default function App() {
                       {quoteForm.limitInverter && (
                         <div className="mt-4 pt-4 border-t border-white/10 space-y-2">
                           <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                            קיוול לממיר (kW AC)
+                            כיוול לממיר (kW AC)
                           </label>
                           <input
                             required
@@ -4822,7 +4822,7 @@ export default function App() {
                             onBlur={e => e.target.style.boxShadow='none'}
                           />
                           <p className="text-xs text-slate-500 leading-snug">
-                            לדוגמה: ממיר 20 עם קיוול 15 → AC=15 ואופטימייזרים SolarEdge לפי 1:1 (לא 1:2).
+                            לדוגמה: ממיר 20 עם כיוול 15 → AC=15 ואופטימייזרים SolarEdge לפי 1:1 (לא 1:2).
                           </p>
                         </div>
                       )}
@@ -4927,7 +4927,7 @@ export default function App() {
                             <p className="block text-white font-semibold">כולל אופטימייזרים (Optimizers)</p>
                             <p className="text-sm text-blue-300">
                               זוהה ממיר SolarEdge במערכת — לפי הספק AC ({Number(solarEdgeOptimizerAcKw()).toFixed(2)} kW
-                              {quoteForm.limitInverter ? ', קיוול ממיר' : ''}):{' '}
+                              {quoteForm.limitInverter ? ', כיוול ממיר' : ''}):{' '}
                               {solarEdgeOptimizerUsesOneToTwo(solarEdgeOptimizerAcKw())
                                 ? 'אופטימייזרים 1:2'
                                 : 'אופטימייזרים 1:1'}
