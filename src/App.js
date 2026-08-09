@@ -609,6 +609,9 @@ function QuoteLimitedOfferBanner({ timeLeft, highlightText, whatsappLink }) {
 function formatQuoteHeroSystemTypeLabel(quote) {
   const scaleType = quote?.systemType === 'commercial' ? 'מסחרית' : 'ביתית';
   const inverterType = quote?.inverterSystemType === 'hybrid' ? 'היברידית' : 'On Grid';
+  if (quote?.systemType === 'residential') {
+    return `מערכת אנרגיה סולארית ${scaleType} (${formatResidentialTrackLabel(quote.residentialTrack)}) — ${inverterType}`;
+  }
   return `מערכת אנרגיה סולארית ${scaleType} — ${inverterType}`;
 }
 
@@ -629,7 +632,10 @@ function QuoteSystemSpecSummary({ quote }) {
     },
     {
       label: 'סוג פרויקט',
-      value: quote.systemType === 'commercial' ? 'מסחרית' : 'ביתית',
+      value:
+        quote.systemType === 'commercial'
+          ? 'מסחרית'
+          : `ביתית · ${formatResidentialTrackLabel(quote.residentialTrack)}`,
       Icon: Home,
       iconClass: 'text-blue-300',
     },
@@ -1491,6 +1497,22 @@ function autoAcFromDcKw(dcKw) {
   if (val <= 14) return 10;
   if (val <= 24) return 15;
   return (val / 3) * 2;
+}
+
+/** מסלול ירוק (ביתית) — AC לא מעל 15 */
+function isResidentialGreenTrack(formLike) {
+  return formLike?.systemType === 'residential' && formLike?.residentialTrack === 'green';
+}
+
+function computeAutoAcKw(dcKw, formLike) {
+  let ac = autoAcFromDcKw(dcKw);
+  if (isResidentialGreenTrack(formLike)) ac = Math.min(ac, 15);
+  return ac;
+}
+
+function formatResidentialTrackLabel(track) {
+  if (track === 'production_meter') return 'עם מונה ייצור';
+  return 'מסלול ירוק';
 }
 
 /** הספק DC (kWp) מדויק לפי כמות × הספק פאנל */
@@ -2374,11 +2396,13 @@ export default function App() {
   const [quoteForm, setQuoteForm] = useState(() => {
     const panelsInit = buildInitialPanelsAndDc(DEFAULT_ADMIN_PRICES.panels, 22.5);
     return {
-    systemType: 'residential', 
+    systemType: 'residential',
+    /** ביתית בלבד: green = מסלול ירוק (AC≤15), production_meter = עם מונה ייצור */
+    residentialTrack: 'green',
     clientName: '',
     clientCity: '', 
     systemSizeKw: panelsInit.systemSizeKw,
-    systemSizeAcKw: panelsInit.systemSizeAcKw,
+    systemSizeAcKw: Math.min(parseFloat(panelsInit.systemSizeAcKw) || 15, 15).toFixed(2),
     /** הגבלת הספק ממיר (כיוול) — אם מסומן, AC והאופטימייזרים לפי הערך */
     limitInverter: false,
     inverterLimitAcKw: '15',
@@ -2463,7 +2487,7 @@ export default function App() {
         selectedPanels: nextRows,
         systemSizeKw: nextKw,
         ...(dcChanged && dc != null && !prev.limitInverter
-          ? { systemSizeAcKw: autoAcFromDcKw(dc).toFixed(2) }
+          ? { systemSizeAcKw: computeAutoAcKw(dc, prev).toFixed(2) }
           : {}),
       };
     });
@@ -3039,19 +3063,23 @@ export default function App() {
     }
   };
 
-  /** AC אפקטיבי להצעה/אופטימייזרים: כיוול לממיר אם מסומן, אחרת שדה AC / אוטו׳ לפי DC */
+  /** AC אפקטיבי להצעה/אופטימייזרים: כיוול לממיר אם מסומן, אחרת שדה AC / אוטו׳ לפי DC (מסלול ירוק ≤15) */
   const resolveQuoteAcKw = (formLike, panelsDcKw = null) => {
     if (formLike.limitInverter) {
       const limited = parseFloat(formLike.inverterLimitAcKw);
-      if (Number.isFinite(limited) && limited > 0) return limited;
+      if (Number.isFinite(limited) && limited > 0) {
+        return isResidentialGreenTrack(formLike) ? Math.min(limited, 15) : limited;
+      }
     }
     const manual = parseFloat(formLike.systemSizeAcKw);
-    if (Number.isFinite(manual) && manual > 0) return manual;
+    if (Number.isFinite(manual) && manual > 0) {
+      return isResidentialGreenTrack(formLike) ? Math.min(manual, 15) : manual;
+    }
     const dc =
       panelsDcKw != null
         ? panelsDcKw
         : dcKwFromSelectedPanels(formLike.selectedPanels, adminPrices.panels);
-    if (dc != null) return autoAcFromDcKw(dc);
+    if (dc != null) return computeAutoAcKw(dc, formLike);
     return 15;
   };
 
@@ -3073,20 +3101,52 @@ export default function App() {
         if (defaultHyb) {
           newState.selectedHybridInverters = prev.selectedHybridInverters.map((r) => ({ ...r, id: defaultHyb }));
         }
+        if (val === 'residential') {
+          newState.residentialTrack = prev.residentialTrack || 'green';
+        }
+        const dc = dcKwFromSelectedPanels(newState.selectedPanels, adminPrices.panels);
+        if (!newState.limitInverter && dc != null) {
+          newState.systemSizeAcKw = computeAutoAcKw(dc, newState).toFixed(2);
+        } else if (isResidentialGreenTrack(newState)) {
+          const ac = parseFloat(newState.systemSizeAcKw);
+          if (Number.isFinite(ac) && ac > 15) newState.systemSizeAcKw = '15.00';
+          const lim = parseFloat(newState.inverterLimitAcKw);
+          if (Number.isFinite(lim) && lim > 15) newState.inverterLimitAcKw = '15';
+        }
+      }
+      if (name === 'residentialTrack') {
+        const dc = dcKwFromSelectedPanels(prev.selectedPanels, adminPrices.panels);
+        if (!prev.limitInverter && dc != null) {
+          newState.systemSizeAcKw = computeAutoAcKw(dc, newState).toFixed(2);
+        } else if (val === 'green') {
+          const ac = parseFloat(newState.systemSizeAcKw);
+          if (Number.isFinite(ac) && ac > 15) newState.systemSizeAcKw = '15.00';
+          const lim = parseFloat(newState.inverterLimitAcKw);
+          if (Number.isFinite(lim) && lim > 15) newState.inverterLimitAcKw = '15';
+        }
+      }
+      if (name === 'systemSizeAcKw' && isResidentialGreenTrack(newState)) {
+        const ac = parseFloat(val);
+        if (Number.isFinite(ac) && ac > 15) newState.systemSizeAcKw = '15';
       }
       // סימון כיוול → AC לפי ערך הכיוול; ביטול → חזרה ל־AC אוטו׳ לפי DC
       if (name === 'limitInverter') {
         if (val) {
-          const lim = parseFloat(prev.inverterLimitAcKw);
-          newState.systemSizeAcKw = (Number.isFinite(lim) && lim > 0 ? lim : 15).toFixed(2);
+          let lim = parseFloat(prev.inverterLimitAcKw);
+          if (!Number.isFinite(lim) || lim <= 0) lim = 15;
+          if (isResidentialGreenTrack(newState)) lim = Math.min(lim, 15);
+          newState.inverterLimitAcKw = String(lim);
+          newState.systemSizeAcKw = lim.toFixed(2);
         } else {
           const dc = dcKwFromSelectedPanels(prev.selectedPanels, adminPrices.panels);
-          if (dc != null) newState.systemSizeAcKw = autoAcFromDcKw(dc).toFixed(2);
+          if (dc != null) newState.systemSizeAcKw = computeAutoAcKw(dc, newState).toFixed(2);
         }
       }
       if (name === 'inverterLimitAcKw' && prev.limitInverter) {
-        const lim = parseFloat(val);
+        let lim = parseFloat(val);
         if (Number.isFinite(lim) && lim > 0) {
+          if (isResidentialGreenTrack(newState)) lim = Math.min(lim, 15);
+          newState.inverterLimitAcKw = String(lim);
           newState.systemSizeAcKw = lim.toFixed(2);
         }
       }
@@ -3103,10 +3163,18 @@ export default function App() {
     if (dc == null) return { ...prev, selectedPanels };
     const next = { ...prev, selectedPanels, systemSizeKw: formatDcKwForInput(dc) };
     // עם כיוול — לא לדרוס את ה־AC לפי מדרגת DC
-    if (prev.limitInverter) return next;
+    if (prev.limitInverter) {
+      if (isResidentialGreenTrack(next)) {
+        const lim = parseFloat(prev.inverterLimitAcKw);
+        if (Number.isFinite(lim) && lim > 15) {
+          return { ...next, inverterLimitAcKw: '15', systemSizeAcKw: '15.00' };
+        }
+      }
+      return next;
+    }
     return {
       ...next,
-      systemSizeAcKw: autoAcFromDcKw(dc).toFixed(2),
+      systemSizeAcKw: computeAutoAcKw(dc, next).toFixed(2),
     };
   };
 
@@ -4683,17 +4751,35 @@ export default function App() {
               </div>
 
               {/* בחירת סוג מערכת */}
-              <div className="flex gap-4 mb-6">
-                <label className={`flex-1 flex items-center justify-center gap-3 p-5 rounded-2xl cursor-pointer border-2 transition-all duration-200 ${quoteForm.systemType === 'residential' ? 'border-blue-500/70 text-blue-200 shadow-[0_0_25px_rgba(59,130,246,0.25)]' : 'border-white/8 text-slate-400 hover:border-white/20 hover:text-slate-300'}`}
-                      style={quoteForm.systemType === 'residential' ? { background: 'linear-gradient(135deg, rgba(29,78,216,0.25), rgba(37,99,235,0.12))' } : { background: 'rgba(255,255,255,0.035)' }}>
-                  <input type="radio" name="systemType" value="residential" checked={quoteForm.systemType === 'residential'} onChange={handleFormChange} className="hidden" />
-                  <span className="text-2xl">🏠</span><span className="font-bold text-lg">מערכת ביתית (פרטית)</span>
-                </label>
-                <label className={`flex-1 flex items-center justify-center gap-3 p-5 rounded-2xl cursor-pointer border-2 transition-all duration-200 ${quoteForm.systemType === 'commercial' ? 'border-blue-500/70 text-blue-200 shadow-[0_0_25px_rgba(59,130,246,0.25)]' : 'border-white/8 text-slate-400 hover:border-white/20 hover:text-slate-300'}`}
-                      style={quoteForm.systemType === 'commercial' ? { background: 'linear-gradient(135deg, rgba(29,78,216,0.25), rgba(37,99,235,0.12))' } : { background: 'rgba(255,255,255,0.035)' }}>
-                  <input type="radio" name="systemType" value="commercial" checked={quoteForm.systemType === 'commercial'} onChange={handleFormChange} className="hidden" />
-                  <span className="text-2xl">🏢</span><span className="font-bold text-lg">מערכת מסחרית</span>
-                </label>
+              <div className="mb-4 space-y-2.5">
+                <div className="flex gap-3">
+                  <label className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl cursor-pointer border-2 transition-all duration-200 ${quoteForm.systemType === 'residential' ? 'border-blue-500/70 text-blue-200 shadow-[0_0_18px_rgba(59,130,246,0.2)]' : 'border-white/8 text-slate-400 hover:border-white/20 hover:text-slate-300'}`}
+                        style={quoteForm.systemType === 'residential' ? { background: 'linear-gradient(135deg, rgba(29,78,216,0.25), rgba(37,99,235,0.12))' } : { background: 'rgba(255,255,255,0.035)' }}>
+                    <input type="radio" name="systemType" value="residential" checked={quoteForm.systemType === 'residential'} onChange={handleFormChange} className="hidden" />
+                    <span className="text-base leading-none">🏠</span>
+                    <span className="font-semibold text-sm sm:text-base">מערכת ביתית (פרטית)</span>
+                  </label>
+                  <label className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl cursor-pointer border-2 transition-all duration-200 ${quoteForm.systemType === 'commercial' ? 'border-blue-500/70 text-blue-200 shadow-[0_0_18px_rgba(59,130,246,0.2)]' : 'border-white/8 text-slate-400 hover:border-white/20 hover:text-slate-300'}`}
+                        style={quoteForm.systemType === 'commercial' ? { background: 'linear-gradient(135deg, rgba(29,78,216,0.25), rgba(37,99,235,0.12))' } : { background: 'rgba(255,255,255,0.035)' }}>
+                    <input type="radio" name="systemType" value="commercial" checked={quoteForm.systemType === 'commercial'} onChange={handleFormChange} className="hidden" />
+                    <span className="text-base leading-none">🏢</span>
+                    <span className="font-semibold text-sm sm:text-base">מערכת מסחרית</span>
+                  </label>
+                </div>
+                {quoteForm.systemType === 'residential' && (
+                  <div className="flex gap-3">
+                    <label className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-xl cursor-pointer border-2 transition-all duration-200 ${quoteForm.residentialTrack === 'green' ? 'border-emerald-500/70 text-emerald-200 shadow-[0_0_16px_rgba(16,185,129,0.2)]' : 'border-white/8 text-slate-400 hover:border-white/20 hover:text-slate-300'}`}
+                          style={quoteForm.residentialTrack === 'green' ? { background: 'linear-gradient(135deg, rgba(5,150,105,0.28), rgba(16,185,129,0.1))' } : { background: 'rgba(255,255,255,0.035)' }}>
+                      <input type="radio" name="residentialTrack" value="green" checked={quoteForm.residentialTrack === 'green'} onChange={handleFormChange} className="hidden" />
+                      <span className="font-semibold text-sm sm:text-base">מסלול ירוק</span>
+                    </label>
+                    <label className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-xl cursor-pointer border-2 transition-all duration-200 ${quoteForm.residentialTrack === 'production_meter' ? 'border-blue-500/70 text-blue-200 shadow-[0_0_16px_rgba(59,130,246,0.2)]' : 'border-white/8 text-slate-400 hover:border-white/20 hover:text-slate-300'}`}
+                          style={quoteForm.residentialTrack === 'production_meter' ? { background: 'linear-gradient(135deg, rgba(29,78,216,0.25), rgba(37,99,235,0.12))' } : { background: 'rgba(255,255,255,0.035)' }}>
+                      <input type="radio" name="residentialTrack" value="production_meter" checked={quoteForm.residentialTrack === 'production_meter'} onChange={handleFormChange} className="hidden" />
+                      <span className="font-semibold text-sm sm:text-base">עם מונה ייצור</span>
+                    </label>
+                  </div>
+                )}
               </div>
 
               <div className="grid min-w-0 grid-cols-1 gap-6 lg:grid-cols-3">
@@ -4783,14 +4869,16 @@ export default function App() {
                     </div>
                     <div className="min-w-0">
                       <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">גודל מערכת AC (kWp)</label>
-                      <input required type="number" step="0.1" min="1" name="systemSizeAcKw" value={quoteForm.systemSizeAcKw} onChange={handleFormChange}
+                      <input required type="number" step="0.1" min="1" max={isResidentialGreenTrack(quoteForm) ? 15 : undefined} name="systemSizeAcKw" value={quoteForm.systemSizeAcKw} onChange={handleFormChange}
                         disabled={Boolean(quoteForm.limitInverter)}
                         className={`w-full min-w-0 max-w-full rounded-xl border border-white/10 p-3.5 text-white text-2xl font-black outline-none transition-all duration-200 focus:border-blue-500/60 ${quoteForm.limitInverter ? 'bg-black/40 opacity-80 cursor-not-allowed' : 'bg-white/5'}`}
                         onFocus={e => e.target.style.boxShadow='0 0 0 3px rgba(59,130,246,0.18)'} onBlur={e => e.target.style.boxShadow='none'} />
                       <p className="text-xs text-slate-500 mt-2">
                         {quoteForm.limitInverter
                           ? 'נקבע לפי כיוול הממיר למטה'
-                          : 'מחושב אוטומטית לפי ה-DC אך ניתן לשינוי'}
+                          : isResidentialGreenTrack(quoteForm)
+                            ? 'מסלול ירוק — AC אוטומטי עד 15 kW לכל היותר'
+                            : 'מחושב אוטומטית לפי ה-DC אך ניתן לשינוי'}
                       </p>
                     </div>
 
@@ -4898,6 +4986,7 @@ export default function App() {
                             type="number"
                             step="0.1"
                             min="1"
+                            max={isResidentialGreenTrack(quoteForm) ? 15 : undefined}
                             name="inverterLimitAcKw"
                             value={quoteForm.inverterLimitAcKw}
                             onChange={handleFormChange}
@@ -4906,7 +4995,9 @@ export default function App() {
                             onBlur={e => e.target.style.boxShadow='none'}
                           />
                           <p className="text-xs text-slate-500 leading-snug">
-                            לדוגמה: ממיר 20 עם כיוול 15 → AC=15 ואופטימייזרים SolarEdge לפי 1:1 (לא 1:2).
+                            {isResidentialGreenTrack(quoteForm)
+                              ? 'מסלול ירוק — כיוול עד 15 kW. לדוגמה: ממיר 20 עם כיוול 15 → אופטימייזרים 1:1.'
+                              : 'לדוגמה: ממיר 20 עם כיוול 15 → AC=15 ואופטימייזרים SolarEdge לפי 1:1 (לא 1:2).'}
                           </p>
                         </div>
                       )}
