@@ -1070,6 +1070,7 @@ function QuotePriceConfirmPanel({
         { label: 'אביזרים', value: b.accessories },
         { label: 'שטיפה', value: b.washing },
         { label: 'אגרות', value: b.fees },
+        { label: 'מונה ייצור', value: b.productionMeter },
       ].filter((row) => row.value > 0)
     : [];
 
@@ -1518,6 +1519,9 @@ function formatResidentialTrackLabel(track) {
   if (track === 'production_meter') return 'עם מונה ייצור';
   return 'מסלול ירוק';
 }
+
+/** תוספת קבועה לביתית עם מונה ייצור (לפני מע״מ) — ללקוח ביתי מתווסף גם מע״מ */
+const PRODUCTION_METER_SURCHARGE_ILS = 1000;
 
 /** הספק DC (kWp) מדויק לפי כמות × הספק פאנל */
 function dcKwFromSelectedPanels(selectedPanels, panelsCatalog) {
@@ -3485,10 +3489,14 @@ export default function App() {
 
     const washingCost = quoteForm.includesWashing ? (Number(adminPrices.washingSystemBase) || 4500) : 0;
     const feesCost = quoteForm.feesPayer === 'company' ? (Number(adminPrices.feesCost) || 3000) : 0;
+    const productionMeterCost = isResidentialProductionMeter(quoteForm)
+      ? PRODUCTION_METER_SURCHARGE_ILS
+      : 0;
     
     const totalBaseCost = panelsCost + constructionCost + totalInvertersCost + totalBatteriesCost + optimizersCost + 
                           logisticsCost + laborCost + engineeringCost + privateCheckCost + 
-                          electricianCost + accessoriesCost + electricalBoxCost + washingCost + feesCost;
+                          electricianCost + accessoriesCost + electricalBoxCost + washingCost + feesCost +
+                          productionMeterCost;
     
     let profitValue = quoteForm.systemType === 'residential' ? (Number(adminPrices.profitResidentialFixed) || 21000) : (sizeKw * (Number(adminPrices.profitCommercialPerKw) || 630));
     
@@ -3671,7 +3679,8 @@ export default function App() {
         panels: panelsCost, construction: constructionCost, inverter: totalInvertersCost, batteries: totalBatteriesCost,
         optimizers: optimizersCost, logistics: logisticsCost, labor: laborCost, engineering: engineeringCost,
         electricianAndChecks: privateCheckCost + electricianCost, electricalBoxes: electricalBoxCost, accessories: accessoriesCost,
-        washing: washingCost, fees: feesCost, totalCost: totalBaseCost, marginValue: profitValue, finalPrice: finalPrice
+        washing: washingCost, fees: feesCost, productionMeter: productionMeterCost,
+        totalCost: totalBaseCost, marginValue: profitValue, finalPrice: finalPrice
       },
       hasSolarEdgeQuote: inverterDetailsList.some(inv => inv.isSolarEdge),
       showLimitedOffer,
@@ -4782,6 +4791,11 @@ export default function App() {
                       <span className="font-semibold text-sm sm:text-base">עם מונה ייצור</span>
                     </label>
                   </div>
+                )}
+                {isResidentialProductionMeter(quoteForm) && (
+                  <p className="text-xs text-blue-300/90 px-1">
+                    תוספת מונה ייצור: ₪{PRODUCTION_METER_SURCHARGE_ILS.toLocaleString('he-IL')} + מע״מ (נכלל אוטומטית במחיר)
+                  </p>
                 )}
               </div>
 
@@ -6358,6 +6372,9 @@ export default function App() {
                     <p>אביזרים: <span className="text-white font-bold">₪{Math.round(generatedQuote.breakdown.accessories)}</span></p>
                     <p>אופטימייזרים: <span className="text-white font-bold">₪{Math.round(generatedQuote.breakdown.optimizers)}</span></p>
                     <p>אגרות/שטיפה: <span className="text-white font-bold">₪{Math.round(generatedQuote.breakdown.washing + generatedQuote.breakdown.fees)}</span></p>
+                    {(Number(generatedQuote.breakdown.productionMeter) || 0) > 0 && (
+                      <p>מונה ייצור: <span className="text-white font-bold">₪{Math.round(generatedQuote.breakdown.productionMeter)}</span></p>
+                    )}
                   </div>
                   <div className="flex justify-between items-center bg-black/30 p-5 rounded-2xl border border-white/8">
                     <p className="text-white text-lg">סה"כ Cost פנימי: <span className="font-black text-orange-300">₪{Math.round(generatedQuote.breakdown.totalCost).toLocaleString()}</span></p>
