@@ -3115,6 +3115,7 @@ export default function App() {
           newState.residentialTrack = prev.residentialTrack || 'green';
           if (newState.residentialTrack === 'green') {
             newState.systemSizeAcKw = '15.00';
+            newState.limitInverter = false;
           }
         } else {
           // מסחרית — בלי מסלולים; AC אוטו׳ לפי DC
@@ -3127,6 +3128,7 @@ export default function App() {
       if (name === 'residentialTrack') {
         if (val === 'green') {
           newState.systemSizeAcKw = '15.00';
+          newState.limitInverter = false;
         }
         // production_meter — הסוכן בוחר AC ידנית; לא דורסים את הערך הקיים
       }
@@ -3300,7 +3302,7 @@ export default function App() {
     const panelsDerivedKw = dcKwFromSelectedPanels(quoteForm.selectedPanels, adminPrices.panels);
     const sizeKw =
       panelsDerivedKw != null ? panelsDerivedKw : parseFloat(quoteForm.systemSizeKw) || 0;
-    if (quoteForm.limitInverter) {
+    if (quoteForm.limitInverter && !isResidentialGreenTrack(quoteForm)) {
       const lim = parseFloat(quoteForm.inverterLimitAcKw);
       if (!Number.isFinite(lim) || lim <= 0) {
         setErrorMsg('נא להזין כיוול תקין לממיר (kW AC).');
@@ -4892,7 +4894,7 @@ export default function App() {
                         onFocus={e => e.target.style.boxShadow='0 0 0 3px rgba(59,130,246,0.18)'} onBlur={e => e.target.style.boxShadow='none'} />
                       <p className="text-xs text-slate-500 mt-2">
                         {isResidentialGreenTrack(quoteForm)
-                          ? 'מסלול ירוק — AC קבוע 15 kW (גם עם כיוול)'
+                          ? 'מסלול ירוק — AC קבוע 15 kW'
                           : quoteForm.limitInverter
                             ? 'נקבע לפי כיוול הממיר למטה'
                             : isResidentialProductionMeter(quoteForm)
@@ -4984,6 +4986,7 @@ export default function App() {
                       </div>
                     )}
 
+                    {!isResidentialGreenTrack(quoteForm) && (
                     <div className="mt-2 min-w-0 md:col-span-2 rounded-2xl border border-white/10 bg-black/20 p-4">
                       <label className="flex items-center gap-3 cursor-pointer">
                         <input
@@ -5005,7 +5008,6 @@ export default function App() {
                             type="number"
                             step="0.1"
                             min="1"
-                            max={isResidentialGreenTrack(quoteForm) ? 15 : undefined}
                             name="inverterLimitAcKw"
                             value={quoteForm.inverterLimitAcKw}
                             onChange={handleFormChange}
@@ -5014,13 +5016,12 @@ export default function App() {
                             onBlur={e => e.target.style.boxShadow='none'}
                           />
                           <p className="text-xs text-slate-500 leading-snug">
-                            {isResidentialGreenTrack(quoteForm)
-                              ? 'מסלול ירוק — ה־AC בהצעה נשאר 15 kW גם אם סומן כיוול.'
-                              : 'לדוגמה: ממיר 20 עם כיוול 15 → AC=15 ואופטימייזרים SolarEdge לפי 1:1 (לא 1:2).'}
+                            לדוגמה: ממיר 20 עם כיוול 15 → AC=15 ואופטימייזרים SolarEdge לפי 1:1 (לא 1:2).
                           </p>
                         </div>
                       )}
                     </div>
+                    )}
                     <div className="mt-2 min-w-0 md:col-span-2">
                       <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">סוג גג</label>
                       <select name="roofType" value={quoteForm.roofType} onChange={handleFormChange}
