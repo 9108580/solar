@@ -2138,22 +2138,6 @@ function effectiveInverterKw(inv) {
   return NaN;
 }
 
-/** סה״כ הספק AC של ממירים שנבחרו בהצעה (capacityKw × כמות) */
-function selectedInvertersAcCapacityKw(selectedList, catalog) {
-  let total = 0;
-  let any = false;
-  for (const sel of selectedList || []) {
-    const inv = (catalog || []).find((i) => i.id === sel.id);
-    const qty = Number(sel.quantity) || 0;
-    if (!inv || qty <= 0) continue;
-    const kw = effectiveInverterKw(inv);
-    if (!Number.isFinite(kw) || kw <= 0) continue;
-    total += kw * qty;
-    any = true;
-  }
-  return any ? total : null;
-}
-
 function isSolisInverter(inv) {
   const name = String(inv?.name || '');
   return /\bSOLIS\b/i.test(normalizeInvName(name)) || /סוליס/.test(name);
@@ -2394,7 +2378,10 @@ export default function App() {
     clientName: '',
     clientCity: '', 
     systemSizeKw: panelsInit.systemSizeKw,
-    systemSizeAcKw: panelsInit.systemSizeAcKw, 
+    systemSizeAcKw: panelsInit.systemSizeAcKw,
+    /** הגבלת הספק ממיר (קיוול) — אם מסומן, AC והאופטימייזרים לפי הערך */
+    limitInverter: false,
+    inverterLimitAcKw: '15',
     roofType: 'concrete', 
     inverterSystemType: 'ongrid',
     selectedPanels: panelsInit.selectedPanels,
@@ -2475,17 +2462,8 @@ export default function App() {
         ...prev,
         selectedPanels: nextRows,
         systemSizeKw: nextKw,
-        ...(dcChanged && dc != null
-          ? {
-              systemSizeAcKw: (() => {
-                const isHybrid = prev.inverterSystemType === 'hybrid';
-                const fromInv = selectedInvertersAcCapacityKw(
-                  isHybrid ? prev.selectedHybridInverters : prev.selectedInverters,
-                  isHybrid ? adminPrices.invertersHybrid : adminPrices.inverters
-                );
-                return (fromInv != null ? fromInv : autoAcFromDcKw(dc)).toFixed(2);
-              })(),
-            }
+        ...(dcChanged && dc != null && !prev.limitInverter
+          ? { systemSizeAcKw: autoAcFromDcKw(dc).toFixed(2) }
           : {}),
       };
     });
@@ -3061,19 +3039,20 @@ export default function App() {
     }
   };
 
+  /** AC אפקטיבי להצעה/אופטימייזרים: קיוול לממיר אם מסומן, אחרת שדה AC / אוטו׳ לפי DC */
   const resolveQuoteAcKw = (formLike, panelsDcKw = null) => {
-    const isHybrid = formLike.inverterSystemType === 'hybrid';
-    const invList = isHybrid ? formLike.selectedHybridInverters : formLike.selectedInverters;
-    const invCatalog = isHybrid ? adminPrices.invertersHybrid : adminPrices.inverters;
-    const fromInverters = selectedInvertersAcCapacityKw(invList, invCatalog);
-    if (fromInverters != null) return fromInverters;
+    if (formLike.limitInverter) {
+      const limited = parseFloat(formLike.inverterLimitAcKw);
+      if (Number.isFinite(limited) && limited > 0) return limited;
+    }
+    const manual = parseFloat(formLike.systemSizeAcKw);
+    if (Number.isFinite(manual) && manual > 0) return manual;
     const dc =
       panelsDcKw != null
         ? panelsDcKw
         : dcKwFromSelectedPanels(formLike.selectedPanels, adminPrices.panels);
     if (dc != null) return autoAcFromDcKw(dc);
-    const manual = parseFloat(formLike.systemSizeAcKw);
-    return Number.isFinite(manual) && manual > 0 ? manual : 15;
+    return 15;
   };
 
   const handleFormChange = (e) => {
@@ -3095,8 +3074,21 @@ export default function App() {
           newState.selectedHybridInverters = prev.selectedHybridInverters.map((r) => ({ ...r, id: defaultHyb }));
         }
       }
-      if (name === 'systemType' || name === 'inverterSystemType') {
-        newState.systemSizeAcKw = resolveQuoteAcKw(newState).toFixed(2);
+      // סימון קיוול → AC לפי ערך הקיוול; ביטול → חזרה ל־AC אוטו׳ לפי DC
+      if (name === 'limitInverter') {
+        if (val) {
+          const lim = parseFloat(prev.inverterLimitAcKw);
+          newState.systemSizeAcKw = (Number.isFinite(lim) && lim > 0 ? lim : 15).toFixed(2);
+        } else {
+          const dc = dcKwFromSelectedPanels(prev.selectedPanels, adminPrices.panels);
+          if (dc != null) newState.systemSizeAcKw = autoAcFromDcKw(dc).toFixed(2);
+        }
+      }
+      if (name === 'inverterLimitAcKw' && prev.limitInverter) {
+        const lim = parseFloat(val);
+        if (Number.isFinite(lim) && lim > 0) {
+          newState.systemSizeAcKw = lim.toFixed(2);
+        }
       }
       return newState;
     });
@@ -3110,9 +3102,11 @@ export default function App() {
     const dc = dcKwFromSelectedPanels(selectedPanels, adminPrices.panels);
     if (dc == null) return { ...prev, selectedPanels };
     const next = { ...prev, selectedPanels, systemSizeKw: formatDcKwForInput(dc) };
+    // עם קיוול — לא לדרוס את ה־AC לפי מדרגת DC
+    if (prev.limitInverter) return next;
     return {
       ...next,
-      systemSizeAcKw: resolveQuoteAcKw(next, dc).toFixed(2),
+      systemSizeAcKw: autoAcFromDcKw(dc).toFixed(2),
     };
   };
 
@@ -3133,18 +3127,6 @@ export default function App() {
         return applyDcFromSelectedPanels(prev, updatedList);
       }
 
-      // שינוי ממיר → AC לפי הספק הממיר (לא לפי מדרגת DC אוטומטית)
-      if (
-        (listName === 'selectedInverters' || listName === 'selectedHybridInverters') &&
-        (field === 'quantity' || field === 'id')
-      ) {
-        const next = { ...prev, [listName]: updatedList };
-        return {
-          ...next,
-          systemSizeAcKw: resolveQuoteAcKw(next).toFixed(2),
-        };
-      }
-
       return { ...prev, [listName]: updatedList };
     });
   };
@@ -3159,11 +3141,7 @@ export default function App() {
     }
     setQuoteForm((prev) => {
       const nextList = [...prev[formListName], { id: newId, quantity: 1 }];
-      const next = { ...prev, [formListName]: nextList };
-      if (formListName === 'selectedInverters' || formListName === 'selectedHybridInverters') {
-        return { ...next, systemSizeAcKw: resolveQuoteAcKw(next).toFixed(2) };
-      }
-      return next;
+      return { ...prev, [formListName]: nextList };
     });
   };
 
@@ -3171,11 +3149,7 @@ export default function App() {
     if (formListName === 'selectedPanels') return; // לא מוחקים את שורת הפאנל היחידה
     setQuoteForm((prev) => {
       const nextList = prev[formListName].filter((_, i) => i !== index);
-      const next = { ...prev, [formListName]: nextList };
-      if (formListName === 'selectedInverters' || formListName === 'selectedHybridInverters') {
-        return { ...next, systemSizeAcKw: resolveQuoteAcKw(next).toFixed(2) };
-      }
-      return next;
+      return { ...prev, [formListName]: nextList };
     });
   };
 
@@ -3193,14 +3167,14 @@ export default function App() {
     return { hasSolarEdge };
   };
 
-  /** SolarEdge אופטימייזרים: לפי הספק AC של הממיר שנבחר — ≤15 kW → 1:1, מ-16 kW → 1:2 */
+  /** SolarEdge אופטימייזרים: לפי AC אפקטיבי (כולל קיוול) — ≤15 kW → 1:1, מ-16 kW → 1:2 */
   const solarEdgeOptimizerUsesOneToTwo = (acKw) => {
     const ac = parseFloat(acKw);
     if (!Number.isFinite(ac)) return false;
     return ac >= 16;
   };
 
-  /** AC לקביעת יחס אופטימייזרים — ממיר נבחר קודם, אחרת AC בהצעה */
+  /** AC לקביעת יחס אופטימייזרים — קיוול לממיר אם מסומן, אחרת AC בהצעה */
   const solarEdgeOptimizerAcKw = () => resolveQuoteAcKw(quoteForm);
 
   const getSungrowStatus = () => {
@@ -3251,7 +3225,14 @@ export default function App() {
     const panelsDerivedKw = dcKwFromSelectedPanels(quoteForm.selectedPanels, adminPrices.panels);
     const sizeKw =
       panelsDerivedKw != null ? panelsDerivedKw : parseFloat(quoteForm.systemSizeKw) || 0;
-    // AC: הספק הממיר שנבחר קודם (למשל NEXIS 20) — לא מדרגת DC אוטומטית שקופצת ב־24 kWp
+    if (quoteForm.limitInverter) {
+      const lim = parseFloat(quoteForm.inverterLimitAcKw);
+      if (!Number.isFinite(lim) || lim <= 0) {
+        setErrorMsg('נא להזין קיוול תקין לממיר (kW AC).');
+        return;
+      }
+    }
+    // AC: קיוול לממיר אם מסומן, אחרת שדה AC / אוטו׳ לפי DC
     const acKw = resolveQuoteAcKw(quoteForm, panelsDerivedKw);
     const systemSizeWatts = sizeKw * 1000;
     const usdRate = Number(adminPrices.usdExchangeRate) || 3.75;
@@ -4803,9 +4784,48 @@ export default function App() {
                     <div className="min-w-0">
                       <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">גודל מערכת AC (kWp)</label>
                       <input required type="number" step="0.1" min="1" name="systemSizeAcKw" value={quoteForm.systemSizeAcKw} onChange={handleFormChange}
-                        className="w-full min-w-0 max-w-full bg-white/5 border border-white/10 rounded-xl p-3.5 text-white text-2xl font-black outline-none transition-all duration-200 focus:border-blue-500/60"
+                        disabled={Boolean(quoteForm.limitInverter)}
+                        className={`w-full min-w-0 max-w-full rounded-xl border border-white/10 p-3.5 text-white text-2xl font-black outline-none transition-all duration-200 focus:border-blue-500/60 ${quoteForm.limitInverter ? 'bg-black/40 opacity-80 cursor-not-allowed' : 'bg-white/5'}`}
                         onFocus={e => e.target.style.boxShadow='0 0 0 3px rgba(59,130,246,0.18)'} onBlur={e => e.target.style.boxShadow='none'} />
-                      <p className="text-xs text-slate-500 mt-2">מחושב אוטומטית לפי ה-DC אך ניתן לשינוי</p>
+                      <p className="text-xs text-slate-500 mt-2">
+                        {quoteForm.limitInverter
+                          ? 'נקבע לפי קיוול הממיר למטה'
+                          : 'מחושב אוטומטית לפי ה-DC אך ניתן לשינוי'}
+                      </p>
+                    </div>
+                    <div className="mt-2 min-w-0 md:col-span-2 rounded-2xl border border-white/10 bg-black/20 p-4">
+                      <label className="flex items-center gap-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          name="limitInverter"
+                          checked={Boolean(quoteForm.limitInverter)}
+                          onChange={handleFormChange}
+                          className="w-5 h-5 accent-blue-500 rounded shrink-0"
+                        />
+                        <span className="block text-white font-semibold">האם להגביל את הממיר</span>
+                      </label>
+                      {quoteForm.limitInverter && (
+                        <div className="mt-4 pt-4 border-t border-white/10 space-y-2">
+                          <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                            קיוול לממיר (kW AC)
+                          </label>
+                          <input
+                            required
+                            type="number"
+                            step="0.1"
+                            min="1"
+                            name="inverterLimitAcKw"
+                            value={quoteForm.inverterLimitAcKw}
+                            onChange={handleFormChange}
+                            className="w-full max-w-xs bg-white/5 border border-white/10 rounded-xl p-3.5 text-white text-xl font-bold outline-none transition-all duration-200 focus:border-blue-500/60"
+                            onFocus={e => e.target.style.boxShadow='0 0 0 3px rgba(59,130,246,0.18)'}
+                            onBlur={e => e.target.style.boxShadow='none'}
+                          />
+                          <p className="text-xs text-slate-500 leading-snug">
+                            לדוגמה: ממיר 20 עם קיוול 15 → AC=15 ואופטימייזרים SolarEdge לפי 1:1 (לא 1:2).
+                          </p>
+                        </div>
+                      )}
                     </div>
                     <div className="mt-2 min-w-0 md:col-span-2">
                       <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">סוג גג</label>
@@ -4906,7 +4926,8 @@ export default function App() {
                           <div className="p-4 space-y-2">
                             <p className="block text-white font-semibold">כולל אופטימייזרים (Optimizers)</p>
                             <p className="text-sm text-blue-300">
-                              זוהה ממיר SolarEdge במערכת — לפי הספק ממיר AC ({Number(solarEdgeOptimizerAcKw()).toFixed(2)} kW):{' '}
+                              זוהה ממיר SolarEdge במערכת — לפי הספק AC ({Number(solarEdgeOptimizerAcKw()).toFixed(2)} kW
+                              {quoteForm.limitInverter ? ', קיוול ממיר' : ''}):{' '}
                               {solarEdgeOptimizerUsesOneToTwo(solarEdgeOptimizerAcKw())
                                 ? 'אופטימייזרים 1:2'
                                 : 'אופטימייזרים 1:1'}
