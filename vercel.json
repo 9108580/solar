@@ -10,7 +10,7 @@
       "destination": "https://mes-crm-ten.vercel.app/crm"
     },
     {
-      "source": "/crm/:path*",
+      "source": "/crm/:path(.*)",
       "destination": "https://mes-crm-ten.vercel.app/crm/:path*"
     },
     {
