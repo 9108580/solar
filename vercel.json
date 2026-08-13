@@ -6,6 +6,14 @@
   },
   "rewrites": [
     {
+      "source": "/crm",
+      "destination": "https://mes-crm-ten.vercel.app/crm"
+    },
+    {
+      "source": "/crm/:path*",
+      "destination": "https://mes-crm-ten.vercel.app/crm/:path*"
+    },
+    {
       "source": "/APP",
       "destination": "https://solar-up.vercel.app/APP"
     },
