@@ -14,6 +14,18 @@
       "destination": "https://mes-crm-ten.vercel.app/crm/:path*"
     },
     {
+      "source": "/privacy-policy",
+      "destination": "https://mes-crm-ten.vercel.app/crm/privacy-policy"
+    },
+    {
+      "source": "/terms",
+      "destination": "https://mes-crm-ten.vercel.app/crm/terms"
+    },
+    {
+      "source": "/data-deletion",
+      "destination": "https://mes-crm-ten.vercel.app/crm/data-deletion"
+    },
+    {
       "source": "/APP",
       "destination": "https://solar-up.vercel.app/APP"
     },
