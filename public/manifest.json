@@ -1,6 +1,7 @@
 {
-  "short_name": "מומחי סולארית",
-  "name": "מומחי אנרגיה סולארית",
+  "short_name": "הצעת מחיר",
+  "name": "הצעת מחיר — מומחי אנרגיה סולארית",
+  "description": "מחשבון והצעות מחיר למערכות סולאריות.",
   "icons": [
     {
       "src": "favicon.ico",
@@ -18,8 +19,9 @@
       "sizes": "512x512"
     }
   ],
-  "start_url": ".",
-  "display": "standalone",
-  "theme_color": "#000000",
+  "start_url": "/",
+  "scope": "/",
+  "display": "browser",
+  "theme_color": "#0f172a",
   "background_color": "#ffffff"
 }

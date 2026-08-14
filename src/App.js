@@ -108,13 +108,6 @@ async function copyTextSync(text) {
 async function copyTextRespectingUserGesture(textPromise) {
   const hasClipboardItem =
     Boolean(navigator.clipboard?.write) && typeof ClipboardItem !== 'undefined';
-  // #region agent log
-  emitShareLinkDebugLog('H2', 'copy-strategy', {
-    hasClipboardItem,
-    hasWriteText: Boolean(navigator.clipboard?.writeText),
-    ua: typeof navigator !== 'undefined' ? navigator.userAgent.slice(0, 80) : '',
-  });
-  // #endregion
   if (hasClipboardItem) {
     await navigator.clipboard.write([
       new ClipboardItem({
@@ -163,15 +156,6 @@ const QUOTE_CARD_SHELL_COMPACT =
 
 const QUOTE_BRAND_CARD_COMPACT_CLASS =
   `${QUOTE_CARD_SHELL_COMPACT} border border-white/[0.12] bg-white/[0.06] print:border-slate-200/90 print:bg-white`;
-
-const QUOTE_BRAND_CARD_COMPACT_EMERALD_CLASS =
-  `${QUOTE_CARD_SHELL_COMPACT} border border-emerald-400/25 bg-emerald-950/30 print:border-emerald-200 print:bg-white`;
-
-const QUOTE_BRAND_CARD_COMPACT_BLUE_CLASS =
-  `${QUOTE_CARD_SHELL_COMPACT} border border-blue-400/30 bg-blue-950/25 print:border-blue-200 print:bg-white`;
-
-const QUOTE_BRAND_CARD_COMPACT_CYAN_CLASS =
-  `${QUOTE_CARD_SHELL_COMPACT} border border-cyan-400/28 bg-cyan-950/28 print:border-cyan-200 print:bg-white`;
 
 const QUOTE_PLAIN_EQUIP_CARD_COMPACT_CLASS =
   `${QUOTE_CARD_SHELL_COMPACT} border border-slate-500/35 bg-slate-800/35 print:border-slate-200 print:bg-white`;
@@ -231,58 +215,6 @@ const QUOTE_PROJECT_EXAMPLE_IMAGES = Array.from({ length: 14 }, (_, i) => {
 const QUOTE_PROJECTS_MAP_URL = 'https://9108580.github.io/pipedrive-israel-map/';
 const QUOTE_PROJECTS_MAP_VIEWER_URL = QUOTE_PROJECTS_MAP_URL;
 const QUOTE_PROJECTS_MAP_EMBED_URL = QUOTE_PROJECTS_MAP_URL;
-
-/** PDF print layout — debug session c91eed */
-function emitShareLinkDebugLog(hypothesisId, message, data) {
-  if (typeof window === 'undefined' || typeof fetch !== 'function') return;
-  fetch('http://127.0.0.1:7414/ingest/0129d7ab-3eb6-46ad-add7-b5ee7cb6277d', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'c91eed' },
-    body: JSON.stringify({
-      sessionId: 'c91eed',
-      runId: 'share-link',
-      hypothesisId,
-      location: 'App.js:share-link',
-      message,
-      data,
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-}
-
-function emitPdfDebugLog(hypothesisId, message, data) {
-  if (typeof window === 'undefined' || typeof fetch !== 'function') return;
-  fetch('http://127.0.0.1:7414/ingest/0129d7ab-3eb6-46ad-add7-b5ee7cb6277d', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'c91eed' },
-    body: JSON.stringify({
-      sessionId: 'c91eed',
-      runId: 'pdf-print',
-      hypothesisId,
-      location: 'App.js:print',
-      message,
-      data,
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-}
-
-function emitAgentDebugLog(runId, hypothesisId, location, message, data) {
-  if (typeof window === 'undefined' || typeof fetch !== 'function') return;
-  fetch('http://127.0.0.1:7601/ingest/db65f22b-e2f1-4fe5-a2e4-59babefb6850', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '43ab36' },
-    body: JSON.stringify({
-      sessionId: '43ab36',
-      runId,
-      hypothesisId,
-      location,
-      message,
-      data,
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-}
 
 function QuoteProjectsMap({ clientCity }) {
   const [mapKey, setMapKey] = useState(0);
@@ -2649,7 +2581,12 @@ export default function App() {
       prev ? applyUrbanPremiumToQuote(prev, cities, adminPrices) : prev
     );
     return undefined;
-  }, [shareQuoteId, urbanPremiumCities]);
+  }, [
+    shareQuoteId,
+    generatedQuote?.baseCalculatedTariff,
+    urbanPremiumCities,
+    adminPrices,
+  ]);
 
   const scheduleShareLinkFeedbackClear = useCallback((ms) => {
     if (shareLinkFeedbackClearTimerRef.current != null) {
@@ -2695,32 +2632,16 @@ export default function App() {
       return quoteShareAbsoluteUrl(id);
     })();
 
-    // #region agent log
-    emitShareLinkDebugLog('H1', 'share-link-start', {
-      hasSupabase: Boolean(supabase),
-      hasClipboardWrite: Boolean(navigator.clipboard?.write),
-      hasClipboardItem: typeof ClipboardItem !== 'undefined',
-    });
-    // #endregion
     try {
       let copied = false;
-      let copyErrorName = null;
       try {
         await copyTextRespectingUserGesture(urlPromise);
         copied = true;
-      } catch (copyErr) {
+      } catch {
         copied = false;
-        copyErrorName = copyErr?.name || copyErr?.message || 'unknown';
       }
 
       const url = await urlPromise;
-      // #region agent log
-      emitShareLinkDebugLog('H1-H3', 'share-link-success', {
-        copied,
-        copyErrorName,
-        urlLength: url?.length ?? 0,
-      });
-      // #endregion
       setShareLinkFeedback({
         type: 'success',
         text: copied
@@ -2731,13 +2652,6 @@ export default function App() {
       });
       scheduleShareLinkFeedbackClear(copied ? 12000 : 60000);
     } catch (err) {
-      // #region agent log
-      emitShareLinkDebugLog('H4', 'share-link-supabase-error', {
-        errorName: err?.name,
-        errorCode: err?.code,
-        message: err?.message ? String(err.message).slice(0, 120) : null,
-      });
-      // #endregion
       const raw = err?.message != null ? String(err.message) : String(err);
       const code = err?.code != null ? String(err.code) : '';
       const combined = `${raw} ${code}`.toLowerCase();
@@ -2771,14 +2685,8 @@ export default function App() {
   const handleRetryCopyShareLink = useCallback(async () => {
     const url = shareLinkFeedback?.url;
     if (!url) return;
-    // #region agent log
-    emitShareLinkDebugLog('H3', 'retry-copy-start', { urlLength: url.length });
-    // #endregion
     try {
       await copyTextSync(url);
-      // #region agent log
-      emitShareLinkDebugLog('H3', 'retry-copy-success', { urlLength: url.length });
-      // #endregion
       setShareLinkFeedback((prev) =>
         prev
           ? {
@@ -2790,13 +2698,7 @@ export default function App() {
           : prev
       );
       scheduleShareLinkFeedbackClear(12000);
-    } catch (retryErr) {
-      // #region agent log
-      emitShareLinkDebugLog('H3', 'retry-copy-failed', {
-        errorName: retryErr?.name,
-        message: retryErr?.message ? String(retryErr.message).slice(0, 80) : null,
-      });
-      // #endregion
+    } catch {
       setShareLinkFeedback((prev) =>
         prev
           ? {
@@ -2981,15 +2883,6 @@ export default function App() {
       window.matchMedia('(max-width: 900px), (pointer: coarse)').matches;
     const isPdf = String(n.mimeType || '').toLowerCase().includes('pdf');
     if (isMobileLike && isPdf) {
-      // #region agent log
-      emitAgentDebugLog('run-pre-fix', 'H5', 'App.js:2613', 'Opening datasheet via mobile direct PDF path', {
-        title,
-        isMobileLike,
-        isPdf,
-        mimeType: n.mimeType,
-        fileName: n.fileName,
-      });
-      // #endregion
       const opened = window.open(src, '_blank', 'noopener,noreferrer');
       if (!opened) window.location.href = src;
       return;
@@ -3418,16 +3311,6 @@ export default function App() {
       });
       batteryDetailsList.push(...batteryById.values());
     }
-    // #region agent log
-    emitAgentDebugLog('run-pre-fix', 'H1', 'App.js:2916', 'Battery selection calculation in quote', {
-      inverterSystemType: quoteForm.inverterSystemType,
-      includesBatteries: quoteForm.includesBatteries,
-      hasBatteries,
-      selectedBatteries: quoteForm.selectedBatteries,
-      batteryDetailsCount: batteryDetailsList.length,
-      batteryUnits: batteryDetailsList.map((b) => ({ id: b.id, quantity: b.quantity, unitKwh: b.unitKwh })),
-    });
-    // #endregion
     
     let optimizersCost = 0;
     let optimizerDetails = { type: 'ללא', quantity: 0 };
@@ -3715,15 +3598,6 @@ export default function App() {
     const metrics = recomputeInvestmentMetrics(quoteDraft, amount, adminPrices);
     const showLimitedOffer = Boolean(quoteDraft.showLimitedOffer);
     const offerExpiresAt = showLimitedOffer ? Date.now() + 7 * 24 * 60 * 60 * 1000 : null;
-    // #region agent log
-    emitAgentDebugLog('run-pre-fix', 'H2', 'App.js:3200', 'Quote draft promoted to generated quote', {
-      hasBatteries: quoteDraft.hasBatteries,
-      includesBatteries: quoteDraft.includesBatteries,
-      batteryDetailsCount: Array.isArray(quoteDraft.batteryDetailsList) ? quoteDraft.batteryDetailsList.length : -1,
-      includesOptimizers: quoteDraft.includesOptimizers,
-      inverterSystemType: quoteDraft.inverterSystemType,
-    });
-    // #endregion
     setGeneratedQuote({
       ...quoteDraft,
       ...metrics,
@@ -3892,76 +3766,6 @@ export default function App() {
     () => aggregateBatteryStorageSummary(generatedQuote?.batteryDetailsList),
     [generatedQuote?.batteryDetailsList]
   );
-  useEffect(() => {
-    if (!generatedQuote) return;
-    // #region agent log
-    emitAgentDebugLog('run-pre-fix', 'H3-H4', 'App.js:3356', 'Generated quote values used by summary and warranty UI', {
-      hasBatteries: generatedQuote.hasBatteries,
-      includesBatteries: generatedQuote.includesBatteries,
-      batteryDetailsCount: Array.isArray(generatedQuote.batteryDetailsList) ? generatedQuote.batteryDetailsList.length : -1,
-      batterySummaryKwh: quoteBatteryStorageSummary?.totalKwh ?? null,
-      batterySummaryUnits: quoteBatteryStorageSummary?.totalUnits ?? null,
-      includesOptimizers: generatedQuote.includesOptimizers,
-    });
-    // #endregion
-  }, [generatedQuote, quoteBatteryStorageSummary]);
-
-  const measureQuotePrintLayout = useCallback(() => {
-    const root = document.getElementById('quote-presentation');
-    if (!root) {
-      // #region agent log
-      emitPdfDebugLog('H0', 'quote-presentation-missing', { activeTab });
-      // #endregion
-      return;
-    }
-    const pick = (sel) => {
-      const el = root.querySelector(sel);
-      if (!el) return { present: false };
-      const r = el.getBoundingClientRect();
-      const st = window.getComputedStyle(el);
-      return {
-        present: true,
-        heightPx: Math.round(r.height),
-        topPx: Math.round(r.top),
-        breakBefore: st.breakBefore || st.pageBreakBefore,
-        breakAfter: st.breakAfter || st.pageBreakAfter,
-      };
-    };
-    const highlights = root.querySelector('.quote-print-summary [class*="text-green"]');
-    const chart = root.querySelector('.quote-print-cashflow-chart');
-    const loanTable = root.querySelector('.quote-print-loan-block table');
-  // #region agent log
-    emitPdfDebugLog('H1-H4', 'before-print-layout', {
-      runPhase: 'post-fix',
-      rootScrollHeight: root.scrollHeight,
-      viewportH: window.innerHeight,
-      estimatedPagesA4: Math.ceil(root.scrollHeight / 1050),
-      sections: {
-        cover: pick('.quote-print-cover'),
-        summary: pick('.quote-print-summary'),
-        summaryBlocks: pick('.quote-print-summary-blocks'),
-        equipment: pick('[aria-labelledby="quote-equipment-brands-heading"]'),
-        cashflowSheet: pick('.quote-print-cashflow-sheet'),
-        loanChapter: pick('.quote-print-chapter-loan'),
-        about: pick('.quote-print-section.bg-slate-50'),
-        signature: pick('.quote-print-chapter-start'),
-      },
-      annualYield: generatedQuote?.annualYield ?? null,
-      highlightsBottomPx: highlights ? Math.round(highlights.getBoundingClientRect().bottom) : null,
-      chartHeightPx: chart ? Math.round(chart.getBoundingClientRect().height) : null,
-      loanRowCount: loanTable ? loanTable.querySelectorAll('tbody tr').length : 0,
-      showLoan: Boolean(generatedQuote?.showLoanSimulation),
-      showEquipment: Boolean(quoteShowEquipmentBrandsSection),
-    });
-  // #endregion
-  }, [activeTab, generatedQuote, quoteShowEquipmentBrandsSection]);
-
-  useEffect(() => {
-    if (activeTab !== 'quote' || !generatedQuote) return undefined;
-    const onBeforePrint = () => measureQuotePrintLayout();
-    window.addEventListener('beforeprint', onBeforePrint);
-    return () => window.removeEventListener('beforeprint', onBeforePrint);
-  }, [activeTab, generatedQuote, measureQuotePrintLayout]);
 
   // --- מסך התחברות (Login Screen) ---
   if (!currentUser) {
@@ -5038,7 +4842,7 @@ export default function App() {
                             <p className="block text-white font-semibold">כולל אופטימייזרים (Optimizers)</p>
                             <p className="text-sm text-blue-300">
                               זוהה ממיר SolarEdge במערכת — לפי הספק AC ({Number(solarEdgeOptimizerAcKw()).toFixed(2)} kW
-                              {quoteForm.limitInverter ? ', כיוול ממיר' : ''}):{' '}
+                              {quoteForm.limitInverter && !isResidentialGreenTrack(quoteForm) ? ', כיוול ממיר' : ''}):{' '}
                               {solarEdgeOptimizerUsesOneToTwo(solarEdgeOptimizerAcKw())
                                 ? 'אופטימייזרים 1:2'
                                 : 'אופטימייזרים 1:1'}
@@ -5294,7 +5098,6 @@ export default function App() {
                    <button
                      type="button"
                      onClick={() => {
-                       measureQuotePrintLayout();
                        window.print();
                      }}
                      className="bg-white text-slate-900 px-6 py-2.5 rounded-xl font-bold shadow-xl flex items-center gap-2 hover:bg-slate-100 transition-all hover:scale-[1.02] hover:shadow-2xl"
@@ -5765,7 +5568,6 @@ export default function App() {
                         <div className={QUOTE_EQUIPMENT_STRIP_CELL}>
                           {(() => {
                             const cLogo = normalizeDatasheet(generatedQuote.constructionLogo);
-                            const cDs = normalizeDatasheet(generatedQuote.constructionDatasheet);
                             const logoSrc =
                               cLogo?.mimeType?.startsWith('image/') ? datasheetToSrc(cLogo) : null;
                             const inner = (

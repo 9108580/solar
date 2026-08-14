@@ -1,16 +1,39 @@
 {
+  "framework": null,
+  "buildCommand": "npm run build",
+  "outputDirectory": "build",
   "build": {
     "env": {
       "CI": "false"
     }
   },
-  "rewrites": [
+  "redirects": [
     {
-      "source": "/crm",
-      "destination": "https://mes-crm-ten.vercel.app/crm"
+      "source": "/APP",
+      "destination": "/APP/",
+      "statusCode": 308
     },
     {
-      "source": "/crm/:path(.*)?",
+      "source": "/crm",
+      "destination": "/crm/",
+      "statusCode": 308
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/APP/",
+      "destination": "https://solar-up.vercel.app/APP/"
+    },
+    {
+      "source": "/APP/:path(.*)",
+      "destination": "https://solar-up.vercel.app/APP/:path*"
+    },
+    {
+      "source": "/crm/",
+      "destination": "https://mes-crm-ten.vercel.app/crm/"
+    },
+    {
+      "source": "/crm/:path(.*)",
       "destination": "https://mes-crm-ten.vercel.app/crm/:path*"
     },
     {
@@ -26,14 +49,6 @@
       "destination": "https://mes-crm-ten.vercel.app/crm/data-deletion"
     },
     {
-      "source": "/APP",
-      "destination": "https://solar-up.vercel.app/APP"
-    },
-    {
-      "source": "/APP/:path*",
-      "destination": "https://solar-up.vercel.app/APP/:path*"
-    },
-    {
       "source": "/q/:id",
       "has": [
         {
@@ -44,6 +59,75 @@
       ],
       "destination": "/api/quote-og?id=:id"
     },
-    { "source": "/q/:path*", "destination": "/index.html" }
+    {
+      "source": "/q/:path*",
+      "destination": "/index.html"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/APP",
+      "status": 308,
+      "headers": {
+        "Location": "/APP/"
+      }
+    },
+    {
+      "src": "/crm",
+      "status": 308,
+      "headers": {
+        "Location": "/crm/"
+      }
+    },
+    {
+      "src": "/APP/",
+      "dest": "https://solar-up.vercel.app/APP/"
+    },
+    {
+      "src": "/APP/(.*)",
+      "dest": "https://solar-up.vercel.app/APP/$1"
+    },
+    {
+      "src": "/crm/",
+      "dest": "https://mes-crm-ten.vercel.app/crm/"
+    },
+    {
+      "src": "/crm/(.*)",
+      "dest": "https://mes-crm-ten.vercel.app/crm/$1"
+    },
+    {
+      "src": "/privacy-policy",
+      "dest": "https://mes-crm-ten.vercel.app/crm/privacy-policy"
+    },
+    {
+      "src": "/terms",
+      "dest": "https://mes-crm-ten.vercel.app/crm/terms"
+    },
+    {
+      "src": "/data-deletion",
+      "dest": "https://mes-crm-ten.vercel.app/crm/data-deletion"
+    },
+    {
+      "src": "/q/([^/]+)",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": "(?i).*(facebookexternalhit|whatsapp|twitterbot|linkedinbot|slackbot|telegrambot|discordbot).*"
+        }
+      ],
+      "dest": "/api/quote-og?id=$1"
+    },
+    {
+      "src": "/q/(.*)",
+      "dest": "/index.html"
+    },
+    {
+      "handle": "filesystem"
+    },
+    {
+      "src": "/.*",
+      "status": 404
+    }
   ]
 }
