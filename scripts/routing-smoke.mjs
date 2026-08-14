@@ -30,8 +30,7 @@ async function fetchFollow(path, { redirect = 'manual' } = {}) {
 function isQuotesHtml(body) {
   return (
     body.includes('הצעת מחיר') ||
-    body.includes('טוען את המערכת') ||
-    body.includes('og:site_name')
+    body.includes('טוען את המערכת')
   );
 }
 
