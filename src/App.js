@@ -7,6 +7,7 @@ import {
   enforceSystemTypeForDc,
   requiresCommercialSystem,
 } from './systemTypeRule';
+import { calculateSystemTypePricing } from './pricingRules';
 import {
   DEFAULT_URBAN_PREMIUM_CITIES,
   resolveUrbanPremiumFromCity,
@@ -3380,11 +3381,8 @@ export default function App() {
     }
 
     const logisticsCost = Number(adminPrices.logisticsCost) || 3100;
-    const laborPerKw =
-      effectiveQuoteForm.systemType === 'commercial'
-        ? Number(adminPrices.laborPerKwCommercial) || 550
-        : Number(adminPrices.laborPerKwResidential) || Number(adminPrices.laborPerKw) || 650;
-    let laborCost = sizeKw * laborPerKw;
+    const systemTypePricing = calculateSystemTypePricing(effectiveQuoteForm, sizeKw, adminPrices);
+    let laborCost = systemTypePricing.laborCost;
     if (hasBatteries) laborCost += (Number(adminPrices.hybridBatteryInstallCost) || 5700); 
 
     const engineeringCost = (Number(adminPrices.planningCost) || 1400) + (Number(adminPrices.constructorEngineer) || 500);
@@ -3414,7 +3412,7 @@ export default function App() {
                           electricianCost + accessoriesCost + electricalBoxCost + washingCost + feesCost +
                           productionMeterCost;
     
-    let profitValue = effectiveQuoteForm.systemType === 'residential' ? (Number(adminPrices.profitResidentialFixed) || 21000) : (sizeKw * (Number(adminPrices.profitCommercialPerKw) || 630));
+    const profitValue = systemTypePricing.profitValue;
     
     const finalPrice = (totalBaseCost + profitValue) || 0;
 

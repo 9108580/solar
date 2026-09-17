@@ -1,5 +1,6 @@
 import {
   COMMERCIAL_DC_THRESHOLD_KW,
+  canonicalSystemType,
   enforceSystemTypeForDc,
   requiresCommercialSystem,
 } from './systemTypeRule';
@@ -30,5 +31,16 @@ describe('mandatory commercial system classification by DC power', () => {
 
   test('exports the contractual boundary explicitly', () => {
     expect(COMMERCIAL_DC_THRESHOLD_KW).toBe(35);
+  });
+
+  test.each([
+    ['commercial', 'commercial'],
+    ['מערכת מסחרית', 'commercial'],
+    ['מסחרית', 'commercial'],
+    ['residential', 'residential'],
+    ['BT', 'residential'],
+    ['מערכת ביתית', 'residential'],
+  ])('canonicalizes legacy type %s to %s', (storedType, expected) => {
+    expect(canonicalSystemType(storedType)).toBe(expected);
   });
 });
