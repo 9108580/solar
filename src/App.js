@@ -4546,7 +4546,7 @@ export default function App() {
                     </div>
                     <div className="min-w-0">
                       <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">גודל מערכת AC (kWp)</label>
-                      <input required type="number" step="0.1" min="1" max={isResidentialGreenTrack(quoteForm) ? 15 : undefined} name="systemSizeAcKw" value={quoteForm.systemSizeAcKw} onChange={handleFormChange}
+                      <input required type="number" step="0.01" min="1" max={isResidentialGreenTrack(quoteForm) ? 15 : undefined} name="systemSizeAcKw" value={quoteForm.systemSizeAcKw} onChange={handleFormChange}
                         disabled={Boolean(quoteForm.limitInverter) || isResidentialGreenTrack(quoteForm)}
                         className={`w-full min-w-0 max-w-full rounded-xl border border-white/10 p-3.5 text-white text-2xl font-black outline-none transition-all duration-200 focus:border-blue-500/60 ${(quoteForm.limitInverter || isResidentialGreenTrack(quoteForm)) ? 'bg-black/40 opacity-80 cursor-not-allowed' : 'bg-white/5'}`}
                         onFocus={e => e.target.style.boxShadow='0 0 0 3px rgba(59,130,246,0.18)'} onBlur={e => e.target.style.boxShadow='none'} />
