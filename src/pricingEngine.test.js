@@ -1,0 +1,111 @@
+import { calculateCanonicalPricing, deriveCanonicalDc } from './pricingEngine';
+
+const settings = () => ({
+  usdExchangeRate: 3.3,
+  constructionConcretePerKw: 0,
+  constructionOtherPerKw: 0,
+  logisticsCost: 0,
+  laborPerKwResidential: 650,
+  laborPerKwCommercial: 550,
+  hybridBatteryInstallCost: 0,
+  planningCost: 0,
+  constructorEngineer: 0,
+  privateCheckResidential: 0,
+  privateCheckCommercial: 0,
+  electricianResidential: 0,
+  electricianCommercial: 0,
+  acCableOnGridResidential: 0,
+  acCableHybridResidential: 0,
+  acCableCommercial: 0,
+  antennaCost: 0,
+  communicationLine: 0,
+  electricalBoxResidential: 0,
+  electricalBoxCommercialPerKw: 0,
+  washingSystemBase: 0,
+  feesCost: 0,
+  profitResidentialFixed: 21000,
+  profitCommercialPerKw: 630,
+  vatRate: 18,
+  productionHours: 1700,
+  primeRate: 0,
+  loanMargin: 0,
+  productionMeterSurcharge: 0,
+  urbanPremiumAgorotPerKwh: 0,
+  urbanPremiumValidUntilYear: 0,
+  optimizerPrices: { se1to1: 0, se1to2: 0, tigo: 0, sungrow: 0 },
+  tariffBands: [{ upToKw: null, agorotPerKwh: 0 }],
+  panels: [{ id: 'p', powerWatts: 533, pricePerWattUsd: 0 }],
+  inverters: [{ id: 'i', name: 'Inverter', cost: 0 }],
+  invertersHybrid: [{ id: 'h', name: 'Hybrid', cost: 0 }],
+  batteries: [{ id: 'b', name: 'Battery', cost: 0 }],
+});
+
+const form = (quantity, systemType = 'residential') => ({
+  systemType,
+  roofType: 'concrete',
+  residentialTrack: 'green',
+  inverterSystemType: 'ongrid',
+  selectedPanels: [{ id: 'p', quantity }],
+  selectedInverters: [{ id: 'i', quantity: 1 }],
+  selectedHybridInverters: [{ id: 'h', quantity: 1 }],
+  selectedBatteries: [{ id: 'b', quantity: 1 }],
+  includesBatteries: false,
+  includesOptimizers: false,
+  includesWashing: false,
+  feesPayer: 'client',
+  tigoQuantity: 0,
+  sungrowQuantity: 0,
+});
+
+describe('canonical pricing engine', () => {
+  test.each([
+    [65, 34.645, 'residential'],
+    [66, 35.178, 'commercial'],
+    [100, 53.3, 'commercial'],
+  ])('panel-derived DC for %s panels is %s and canonical type is %s', (quantity, dc, type) => {
+    const result = calculateCanonicalPricing(form(quantity), settings(), { acKw: 15 });
+    expect(result.dcKw).toBeCloseTo(dc, 8);
+    expect(result.system.systemSizeKw).toBeCloseTo(dc, 8);
+    expect(result.system.systemType).toBe(type);
+  });
+
+  test('53.3 kWp uses current commercial labor and profit settings', () => {
+    const current = settings();
+    const before = calculateCanonicalPricing(form(100), current, { acKw: 50 });
+    expect(before.breakdown.labor).toBeCloseTo(29315, 8);
+    expect(before.breakdown.marginValue).toBeCloseTo(33579, 8);
+    current.laborPerKwCommercial = 700;
+    current.profitCommercialPerKw = 800;
+    const after = calculateCanonicalPricing(form(100), current, { acKw: 50 });
+    expect(after.breakdown.labor).toBeCloseTo(37310, 8);
+    expect(after.breakdown.marginValue).toBeCloseTo(42640, 8);
+  });
+
+  test('manual residential choice at commercial DC cannot restore residential pricing', () => {
+    const result = calculateCanonicalPricing(form(100, 'residential'), settings(), { acKw: 50 });
+    expect(result.system.systemType).toBe('commercial');
+    expect(result.breakdown.labor).toBeCloseTo(29315, 8);
+  });
+
+  test('product price zero is accepted; missing product cost is blocked', () => {
+    expect(calculateCanonicalPricing(form(65), settings(), { acKw: 15 }).breakdown.inverter).toBe(0);
+    const broken = settings();
+    delete broken.inverters[0].cost;
+    expect(() => calculateCanonicalPricing(form(65), broken, { acKw: 15 })).toThrow('cost');
+  });
+
+  test('production meter surcharge comes from settings and accepts zero', () => {
+    const productionMeterForm = { ...form(65), residentialTrack: 'production_meter' };
+    const current = settings();
+    current.productionMeterSurcharge = 1000;
+    expect(calculateCanonicalPricing(productionMeterForm, current, { acKw: 15 }).breakdown.productionMeter).toBe(1000);
+    current.productionMeterSurcharge = 0;
+    expect(calculateCanonicalPricing(productionMeterForm, current, { acKw: 15 }).breakdown.productionMeter).toBe(0);
+  });
+
+  test('canonical DC ignores stale form systemSizeKw', () => {
+    const stale = { ...form(100), systemSizeKw: 30 };
+    expect(deriveCanonicalDc(stale, settings())).toBe(53.3);
+    expect(calculateCanonicalPricing(stale, settings(), { acKw: 50 }).system.systemSizeKw).toBe(53.3);
+  });
+});

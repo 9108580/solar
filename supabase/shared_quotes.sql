@@ -27,8 +27,8 @@ alter table public.shared_quotes add column if not exists company_phone text;
 
 create index if not exists shared_quotes_expires_at_idx on public.shared_quotes (expires_at);
 
--- Backend invariant: persisted quotes at or above 35 kW DC are always commercial.
--- The UI applies the same rule before pricing; this trigger is the final write barrier.
+-- Backend invariant only: reject an impossible type instead of mutating a priced payload.
+-- Pricing remains application-owned; PostgreSQL deliberately does not duplicate its formulas.
 create or replace function public.enforce_shared_quote_commercial_system_type()
 returns trigger
 language plpgsql
@@ -36,6 +36,7 @@ set search_path = public
 as $$
 declare
   dc_kw numeric;
+  panels_dc_kw numeric;
 begin
   begin
     dc_kw := nullif(trim(new.payload ->> 'systemSizeKw'), '')::numeric;
@@ -43,8 +44,26 @@ begin
     dc_kw := null;
   end;
 
-  if dc_kw >= 35 then
-    new.payload := jsonb_set(new.payload, '{systemType}', '"commercial"'::jsonb, true);
+  if dc_kw is null or dc_kw <= 0 then
+    raise exception using message = 'shared quote has invalid systemSizeKw';
+  end if;
+
+  if jsonb_typeof(new.payload -> 'panelDetailsList') = 'array'
+     and jsonb_array_length(new.payload -> 'panelDetailsList') > 0 then
+    begin
+      select sum((panel ->> 'quantity')::numeric * (panel ->> 'powerWatts')::numeric) / 1000
+        into panels_dc_kw
+      from jsonb_array_elements(new.payload -> 'panelDetailsList') as panel;
+    exception when invalid_text_representation or numeric_value_out_of_range then
+      panels_dc_kw := null;
+    end;
+    if panels_dc_kw is null or abs(panels_dc_kw - dc_kw) > 0.001 then
+      raise exception using message = 'shared quote systemSizeKw conflicts with panelDetailsList';
+    end if;
+  end if;
+
+  if dc_kw >= 35 and lower(trim(coalesce(new.payload ->> 'systemType', ''))) <> 'commercial' then
+    raise exception using message = 'shared quote systemType conflicts with systemSizeKw';
   end if;
   return new;
 end;

@@ -7,7 +7,17 @@ import {
   enforceSystemTypeForDc,
   requiresCommercialSystem,
 } from './systemTypeRule';
-import { calculateSystemTypePricing } from './pricingRules';
+import { calculateCanonicalPricing, deriveCanonicalDc } from './pricingEngine';
+import {
+  assertPricingReady,
+  buildPricingSnapshot,
+  calculateTariffFromSettings,
+  getEffectiveTariffForCalendarYear,
+  requiredNumberSetting,
+  requiredProductNumber,
+  validatePricingSettings,
+  validateQuoteForSave,
+} from './pricingSettings';
 import {
   DEFAULT_URBAN_PREMIUM_CITIES,
   resolveUrbanPremiumFromCity,
@@ -137,20 +147,6 @@ function buildWhatsappMeLink(rawPhone, message) {
   if (!clean) return null;
   const text = typeof message === 'string' && message.length > 0 ? `?text=${encodeURIComponent(message)}` : '';
   return `https://wa.me/${clean}${text}`;
-}
-
-/** פרמיה אורבנית (חח"י) — תוספת לתעריף המשוקלל בתחשיב ההצעה */
-const URBAN_PREMIUM_AGOROT_PER_KWH = 6;
-const URBAN_PREMIUM_VALID_UNTIL_YEAR = 2042;
-
-/** תעריף לשנה קלנדרית — פרמיה אורבנית רק עד URBAN_PREMIUM_VALID_UNTIL_YEAR כולל */
-function getEffectiveTariffForCalendarYear(baseTariffShekels, hasUrbanPremium, calendarYear) {
-  const premiumActive =
-    hasUrbanPremium && calendarYear <= URBAN_PREMIUM_VALID_UNTIL_YEAR;
-  return (
-    baseTariffShekels +
-    (premiumActive ? URBAN_PREMIUM_AGOROT_PER_KWH / 100 : 0)
-  );
 }
 
 /** תא צר בשורת רכיבים — ממיר / אופטימייזר / שטיפה / פאנלים בצד */
@@ -737,7 +733,7 @@ function QuoteFinancialHighlights({ quote }) {
 }
 
 function getVatRatePercent(adminPrices) {
-  return Number(adminPrices?.vatRate) || 18;
+  return requiredNumberSetting(adminPrices, 'vatRate');
 }
 
 function isResidentialQuote(quote) {
@@ -746,13 +742,13 @@ function isResidentialQuote(quote) {
 
 /** סכום מומלץ ללקוח: ביתי כולל מע״מ, מסחרי לפני מע״מ */
 function getCalculatedClientOfferPrice(quote, adminPrices) {
-  const beforeVat = Number(quote?.breakdown?.finalPrice) || 0;
+  const beforeVat = requiredNumberSetting(quote?.breakdown, 'finalPrice');
   if (!isResidentialQuote(quote)) return Math.round(beforeVat);
-  const vat = getVatRatePercent(adminPrices);
+  const vat = getVatRatePercent(quote?.pricingSnapshot || adminPrices);
   return Math.round(beforeVat * (1 + vat / 100));
 }
 
-function getQuoteIncomeGetters(quote) {
+function getQuoteIncomeGetters(quote, settings) {
   const degradationRate = 0.0033;
   const baseTariff = quote.baseCalculatedTariff;
   const hasUrbanPremium = quote.hasUrbanPremium;
@@ -763,7 +759,8 @@ function getQuoteIncomeGetters(quote) {
     getEffectiveTariffForCalendarYear(
       baseTariff,
       hasUrbanPremium,
-      projectionStartYear + modelYear - 1
+      projectionStartYear + modelYear - 1,
+      settings
     );
   const getYearlyProductionKwh = (modelYear) =>
     year1Production * Math.pow(1 - degradationRate, modelYear - 1);
@@ -774,7 +771,8 @@ function getQuoteIncomeGetters(quote) {
 }
 
 function recomputeInvestmentMetrics(quote, initialInvestment, adminPrices) {
-  const { getYearlyEstimatedIncome } = getQuoteIncomeGetters(quote);
+  const financialSettings = quote.pricingSnapshot || adminPrices;
+  const { getYearlyEstimatedIncome } = getQuoteIncomeGetters(quote, financialSettings);
   const estimatedYearlySavingsYear1 = getYearlyEstimatedIncome(1);
 
   let roiYears = 0;
@@ -794,8 +792,12 @@ function recomputeInvestmentMetrics(quote, initialInvestment, adminPrices) {
     }
   }
 
-  const primeRate = quote.loanSettings?.primeRate ?? (Number(adminPrices.primeRate) || 6);
-  const loanMargin = quote.loanSettings?.loanMargin ?? (Number(adminPrices.loanMargin) || 4);
+  const primeRate = quote.loanSettings
+    ? requiredNumberSetting(quote.loanSettings, 'primeRate')
+    : requiredNumberSetting(financialSettings, 'primeRate');
+  const loanMargin = quote.loanSettings
+    ? requiredNumberSetting(quote.loanSettings, 'loanMargin')
+    : requiredNumberSetting(financialSettings, 'loanMargin');
   const annualInterestRate = (primeRate + loanMargin) / 100;
 
   let remainingDebt = initialInvestment;
@@ -856,6 +858,7 @@ function recomputeInvestmentMetrics(quote, initialInvestment, adminPrices) {
 /** מעדכן פרמיה אורבנית ומספרים כלכליים לפי יישוב הלקוח (גם בהצעה משותפת שמורה) */
 function applyUrbanPremiumToQuote(quote, cityList, adminPrices) {
   if (!quote || quote.baseCalculatedTariff == null) return quote;
+  const financialSettings = quote.pricingSnapshot || adminPrices;
 
   const urbanMatch = resolveUrbanPremiumFromCity(quote.clientCity, cityList);
   const hasUrbanPremium = urbanMatch.eligible;
@@ -864,7 +867,8 @@ function applyUrbanPremiumToQuote(quote, cityList, adminPrices) {
     getEffectiveTariffForCalendarYear(
       quote.baseCalculatedTariff,
       hasUrbanPremium,
-      projectionStartYear + modelYear - 1
+      projectionStartYear + modelYear - 1,
+      financialSettings
     );
   const calculatedTariff = getTariffForModelYear(1);
 
@@ -872,13 +876,17 @@ function applyUrbanPremiumToQuote(quote, cityList, adminPrices) {
     ...quote,
     hasUrbanPremium,
     urbanPremiumMatchedCity: urbanMatch.matchedCity,
-    urbanPremiumAgorotPerKwh: hasUrbanPremium ? URBAN_PREMIUM_AGOROT_PER_KWH : 0,
-    urbanPremiumValidUntilYear: hasUrbanPremium ? URBAN_PREMIUM_VALID_UNTIL_YEAR : null,
+    urbanPremiumAgorotPerKwh: hasUrbanPremium
+      ? requiredNumberSetting(financialSettings, 'urbanPremiumAgorotPerKwh')
+      : 0,
+    urbanPremiumValidUntilYear: hasUrbanPremium
+      ? requiredNumberSetting(financialSettings, 'urbanPremiumValidUntilYear')
+      : null,
     calculatedTariff,
   };
 
-  const finalPrice = Number(withPremium.breakdown?.finalPrice) || 0;
-  const vat = getVatRatePercent(adminPrices);
+  const finalPrice = requiredNumberSetting(withPremium.breakdown, 'finalPrice');
+  const vat = getVatRatePercent(financialSettings);
   const initialInvestment = isResidentialQuote(withPremium)
     ? withPremium.clientOfferPrice != null
       ? Number(withPremium.clientOfferPrice)
@@ -892,7 +900,7 @@ function applyUrbanPremiumToQuote(quote, cityList, adminPrices) {
 
 function QuotePricingSummary({ quote, adminPrices, companyPaysFees }) {
   if (!quote?.breakdown) return null;
-  const vatRate = getVatRatePercent(adminPrices);
+  const vatRate = getVatRatePercent(quote.pricingSnapshot || adminPrices);
   const isResidential = isResidentialQuote(quote);
   const finalPrice = quote.breakdown.finalPrice;
   const totalWithVat = finalPrice * (1 + vatRate / 100);
@@ -985,10 +993,10 @@ function QuotePriceConfirmPanel({
   showInternalCosts = false,
 }) {
   if (!quoteDraft?.breakdown) return null;
-  const vatRate = getVatRatePercent(adminPrices);
+  const vatRate = getVatRatePercent(quoteDraft.pricingSnapshot || adminPrices);
   const isResidential = isResidentialQuote(quoteDraft);
   const b = quoteDraft.breakdown;
-  const beforeVat = Number(b.finalPrice) || 0;
+  const beforeVat = requiredNumberSetting(b, 'finalPrice');
   const vatAmount = beforeVat * (vatRate / 100);
   const recommended = getCalculatedClientOfferPrice(quoteDraft, adminPrices);
   const priceLabel = isResidential ? 'כולל מע״מ' : 'לפני מע״מ';
@@ -1425,7 +1433,8 @@ function aggregateInverterLogosForQuote(inverterDetailsList) {
 }
 
 function suggestedPanelQuantityForDc(systemSizeKw, powerWatts) {
-  const watts = Number(powerWatts) > 0 ? Number(powerWatts) : 640;
+  const watts = Number(powerWatts);
+  if (!Number.isFinite(watts) || watts <= 0) return 1;
   const kw = parseFloat(systemSizeKw) || 0;
   return Math.max(1, Math.round((kw * 1000) / watts));
 }
@@ -1457,9 +1466,6 @@ function formatResidentialTrackLabel(track) {
   if (track === 'production_meter') return 'עם מונה ייצור';
   return 'מסלול ירוק';
 }
-
-/** תוספת קבועה לביתית עם מונה ייצור (לפני מע״מ) — ללקוח ביתי מתווסף גם מע״מ */
-const PRODUCTION_METER_SURCHARGE_ILS = 1000;
 
 /** הספק DC (kWp) מדויק לפי כמות × הספק פאנל */
 function dcKwFromSelectedPanels(selectedPanels, panelsCatalog) {
@@ -1518,21 +1524,6 @@ function QuoteQuantityStepper({ value, onChange, min = 1, label = 'כמות' }) 
       </button>
     </div>
   );
-}
-
-/** בחירת פאנלים התחלתית + DC מדויק (כמות × וואט), לא יעד מעוגל */
-function buildInitialPanelsAndDc(panelsCatalog, targetDcKw = 22.5) {
-  const panel = (panelsCatalog || [])[0];
-  const id = panel?.id || 'pnl-std';
-  const quantity = suggestedPanelQuantityForDc(targetDcKw, panel?.powerWatts);
-  const selectedPanels = [{ id, quantity }];
-  const dc = dcKwFromSelectedPanels(selectedPanels, panelsCatalog);
-  const sizeKw = dc != null ? dc : targetDcKw;
-  return {
-    selectedPanels,
-    systemSizeKw: formatDcKwForInput(sizeKw),
-    systemSizeAcKw: autoAcFromDcKw(sizeKw).toFixed(2),
-  };
 }
 
 const DATASHEET_MAX_BYTES = 8 * 1024 * 1024;
@@ -1931,158 +1922,66 @@ function migrateLegacyStorageKey(nextKey, legacyKey) {
   }
 }
 
-const DEFAULT_ADMIN_PRICES = {
-  /** @deprecated — נשמר לתאימות לאחור; המקור הוא panels[] */
-  panelPricePerWattUsd: 0.11,
-  /** @deprecated — נשמר לתאימות לאחור; המקור הוא panels[] */
-  panelPowerWatts: 640,
-  /** @deprecated — נשמר לתאימות לאחור; המקור הוא panels[] */
-  panelDatasheet: null,
-  /** @deprecated — נשמר לתאימות לאחור; המקור הוא panels[] */
-  panelLogo: null,
-  usdExchangeRate: 3.75,
-  constructionConcretePerKw: 350,
-  constructionOtherPerKw: 200,
-  constructionLogo: null,
-  constructionDatasheet: null,
-
-  /** מחירון פאנלים — כמו ממירים: דגם, הספק, מחיר, לוגו, דאטהשיט */
-  panels: [
-    {
-      id: 'pnl-std',
-      name: 'פאנל סטנדרטי',
-      powerWatts: 640,
-      pricePerWattUsd: 0.11,
-      logo: null,
-      datasheet: null,
-    },
-  ],
-
-  inverters: [
-    { id: 'inv-solis15', name: 'SOLIS 15kW', cost: 4500, capacityKw: 15, isSolarEdge: false, inverterLogoKey: 'solis', customLogo: null, datasheet: null },
-    { id: 'inv-solis50', name: 'SOLIS 50kW', cost: 9000, capacityKw: 50, isSolarEdge: false, inverterLogoKey: 'solis', customLogo: null, datasheet: null },
-    { id: 'inv-se100', name: 'סולאראדג\' 100kW', cost: 15000, capacityKw: 100, isSolarEdge: true, inverterLogoKey: 'auto', customLogo: null, datasheet: null },
-    { id: 'inv-se12', name: 'סולאראדג\' 12kW', cost: 4500, capacityKw: 12, isSolarEdge: true, inverterLogoKey: 'auto', customLogo: null, datasheet: null },
-    { id: 'inv-sma110', name: 'SMA 110kW', cost: 14000, capacityKw: 110, isSolarEdge: false, inverterLogoKey: 'none', customLogo: null, datasheet: null }
-  ],
-
-  invertersHybrid: [
-    { id: 'hinv-solis15', name: 'SOLIS Hybrid 15kW', cost: 7000, capacityKw: 15, isSolarEdge: false, inverterLogoKey: 'solis', customLogo: null, datasheet: null },
-    { id: 'hinv-se10', name: 'סולאראדג\' Home Hub 10kW', cost: 8500, capacityKw: 10, isSolarEdge: true, inverterLogoKey: 'auto', customLogo: null, datasheet: null },
-    { id: 'hinv-deye12', name: 'Deye 12kW', cost: 7000, capacityKw: 12, isSolarEdge: false, inverterLogoKey: 'none', customLogo: null, datasheet: null }
-  ],
-
-  batteries: [
-    { id: 'bat-se10', name: 'סוללה SolarEdge 10kWh', cost: 18000, logo: null, datasheet: null },
-    { id: 'bat-byd5', name: 'סוללה BYD 5kWh', cost: 9500, logo: null, datasheet: null }
-  ],
-
-  optimizerPrices: { se1to1: 250, se1to2: 350, tigo: 200, sungrow: 220 },
-  optimizerDatasheets: { se1to1: null, se1to2: null, tigo: null, sungrow: null },
-  optimizerLogos: { se1to1: null, se1to2: null, tigo: null, sungrow: null },
-  logisticsCost: 3100,
-  laborPerKwResidential: 650,
-  laborPerKwCommercial: 550,
-  constructorEngineer: 500,
-  hybridBatteryInstallCost: 5700,
-  electricalBoxCommercialPerKw: 270, electricalBoxResidential: 870,
-  washingSystemBase: 4500, feesCost: 3000, planningCost: 1400, profitResidentialFixed: 21000, profitCommercialPerKw: 630, vatRate: 18,
-  productionHours: 1700,
-  privateCheckResidential: 550, privateCheckCommercial: 800, electricianResidential: 750, electricianCommercial: 2000,
-  acCableOnGridResidential: 300, acCableHybridResidential: 600, acCableCommercial: 3000, antennaCost: 180, communicationLine: 100,
-
-  primeRate: 6.0,
-  loanMargin: 4.0,
-
-  companyPhone: '04-611-61-33',
-  agents: [
-    { id: 'ag-1', name: 'ישראל ישראלי', phone: '050-1234567', tz: '123456789', photo: null }
-  ]
+const EMPTY_ADMIN_SETTINGS = {
+  panels: [],
+  inverters: [],
+  invertersHybrid: [],
+  batteries: [],
+  optimizerPrices: {},
+  optimizerDatasheets: {},
+  optimizerLogos: {},
+  agents: [],
+  companyPhone: '',
 };
-
 /** ממיר הגדרות פאנל ישנות (שדות גלובליים) לרשימת מוצרים כמו ממירים */
-function migratePanelsCatalog(saved, defaults) {
+function migratePanelsCatalog(saved) {
   if (Array.isArray(saved?.panels) && saved.panels.length > 0) {
     return saved.panels.map((p, idx) => ({
       id: p?.id || `pnl-${idx}`,
       name: typeof p?.name === 'string' && p.name.trim() ? p.name : `פאנל ${idx + 1}`,
-      powerWatts: Number(p?.powerWatts) > 0 ? Number(p.powerWatts) : Number(defaults.panelPowerWatts) || 640,
-      pricePerWattUsd:
-        Number(p?.pricePerWattUsd) > 0
-          ? Number(p.pricePerWattUsd)
-          : Number(defaults.panelPricePerWattUsd) || 0.11,
+      powerWatts: p?.powerWatts,
+      pricePerWattUsd: p?.pricePerWattUsd,
       logo: p?.logo != null ? p.logo : null,
       datasheet: p?.datasheet != null ? p.datasheet : null,
     }));
   }
-  return [
+  if (saved?.panelPowerWatts !== undefined || saved?.panelPricePerWattUsd !== undefined) return [
     {
       id: 'pnl-migrated',
       name: 'פאנל סטנדרטי',
-      powerWatts: Number(saved?.panelPowerWatts) > 0 ? Number(saved.panelPowerWatts) : Number(defaults.panelPowerWatts) || 640,
-      pricePerWattUsd:
-        Number(saved?.panelPricePerWattUsd) > 0
-          ? Number(saved.panelPricePerWattUsd)
-          : Number(defaults.panelPricePerWattUsd) || 0.11,
+      powerWatts: saved?.panelPowerWatts,
+      pricePerWattUsd: saved?.panelPricePerWattUsd,
       logo: saved?.panelLogo != null ? saved.panelLogo : null,
       datasheet: saved?.panelDatasheet != null ? saved.panelDatasheet : null,
     },
   ];
+  return [];
 }
 
-function mergeAdminSettingsFromStorage(saved, defaults) {
-  if (!saved || typeof saved !== 'object') return defaults;
-  const panels = migratePanelsCatalog(saved, defaults);
-  const primaryPanel = panels[0] || defaults.panels[0];
+function normalizeAdminSettings(saved) {
+  if (!saved || typeof saved !== 'object') return { ...EMPTY_ADMIN_SETTINGS };
+  const panels = migratePanelsCatalog(saved);
+  const primaryPanel = panels[0];
   return {
-    ...defaults,
+    ...EMPTY_ADMIN_SETTINGS,
     ...saved,
-    optimizerPrices: {
-      ...defaults.optimizerPrices,
-      ...(saved.optimizerPrices && typeof saved.optimizerPrices === 'object' ? saved.optimizerPrices : {})
-    },
-    optimizerDatasheets: {
-      ...defaults.optimizerDatasheets,
-      ...(saved.optimizerDatasheets && typeof saved.optimizerDatasheets === 'object' ? saved.optimizerDatasheets : {})
-    },
-    optimizerLogos: {
-      ...defaults.optimizerLogos,
-      ...(saved.optimizerLogos && typeof saved.optimizerLogos === 'object' ? saved.optimizerLogos : {})
-    },
+    optimizerPrices: saved.optimizerPrices && typeof saved.optimizerPrices === 'object' ? saved.optimizerPrices : {},
+    optimizerDatasheets: saved.optimizerDatasheets && typeof saved.optimizerDatasheets === 'object' ? saved.optimizerDatasheets : {},
+    optimizerLogos: saved.optimizerLogos && typeof saved.optimizerLogos === 'object' ? saved.optimizerLogos : {},
     panels,
-    // שדות ישנים — מסונכרנים מהפאנל הראשון לתאימות לקוד/הצעות ישנות
-    panelPowerWatts: primaryPanel?.powerWatts ?? defaults.panelPowerWatts,
-    panelPricePerWattUsd: primaryPanel?.pricePerWattUsd ?? defaults.panelPricePerWattUsd,
-    panelDatasheet: primaryPanel?.datasheet ?? defaults.panelDatasheet,
-    panelLogo: primaryPanel?.logo ?? defaults.panelLogo,
-    constructionLogo: saved.constructionLogo != null ? saved.constructionLogo : defaults.constructionLogo,
-    constructionDatasheet:
-      saved.constructionDatasheet != null ? saved.constructionDatasheet : defaults.constructionDatasheet,
-    inverters: Array.isArray(saved.inverters) ? saved.inverters : defaults.inverters,
-    invertersHybrid: Array.isArray(saved.invertersHybrid) ? saved.invertersHybrid : defaults.invertersHybrid,
-    batteries: Array.isArray(saved.batteries) ? saved.batteries : defaults.batteries,
-    agents: Array.isArray(saved.agents) ? saved.agents : defaults.agents,
+    panelPowerWatts: primaryPanel?.powerWatts,
+    panelPricePerWattUsd: primaryPanel?.pricePerWattUsd,
+    panelDatasheet: primaryPanel?.datasheet ?? null,
+    panelLogo: primaryPanel?.logo ?? null,
+    inverters: Array.isArray(saved.inverters) ? saved.inverters : [],
+    invertersHybrid: Array.isArray(saved.invertersHybrid) ? saved.invertersHybrid : [],
+    batteries: Array.isArray(saved.batteries) ? saved.batteries : [],
+    agents: Array.isArray(saved.agents) ? saved.agents : [],
     laborPerKwResidential:
       saved.laborPerKwResidential != null
         ? saved.laborPerKwResidential
-        : saved.laborPerKw != null
-          ? saved.laborPerKw
-          : defaults.laborPerKwResidential,
-    laborPerKwCommercial:
-      saved.laborPerKwCommercial != null ? saved.laborPerKwCommercial : defaults.laborPerKwCommercial
+        : saved.laborPerKw,
   };
-}
-
-function loadAdminSettingsFromStorage() {
-  if (typeof window === 'undefined') return DEFAULT_ADMIN_PRICES;
-  migrateLegacyStorageKey(ADMIN_SETTINGS_STORAGE_KEY, LEGACY_STORAGE.admin);
-  try {
-    const raw = window.localStorage.getItem(ADMIN_SETTINGS_STORAGE_KEY);
-    if (!raw) return DEFAULT_ADMIN_PRICES;
-    return mergeAdminSettingsFromStorage(JSON.parse(raw), DEFAULT_ADMIN_PRICES);
-  } catch {
-    return DEFAULT_ADMIN_PRICES;
-  }
 }
 
 function normalizeInvName(s) {
@@ -2188,7 +2087,8 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('sales'); 
   const [openAdminSection, setOpenAdminSection] = useState('panels'); 
   
-  const [adminPrices, setAdminPrices] = useState(loadAdminSettingsFromStorage);
+  const [adminPrices, setAdminPrices] = useState(() => ({ ...EMPTY_ADMIN_SETTINGS }));
+  const [pricingSettingsState, setPricingSettingsState] = useState({ phase: 'loading', message: '' });
   const [urbanPremiumCities, setUrbanPremiumCities] = useState(DEFAULT_URBAN_PREMIUM_CITIES);
 
   const supabase = useMemo(() => getSupabase(), []);
@@ -2213,6 +2113,7 @@ export default function App() {
     setAdminCloudSaveFeedback(null);
     setAdminCloudSaving(true);
     try {
+      validatePricingSettings(adminPrices);
       const payloadForCloud = await prepareAdminPricesForCloud(supabase, adminPrices);
       const { error } = await supabase
         .from('admin_settings')
@@ -2223,6 +2124,7 @@ export default function App() {
       if (error) throw error;
       skipNextSupabasePersist.current = true;
       setAdminPrices(payloadForCloud);
+      setPricingSettingsState({ phase: 'ready', message: '' });
       try {
         window.localStorage.setItem(ADMIN_SETTINGS_STORAGE_KEY, JSON.stringify(payloadForCloud));
       } catch (_) { /* ignore */ }
@@ -2240,45 +2142,46 @@ export default function App() {
     }
   }, [supabase, adminPrices]);
 
-  /** טעינה מ-Supabase פעם אחת; אם אין שורה — זריעה מ-localStorage/ברירת מחדל */
+  /** Pricing is usable only after a complete payload has been confirmed by Supabase. */
   useEffect(() => {
     if (!supabase) {
-      supabaseHydrated.current = true;
+      setPricingSettingsState({ phase: 'error', message: 'לא ניתן לחשב הצעה כעת – נתוני התמחור לא נטענו. יש לנסות שוב או לפנות למנהל.' });
       return undefined;
     }
     let cancelled = false;
     (async () => {
+      try {
       const { data, error } = await supabase.from('admin_settings').select('payload').eq('id', 1).maybeSingle();
       if (cancelled) return;
       if (error) {
         console.warn('Supabase admin_settings load:', error.message);
-        supabaseHydrated.current = true;
+        setPricingSettingsState({ phase: 'error', message: 'לא ניתן לחשב הצעה כעת – נתוני התמחור לא נטענו. יש לנסות שוב או לפנות למנהל.' });
         return;
       }
       if (data?.payload && typeof data.payload === 'object') {
-        const merged = mergeAdminSettingsFromStorage(data.payload, DEFAULT_ADMIN_PRICES);
+        const merged = normalizeAdminSettings(data.payload);
         skipNextSupabasePersist.current = true;
         setAdminPrices(merged);
         try {
           window.localStorage.setItem(ADMIN_SETTINGS_STORAGE_KEY, JSON.stringify(merged));
         } catch (_) { /* ignore */ }
-      } else {
-        const seed = loadAdminSettingsFromStorage();
-        skipNextSupabasePersist.current = true;
-        setAdminPrices(seed);
-        let seedPayload = seed;
         try {
-          seedPayload = await prepareAdminPricesForCloud(supabase, seed);
-        } catch (prepErr) {
-          console.warn('admin_settings seed prepare:', prepErr?.message || prepErr);
+          validatePricingSettings(merged);
+          supabaseHydrated.current = true;
+          setPricingSettingsState({ phase: 'ready', message: '' });
+        } catch (validationError) {
+          supabaseHydrated.current = true;
+          setPricingSettingsState({ phase: 'error', message: 'לא ניתן לחשב הצעה כעת – נתוני התמחור אינם תקינים. יש לפנות למנהל.' });
+          console.warn('Invalid admin pricing settings:', validationError.message);
         }
-        const { error: upErr } = await supabase.from('admin_settings').upsert(
-          { id: 1, payload: seedPayload, updated_at: new Date().toISOString() },
-          { onConflict: 'id' }
-        );
-        if (upErr) console.warn('Supabase admin_settings seed:', upErr.message);
+      } else {
+        setPricingSettingsState({ phase: 'error', message: 'לא ניתן לחשב הצעה כעת – נתוני התמחור לא הוגדרו. יש לפנות למנהל.' });
       }
-      supabaseHydrated.current = true;
+      } catch (loadError) {
+        if (cancelled) return;
+        console.warn('Supabase admin_settings load:', loadError?.message || loadError);
+        setPricingSettingsState({ phase: 'error', message: 'לא ניתן לחשב הצעה כעת – נתוני התמחור לא נטענו. יש לנסות שוב או לפנות למנהל.' });
+      }
     })();
     return () => { cancelled = true; };
   }, [supabase]);
@@ -2294,6 +2197,7 @@ export default function App() {
     cloudPersistTimerRef.current = setTimeout(() => {
       (async () => {
         try {
+          validatePricingSettings(adminPrices);
           const payloadForCloud = await prepareAdminPricesForCloud(supabase, adminPrices);
           const { error } = await supabase
             .from('admin_settings')
@@ -2305,6 +2209,7 @@ export default function App() {
           else {
             skipNextSupabasePersist.current = true;
             setAdminPrices(payloadForCloud);
+            setPricingSettingsState({ phase: 'ready', message: '' });
             try {
               window.localStorage.setItem(ADMIN_SETTINGS_STORAGE_KEY, JSON.stringify(payloadForCloud));
             } catch (_) { /* ignore */ }
@@ -2340,41 +2245,24 @@ export default function App() {
   }, [supabase]);
 
   const [quoteForm, setQuoteForm] = useState(() => {
-    const panelsInit = buildInitialPanelsAndDc(DEFAULT_ADMIN_PRICES.panels, 22.5);
     return {
     systemType: 'residential',
     /** ביתית בלבד: green = מסלול ירוק (AC≤15), production_meter = עם מונה ייצור */
     residentialTrack: 'green',
     clientName: '',
     clientCity: '', 
-    systemSizeKw: panelsInit.systemSizeKw,
-    systemSizeAcKw: Math.min(parseFloat(panelsInit.systemSizeAcKw) || 15, 15).toFixed(2),
+    systemSizeKw: '',
+    systemSizeAcKw: '',
     /** הגבלת הספק ממיר (כיוול) — אם מסומן, AC והאופטימייזרים לפי הערך */
     limitInverter: false,
     inverterLimitAcKw: '15',
     roofType: 'concrete', 
     inverterSystemType: 'ongrid',
-    selectedPanels: panelsInit.selectedPanels,
-    selectedInverters: [
-      {
-        id:
-          findDefaultInverterId(DEFAULT_ADMIN_PRICES.inverters, 'residential') ||
-          DEFAULT_ADMIN_PRICES.inverters[0]?.id ||
-          '',
-        quantity: 1,
-      },
-    ],
-    selectedHybridInverters: [
-      {
-        id:
-          findDefaultInverterId(DEFAULT_ADMIN_PRICES.invertersHybrid, 'residential') ||
-          DEFAULT_ADMIN_PRICES.invertersHybrid[0]?.id ||
-          '',
-        quantity: 1,
-      },
-    ],
+    selectedPanels: [],
+    selectedInverters: [],
+    selectedHybridInverters: [],
     includesBatteries: false,
-    selectedBatteries: [{ id: 'bat-se10', quantity: 1 }],
+    selectedBatteries: [],
     includesOptimizers: false,
     tigoQuantity: 0,
     sungrowQuantity: 0,
@@ -2548,7 +2436,11 @@ export default function App() {
         const cities =
           urbanPremiumCities.length > 0 ? urbanPremiumCities : DEFAULT_URBAN_PREMIUM_CITIES;
         const normalizedPayload = enforceSystemTypeForDc(row.payload, row.payload.systemSizeKw);
-        setGeneratedQuote(applyUrbanPremiumToQuote(normalizedPayload, cities, adminPrices));
+        setGeneratedQuote(
+          normalizedPayload.pricingSnapshot
+            ? applyUrbanPremiumToQuote(normalizedPayload, cities, normalizedPayload.pricingSnapshot)
+            : normalizedPayload
+        );
         setCurrentUser({ role: 'viewer', data: null });
         setActiveTab('quote');
         setShareQuoteLoad({ phase: 'ready', message: '', waHref: null });
@@ -2581,16 +2473,17 @@ export default function App() {
 
   /** הצעה משותפת — עדכון פרמיה אורבנית אחרי טעינת רשימת יישובים מהענן */
   useEffect(() => {
-    if (!shareQuoteId || !generatedQuote?.baseCalculatedTariff) return undefined;
+    if (!shareQuoteId || !generatedQuote?.baseCalculatedTariff || !generatedQuote?.pricingSnapshot) return undefined;
     const cities =
       urbanPremiumCities.length > 0 ? urbanPremiumCities : DEFAULT_URBAN_PREMIUM_CITIES;
     setGeneratedQuote((prev) =>
-      prev ? applyUrbanPremiumToQuote(prev, cities, adminPrices) : prev
+      prev ? applyUrbanPremiumToQuote(prev, cities, prev.pricingSnapshot) : prev
     );
     return undefined;
   }, [
     shareQuoteId,
     generatedQuote?.baseCalculatedTariff,
+    generatedQuote?.pricingSnapshot,
     urbanPremiumCities,
     adminPrices,
   ]);
@@ -2626,6 +2519,22 @@ export default function App() {
     const agentName = String(generatedQuote?.agentDetails?.name || '').trim();
     const companyPhone = String(adminPrices.companyPhone || '').trim();
     const payload = enforceSystemTypeForDc(generatedQuote, generatedQuote.systemSizeKw);
+
+    try {
+      assertPricingReady(pricingSettingsState.phase, adminPrices);
+      const canonical = calculateCanonicalPricing(payload, adminPrices, {
+        acKw: payload.systemSizeAcKw,
+        hasSolarEdge: Boolean(payload.hasSolarEdgeQuote),
+        hasSungrow: (payload.inverterDetailsList || []).some((item) => item.logoSlug === 'sungrow'),
+      });
+      validateQuoteForSave(payload, adminPrices, canonical.breakdown);
+    } catch (error) {
+      console.warn('Shared quote save blocked:', error?.message || error);
+      setShareLinkFeedback({ type: 'error', text: 'לא ניתן לשמור את ההצעה – נתוני התמחור אינם עקביים. יש לחשב את ההצעה מחדש.' });
+      setShareLinkBusy(false);
+      scheduleShareLinkFeedbackClear(12000);
+      return;
+    }
 
     const urlPromise = (async () => {
       const { error } = await supabase.from('shared_quotes').insert({
@@ -2688,7 +2597,7 @@ export default function App() {
     } finally {
       setShareLinkBusy(false);
     }
-  }, [supabase, generatedQuote, adminPrices, scheduleShareLinkFeedbackClear]);
+  }, [supabase, generatedQuote, adminPrices, pricingSettingsState.phase, scheduleShareLinkFeedbackClear]);
 
   const handleRetryCopyShareLink = useCallback(async () => {
     const url = shareLinkFeedback?.url;
@@ -2824,7 +2733,9 @@ export default function App() {
     (adminPrices.panels || []).find((p) => p.id === quoteForm.selectedPanels?.[0]?.id) ||
     (adminPrices.panels || [])[0] ||
     null;
-  const panelPowerConst = Number(primarySelectedPanel?.powerWatts) || Number(adminPrices.panelPowerWatts) || 640;
+  const panelPowerConst = Number.isFinite(Number(primarySelectedPanel?.powerWatts))
+    ? Number(primarySelectedPanel.powerWatts)
+    : 0;
   const currentCalculatedPanels =
     (quoteForm.selectedPanels || []).reduce((sum, row) => sum + (Number(row.quantity) || 0), 0) ||
     Math.round(((parseFloat(quoteForm.systemSizeKw) || 0) * 1000) / panelPowerConst) ||
@@ -2835,7 +2746,9 @@ export default function App() {
   const pNorthInput = Number(quoteForm.panelsNorth) || 0;
   const currentDistributedPanels = pSouthInput + pEWInput + pNorthInput;
 
-  const baseProductionHours = Number(adminPrices.productionHours) > 0 ? Number(adminPrices.productionHours) : 1700;
+  const baseProductionHours = pricingSettingsState.phase === 'ready'
+    ? requiredNumberSetting(adminPrices, 'productionHours')
+    : 0;
   const liveSouthH = baseProductionHours;
   const liveEWH = baseProductionHours * 0.85;
   const liveNorthH = baseProductionHours * 0.65;
@@ -2854,13 +2767,38 @@ export default function App() {
     if (name === 'companyPhone') {
       setAdminPrices(prev => ({ ...prev, [name]: value }));
     } else {
-      setAdminPrices(prev => ({ ...prev, [name]: parseFloat(value) || 0 }));
+      setAdminPrices(prev => ({ ...prev, [name]: value === '' ? '' : Number(value) }));
     }
   };
 
   const handleOptimizerPriceChange = (e) => {
     const { name, value } = e.target;
-    setAdminPrices(prev => ({ ...prev, optimizerPrices: { ...prev.optimizerPrices, [name]: parseFloat(value) || 0 } }));
+    setAdminPrices(prev => ({ ...prev, optimizerPrices: { ...prev.optimizerPrices, [name]: value === '' ? '' : Number(value) } }));
+  };
+
+  const handleTariffBandChange = (index, field, value) => {
+    setAdminPrices((prev) => ({
+      ...prev,
+      tariffBands: (prev.tariffBands || []).map((band, bandIndex) =>
+        bandIndex === index
+          ? { ...band, [field]: field === 'upToKw' && value === '' ? null : value === '' ? '' : Number(value) }
+          : band
+      ),
+    }));
+  };
+
+  const addTariffBand = () => {
+    setAdminPrices((prev) => ({
+      ...prev,
+      tariffBands: [...(prev.tariffBands || []), { upToKw: null, agorotPerKwh: '' }],
+    }));
+  };
+
+  const removeTariffBand = (index) => {
+    setAdminPrices((prev) => ({
+      ...prev,
+      tariffBands: (prev.tariffBands || []).filter((_, bandIndex) => bandIndex !== index),
+    }));
   };
 
   const updateAdminListItem = (listName, id, field, value) => {
@@ -3193,38 +3131,26 @@ export default function App() {
     return { hasSungrow };
   };
 
-  const calculateTariff = (acSize) => {
-    const numSize = parseFloat(acSize);
-    if (isNaN(numSize) || numSize <= 0) return 0;
-    
-    let totalCents = 0;
-    let remaining = numSize;
-
-    if (remaining > 300) {
-      totalCents += (remaining - 300) * 28.44;
-      remaining = 300;
-    }
-    if (remaining > 100) {
-      totalCents += (remaining - 100) * 34.37;
-      remaining = 100;
-    }
-    if (remaining > 15) {
-      totalCents += (remaining - 15) * 37.31;
-      remaining = 15;
-    }
-    if (remaining > 0) {
-      totalCents += remaining * 48.00;
-    }
-    return (totalCents / numSize) / 100;
-  };
-
   const calculateQuote = (e) => {
     e.preventDefault();
+    if (pricingSettingsState.phase !== 'ready') {
+      setErrorMsg(pricingSettingsState.message || 'לא ניתן לחשב הצעה כעת – נתוני התמחור לא נטענו. יש לנסות שוב או לפנות למנהל.');
+      return;
+    }
+    try {
+      assertPricingReady(pricingSettingsState.phase, adminPrices);
+      calculateQuoteWithSettings();
+    } catch (error) {
+      console.warn('Quote calculation blocked:', error?.message || error);
+      setErrorMsg('לא ניתן לחשב הצעה כעת – נתוני התמחור אינם תקינים. יש לפנות למנהל.');
+    }
+  };
+
+  const calculateQuoteWithSettings = () => {
 
     // DC מדויק לפי כמות הפאנלים שנבחרו (אם יש) — המחיר נגזר מכך
-    const panelsDerivedKw = dcKwFromSelectedPanels(quoteForm.selectedPanels, adminPrices.panels);
-    const sizeKw =
-      panelsDerivedKw != null ? panelsDerivedKw : parseFloat(quoteForm.systemSizeKw) || 0;
+    const panelsDerivedKw = deriveCanonicalDc(quoteForm, adminPrices);
+    const sizeKw = panelsDerivedKw;
     const effectiveQuoteForm = enforceRequiredSystemType(quoteForm, sizeKw);
     if (effectiveQuoteForm !== quoteForm) setQuoteForm(effectiveQuoteForm);
     if (effectiveQuoteForm.limitInverter && !isResidentialGreenTrack(effectiveQuoteForm)) {
@@ -3236,194 +3162,60 @@ export default function App() {
     }
     // AC: כיוול לממיר אם מסומן, אחרת שדה AC / אוטו׳ לפי DC
     const acKw = resolveQuoteAcKw(effectiveQuoteForm, panelsDerivedKw);
-    const systemSizeWatts = sizeKw * 1000;
-    const usdRate = Number(adminPrices.usdExchangeRate) || 3.75;
-
-    let panelsCost = 0;
-    let numPanels = 0;
-    const panelDetailsList = [];
-    (effectiveQuoteForm.selectedPanels || []).forEach((sel) => {
-      const panelData = (adminPrices.panels || []).find((p) => p.id === sel.id);
-      const qty = Number(sel.quantity) || 0;
-      if (panelData && qty > 0) {
-        const powerWatts = Number(panelData.powerWatts) > 0 ? Number(panelData.powerWatts) : 640;
-        const pricePerWattUsd =
-          Number(panelData.pricePerWattUsd) > 0 ? Number(panelData.pricePerWattUsd) : 0.11;
-        panelsCost += qty * powerWatts * pricePerWattUsd * usdRate;
-        numPanels += qty;
-        panelDetailsList.push({
-          id: panelData.id,
-          name: panelData.name,
-          quantity: qty,
-          powerWatts,
-          pricePerWattUsd,
-          logo: normalizeDatasheet(panelData.logo),
-          datasheet: normalizeDatasheet(panelData.datasheet),
-        });
-      }
+    const pricing = calculateCanonicalPricing(effectiveQuoteForm, adminPrices, {
+      acKw,
+      hasSolarEdge: getSolarEdgeStatus(effectiveQuoteForm).hasSolarEdge,
+      hasSungrow: getSungrowStatus(effectiveQuoteForm).hasSungrow,
     });
-
-    // נפילה לאחור אם לא נבחרו פאנלים — לפי גודל DC והגדרה גלובלית ישנה
-    if (numPanels <= 0) {
-      const fallbackPower = Number(adminPrices.panelPowerWatts) || 640;
-      const fallbackPrice = Number(adminPrices.panelPricePerWattUsd) || 0.11;
-      numPanels = Math.round(systemSizeWatts / fallbackPower) || 0;
-      panelsCost = systemSizeWatts * fallbackPrice * usdRate;
-    }
-
-    const primaryPanelPower =
-      panelDetailsList[0]?.powerWatts || Number(adminPrices.panelPowerWatts) || 640;
-    const primaryPanelLogo =
-      panelDetailsList[0]?.logo || normalizeDatasheet(adminPrices.panelLogo);
-    const primaryPanelDatasheet =
-      panelDetailsList[0]?.datasheet || normalizeDatasheet(adminPrices.panelDatasheet);
+    const numPanels = pricing.numPanels;
+    const panelDetailsList = pricing.panels.map(({ product, quantity }) => ({
+      id: product.id,
+      name: product.name,
+      quantity,
+      powerWatts: requiredProductNumber(product, 'powerWatts', 'panel'),
+      pricePerWattUsd: requiredProductNumber(product, 'pricePerWattUsd', 'panel'),
+      logo: normalizeDatasheet(product.logo),
+      datasheet: normalizeDatasheet(product.datasheet),
+    }));
+    const primaryPanelPower = panelDetailsList[0].powerWatts;
+    const primaryPanelLogo = panelDetailsList[0].logo;
+    const primaryPanelDatasheet = panelDetailsList[0].datasheet;
+    const isHybridSystem = effectiveQuoteForm.inverterSystemType === 'hybrid';
+    const inverterDetailsList = pricing.inverters.map(({ product, quantity }) => ({
+      id: product.id,
+      name: product.name,
+      quantity,
+      isHybrid: isHybridSystem,
+      isSolarEdge: inverterIsSolarEdge(product),
+      logoSlug: resolveInverterLogoSlug(product),
+      customLogo: normalizeDatasheet(product.customLogo),
+      datasheet: normalizeDatasheet(product.datasheet),
+    }));
+    const batteryDetailsList = pricing.batteries.map(({ product, quantity }) => ({
+      id: product.id,
+      name: product.name,
+      quantity,
+      unitKwh: parseBatteryKwhFromName(product.name),
+      logo: normalizeDatasheet(product.logo),
+      datasheet: normalizeDatasheet(product.datasheet),
+    }));
+    const hasBatteries = pricing.hasBatteries;
+    const effectiveIncludesOptimizers = pricing.includesOptimizers;
+    const optimizerKind = pricing.optimizerKind;
+    const optimizerDetails = pricing.optimizerDetails;
+    const finalPrice = pricing.breakdown.finalPrice;
 
     const rawAmps = acKw * 1.44 * 1.10;
     const standardAmps = [25, 40, 63, 80, 100, 160, 200, 250, 315, 400, 630, 800, 1000, 1250, 1600];
-    let requiredConnectionAmps = standardAmps[standardAmps.length - 1]; 
-    for (let i = 0; i < standardAmps.length; i++) {
-      if (standardAmps[i] >= rawAmps) {
-        requiredConnectionAmps = standardAmps[i];
-        break;
-      }
-    }
-    if (rawAmps > requiredConnectionAmps) {
-       requiredConnectionAmps = Math.ceil(rawAmps);
-    }
-
-    const constructionCost = sizeKw * (effectiveQuoteForm.roofType === 'concrete' ? (Number(adminPrices.constructionConcretePerKw) || 350) : (Number(adminPrices.constructionOtherPerKw) || 200));
-    
-    let totalInvertersCost = 0;
-    const inverterDetailsList = [];
-    const isHybridSystem = effectiveQuoteForm.inverterSystemType === 'hybrid';
-    const activeInvertersForm = isHybridSystem ? effectiveQuoteForm.selectedHybridInverters : effectiveQuoteForm.selectedInverters;
-    const activeInvertersAdmin = isHybridSystem ? adminPrices.invertersHybrid : adminPrices.inverters;
-
-    activeInvertersForm.forEach(sel => {
-      const invData = activeInvertersAdmin.find(i => i.id === sel.id);
-      if (invData && sel.quantity > 0) {
-        totalInvertersCost += (Number(invData.cost) || 0) * sel.quantity;
-        inverterDetailsList.push({
-          id: invData.id,
-          name: invData.name,
-          quantity: sel.quantity,
-          isHybrid: isHybridSystem,
-          isSolarEdge: inverterIsSolarEdge(invData),
-          logoSlug: resolveInverterLogoSlug(invData),
-          customLogo: normalizeDatasheet(invData.customLogo),
-          datasheet: normalizeDatasheet(invData.datasheet),
-        });
-      }
-    });
-
-    let totalBatteriesCost = 0;
-    const batteryDetailsList = [];
-    const hasBatteries = isHybridSystem && effectiveQuoteForm.includesBatteries;
-    
-    if (hasBatteries) {
-      const batteryById = new Map();
-      effectiveQuoteForm.selectedBatteries.forEach((sel) => {
-        const batData = adminPrices.batteries.find((b) => b.id === sel.id);
-        const qty = Number(sel.quantity) || 0;
-        if (batData && qty > 0) {
-          totalBatteriesCost += (Number(batData.cost) || 0) * qty;
-          const prev = batteryById.get(batData.id);
-          if (prev) prev.quantity += qty;
-          else {
-            batteryById.set(batData.id, {
-              id: batData.id,
-              name: batData.name,
-              quantity: qty,
-              unitKwh: parseBatteryKwhFromName(batData.name),
-              logo: normalizeDatasheet(batData.logo),
-              datasheet: normalizeDatasheet(batData.datasheet),
-            });
-          }
-        }
-      });
-      batteryDetailsList.push(...batteryById.values());
-    }
-    
-    let optimizersCost = 0;
-    let optimizerDetails = { type: 'ללא', quantity: 0 };
-    /** מפתח דאטהשיט באופטימייזרים: se1to1 | se1to2 | tigo | sungrow */
-    let optimizerKind = null;
-    const seStatusForQuote = getSolarEdgeStatus(effectiveQuoteForm);
-    /** SolarEdge — אופטימייזרים תמיד נכללים (בלי צ׳קבוקס לסוכן) */
-    const effectiveIncludesOptimizers =
-      Boolean(effectiveQuoteForm.includesOptimizers) || seStatusForQuote.hasSolarEdge;
-    if (effectiveIncludesOptimizers) {
-      const seStatus = seStatusForQuote;
-      const sgStatus = getSungrowStatus(effectiveQuoteForm);
-      if (seStatus.hasSolarEdge) {
-        if (solarEdgeOptimizerUsesOneToTwo(acKw)) {
-          const optQty = Math.ceil(numPanels / 2);
-          optimizersCost = optQty * (Number(adminPrices.optimizerPrices?.se1to2) || 350);
-          optimizerDetails = { type: 'SolarEdge 1:2', quantity: optQty };
-          optimizerKind = 'se1to2';
-        } else {
-          const optQty = numPanels;
-          optimizersCost = optQty * (Number(adminPrices.optimizerPrices?.se1to1) || 250);
-          optimizerDetails = { type: 'SolarEdge 1:1', quantity: optQty };
-          optimizerKind = 'se1to1';
-        }
-      } else if (sgStatus.hasSungrow) {
-        const optQty = parseInt(effectiveQuoteForm.sungrowQuantity, 10) || numPanels;
-        optimizersCost = optQty * (Number(adminPrices.optimizerPrices?.sungrow) || 220);
-        optimizerDetails = { type: 'Sungrow (סנגרואו)', quantity: optQty };
-        optimizerKind = 'sungrow';
-      } else {
-        const optQty = parseInt(effectiveQuoteForm.tigoQuantity, 10) || 0;
-        optimizersCost = optQty * (Number(adminPrices.optimizerPrices?.tigo) || 200);
-        optimizerDetails = { type: 'Tigo (טייגו)', quantity: optQty };
-        optimizerKind = 'tigo';
-      }
-    }
-
-    const logisticsCost = Number(adminPrices.logisticsCost) || 3100;
-    const systemTypePricing = calculateSystemTypePricing(effectiveQuoteForm, sizeKw, adminPrices);
-    let laborCost = systemTypePricing.laborCost;
-    if (hasBatteries) laborCost += (Number(adminPrices.hybridBatteryInstallCost) || 5700); 
-
-    const engineeringCost = (Number(adminPrices.planningCost) || 1400) + (Number(adminPrices.constructorEngineer) || 500);
-    const privateCheckCost = effectiveQuoteForm.systemType === 'residential' ? (Number(adminPrices.privateCheckResidential) || 550) : (Number(adminPrices.privateCheckCommercial) || 800);
-    const electricianCost = effectiveQuoteForm.systemType === 'residential' ? (Number(adminPrices.electricianResidential) || 750) : (Number(adminPrices.electricianCommercial) || 2000);
-    
-    let acCableCost = 0;
-    if (effectiveQuoteForm.systemType === 'residential') {
-        acCableCost = isHybridSystem ? (Number(adminPrices.acCableHybridResidential) || 600) : (Number(adminPrices.acCableOnGridResidential) || 300);
-    } else {
-        acCableCost = Number(adminPrices.acCableCommercial) || 3000;
-    }
-    const accessoriesCost = acCableCost + (Number(adminPrices.antennaCost) || 180) + (Number(adminPrices.communicationLine) || 100);
-    
-    const electricalBoxCost = effectiveQuoteForm.systemType === 'residential'
-      ? (Number(adminPrices.electricalBoxResidential) || 870) 
-      : sizeKw * (Number(adminPrices.electricalBoxCommercialPerKw) || 270);
-
-    const washingCost = effectiveQuoteForm.includesWashing ? (Number(adminPrices.washingSystemBase) || 4500) : 0;
-    const feesCost = effectiveQuoteForm.feesPayer === 'company' ? (Number(adminPrices.feesCost) || 3000) : 0;
-    const productionMeterCost = isResidentialProductionMeter(effectiveQuoteForm)
-      ? PRODUCTION_METER_SURCHARGE_ILS
-      : 0;
-    
-    const totalBaseCost = panelsCost + constructionCost + totalInvertersCost + totalBatteriesCost + optimizersCost + 
-                          logisticsCost + laborCost + engineeringCost + privateCheckCost + 
-                          electricianCost + accessoriesCost + electricalBoxCost + washingCost + feesCost +
-                          productionMeterCost;
-    
-    const profitValue = systemTypePricing.profitValue;
-    
-    const finalPrice = (totalBaseCost + profitValue) || 0;
-
-    const baseCalculatedTariff = calculateTariff(acKw);
+    let requiredConnectionAmps = standardAmps.find((amps) => amps >= rawAmps) || Math.ceil(rawAmps);
+    const baseCalculatedTariff = calculateTariffFromSettings(acKw, adminPrices);
     const urbanPremiumMatch = resolveUrbanPremiumFromCity(
       effectiveQuoteForm.clientCity,
       urbanPremiumCities
     );
     const hasUrbanPremium = urbanPremiumMatch.eligible;
     const projectionStartYear = new Date().getFullYear();
-    const baseProductionHours = Number(adminPrices.productionHours) > 0 ? Number(adminPrices.productionHours) : 1700;
+    const baseProductionHours = requiredNumberSetting(adminPrices, 'productionHours');
     let productionHoursValid = baseProductionHours;
     let orientationDetails = null;
 
@@ -3457,7 +3249,8 @@ export default function App() {
       getEffectiveTariffForCalendarYear(
         baseCalculatedTariff,
         hasUrbanPremium,
-        projectionStartYear + modelYear - 1
+        projectionStartYear + modelYear - 1,
+        adminPrices
       );
 
     const getYearlyProductionKwh = (modelYear) =>
@@ -3470,7 +3263,7 @@ export default function App() {
     const calculatedTariff = getTariffForModelYear(1);
     const estimatedYearlySavingsYear1 = getYearlyEstimatedIncome(1);
 
-    const vatRate = Number(adminPrices.vatRate) || 18;
+    const vatRate = requiredNumberSetting(adminPrices, 'vatRate');
     const initialInvestment = effectiveQuoteForm.systemType === 'residential' ? finalPrice * (1 + vatRate / 100) : finalPrice;
 
     let roiYears = 0;
@@ -3490,8 +3283,8 @@ export default function App() {
       }
     }
 
-    const primeRate = Number(adminPrices.primeRate) || 6.0;
-    const loanMargin = Number(adminPrices.loanMargin) || 4.0;
+    const primeRate = requiredNumberSetting(adminPrices, 'primeRate');
+    const loanMargin = requiredNumberSetting(adminPrices, 'loanMargin');
     const annualInterestRate = (primeRate + loanMargin) / 100;
 
     let remainingDebt = initialInvestment;
@@ -3576,8 +3369,12 @@ export default function App() {
       calculatedTariff,
       hasUrbanPremium,
       urbanPremiumMatchedCity: urbanPremiumMatch.matchedCity,
-      urbanPremiumAgorotPerKwh: hasUrbanPremium ? URBAN_PREMIUM_AGOROT_PER_KWH : 0,
-      urbanPremiumValidUntilYear: hasUrbanPremium ? URBAN_PREMIUM_VALID_UNTIL_YEAR : null,
+      urbanPremiumAgorotPerKwh: hasUrbanPremium
+        ? requiredNumberSetting(adminPrices, 'urbanPremiumAgorotPerKwh')
+        : 0,
+      urbanPremiumValidUntilYear: hasUrbanPremium
+        ? requiredNumberSetting(adminPrices, 'urbanPremiumValidUntilYear')
+        : null,
       projectionStartYear,
       requiredConnectionAmps,
       estimatedYearlyProductionKwh: estimatedYearlyProductionKwhYear1,
@@ -3588,14 +3385,9 @@ export default function App() {
       maxProfit,
       minLoss,
       loanSettings: { primeRate, loanMargin, annualInterestRate: primeRate + loanMargin },
+      pricingSnapshot: buildPricingSnapshot(adminPrices),
       loanSimulation,
-      breakdown: {
-        panels: panelsCost, construction: constructionCost, inverter: totalInvertersCost, batteries: totalBatteriesCost,
-        optimizers: optimizersCost, logistics: logisticsCost, labor: laborCost, engineering: engineeringCost,
-        electricianAndChecks: privateCheckCost + electricianCost, electricalBoxes: electricalBoxCost, accessories: accessoriesCost,
-        washing: washingCost, fees: feesCost, productionMeter: productionMeterCost,
-        totalCost: totalBaseCost, marginValue: profitValue, finalPrice: finalPrice
-      },
+      breakdown: pricing.breakdown,
       hasSolarEdgeQuote: inverterDetailsList.some(inv => inv.isSolarEdge),
       showLimitedOffer,
       offerExpiresAt,
@@ -4166,7 +3958,7 @@ export default function App() {
                                 type="number"
                                 value={panel.powerWatts}
                                 onChange={(e) =>
-                                  updateAdminListItem('panels', panel.id, 'powerWatts', parseFloat(e.target.value) || 0)
+                                  updateAdminListItem('panels', panel.id, 'powerWatts', e.target.value === '' ? '' : Number(e.target.value))
                                 }
                                 className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-white outline-none focus:border-blue-500/60 transition-all"
                               />
@@ -4182,7 +3974,7 @@ export default function App() {
                                     'panels',
                                     panel.id,
                                     'pricePerWattUsd',
-                                    parseFloat(e.target.value) || 0
+                                    e.target.value === '' ? '' : Number(e.target.value)
                                   )
                                 }
                                 className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-white outline-none focus:border-blue-500/60 transition-all"
@@ -4208,8 +4000,8 @@ export default function App() {
                         onClick={() =>
                           addAdminListItem('panels', {
                             name: 'פאנל חדש',
-                            powerWatts: 650,
-                            pricePerWattUsd: 0.14,
+                            powerWatts: '',
+                            pricePerWattUsd: '',
                             logo: null,
                             datasheet: null,
                           })
@@ -4354,8 +4146,8 @@ export default function App() {
                               <button onClick={() => removeAdminListItem('inverters', inv.id)} className="p-1 text-slate-500 hover:text-red-400 transition-colors"><Trash2 className="w-4 h-4" /></button>
                             </div>
                             <div className="flex gap-2 text-sm">
-                              <div className="flex-1"><label className="text-slate-500 text-xs block">הספק (kW)</label><input type="number" value={inv.capacityKw} onChange={(e) => updateAdminListItem('inverters', inv.id, 'capacityKw', parseFloat(e.target.value)||0)} className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-white outline-none focus:border-blue-500/60 transition-all" /></div>
-                              <div className="flex-1"><label className="text-slate-500 text-xs block">עלות (₪)</label><input type="number" value={inv.cost} onChange={(e) => updateAdminListItem('inverters', inv.id, 'cost', parseFloat(e.target.value)||0)} className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-white outline-none focus:border-blue-500/60 transition-all" /></div>
+                              <div className="flex-1"><label className="text-slate-500 text-xs block">הספק (kW)</label><input type="number" value={inv.capacityKw} onChange={(e) => updateAdminListItem('inverters', inv.id, 'capacityKw', e.target.value === '' ? '' : Number(e.target.value))} className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-white outline-none focus:border-blue-500/60 transition-all" /></div>
+                              <div className="flex-1"><label className="text-slate-500 text-xs block">עלות (₪)</label><input type="number" value={inv.cost} onChange={(e) => updateAdminListItem('inverters', inv.id, 'cost', e.target.value === '' ? '' : Number(e.target.value))} className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-white outline-none focus:border-blue-500/60 transition-all" /></div>
                             </div>
                             <p className={`text-xs mt-1 ${inverterIsSolarEdge(inv) ? 'text-blue-300' : 'text-slate-500'}`}>
                               {inverterIsSolarEdge(inv)
@@ -4391,7 +4183,7 @@ export default function App() {
                             />
                           </div>
                         ))}
-                        <button onClick={() => addAdminListItem('inverters', { name: 'ממיר חדש', cost: 0, capacityKw: 10, isSolarEdge: false, inverterLogoKey: 'auto', customLogo: null, datasheet: null })} className="w-full mt-2 flex items-center justify-center gap-2 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 text-blue-400 p-2 rounded-xl text-sm transition-all">
+                        <button onClick={() => addAdminListItem('inverters', { name: 'ממיר חדש', cost: '', capacityKw: 10, isSolarEdge: false, inverterLogoKey: 'auto', customLogo: null, datasheet: null })} className="w-full mt-2 flex items-center justify-center gap-2 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 text-blue-400 p-2 rounded-xl text-sm transition-all">
                           <Plus className="w-4 h-4" /> הוסף ממיר אונגריד
                         </button>
                       </div>
@@ -4406,8 +4198,8 @@ export default function App() {
                               <button onClick={() => removeAdminListItem('invertersHybrid', inv.id)} className="p-1 text-slate-500 hover:text-red-400 transition-colors"><Trash2 className="w-4 h-4" /></button>
                             </div>
                             <div className="flex gap-2 text-sm">
-                              <div className="flex-1"><label className="text-slate-500 text-xs block">הספק (kW)</label><input type="number" value={inv.capacityKw} onChange={(e) => updateAdminListItem('invertersHybrid', inv.id, 'capacityKw', parseFloat(e.target.value)||0)} className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-white outline-none focus:border-blue-500/60 transition-all" /></div>
-                              <div className="flex-1"><label className="text-slate-500 text-xs block">עלות (₪)</label><input type="number" value={inv.cost} onChange={(e) => updateAdminListItem('invertersHybrid', inv.id, 'cost', parseFloat(e.target.value)||0)} className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-white outline-none focus:border-blue-500/60 transition-all" /></div>
+                              <div className="flex-1"><label className="text-slate-500 text-xs block">הספק (kW)</label><input type="number" value={inv.capacityKw} onChange={(e) => updateAdminListItem('invertersHybrid', inv.id, 'capacityKw', e.target.value === '' ? '' : Number(e.target.value))} className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-white outline-none focus:border-blue-500/60 transition-all" /></div>
+                              <div className="flex-1"><label className="text-slate-500 text-xs block">עלות (₪)</label><input type="number" value={inv.cost} onChange={(e) => updateAdminListItem('invertersHybrid', inv.id, 'cost', e.target.value === '' ? '' : Number(e.target.value))} className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-white outline-none focus:border-blue-500/60 transition-all" /></div>
                             </div>
                             <p className={`text-xs mt-1 ${inverterIsSolarEdge(inv) ? 'text-blue-300' : 'text-slate-500'}`}>
                               {inverterIsSolarEdge(inv)
@@ -4443,7 +4235,7 @@ export default function App() {
                             />
                           </div>
                         ))}
-                        <button onClick={() => addAdminListItem('invertersHybrid', { name: 'ממיר היברידי חדש', cost: 0, capacityKw: 10, isSolarEdge: false, inverterLogoKey: 'auto', customLogo: null, datasheet: null })} className="w-full mt-2 flex items-center justify-center gap-2 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 text-blue-400 p-2 rounded-xl text-sm transition-all">
+                        <button onClick={() => addAdminListItem('invertersHybrid', { name: 'ממיר היברידי חדש', cost: '', capacityKw: 10, isSolarEdge: false, inverterLogoKey: 'auto', customLogo: null, datasheet: null })} className="w-full mt-2 flex items-center justify-center gap-2 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 text-blue-400 p-2 rounded-xl text-sm transition-all">
                           <Plus className="w-4 h-4" /> הוסף ממיר היברידי
                         </button>
                       </div>
@@ -4467,7 +4259,7 @@ export default function App() {
                             <input type="text" value={bat.name} onChange={(e) => updateAdminListItem('batteries', bat.id, 'name', e.target.value)} className="flex-1 bg-transparent text-white outline-none focus:border-blue-400 transition-all" />
                             <div className="flex items-center gap-1 border-r border-white/10 pr-2">
                                <span className="text-slate-400 text-sm">₪</span>
-                               <input type="number" value={bat.cost} onChange={(e) => updateAdminListItem('batteries', bat.id, 'cost', parseFloat(e.target.value)||0)} className="w-24 bg-transparent text-white outline-none focus:border-blue-400 transition-all" />
+                               <input type="number" value={bat.cost} onChange={(e) => updateAdminListItem('batteries', bat.id, 'cost', e.target.value === '' ? '' : Number(e.target.value))} className="w-24 bg-transparent text-white outline-none focus:border-blue-400 transition-all" />
                             </div>
                             <button onClick={() => removeAdminListItem('batteries', bat.id)} className="p-2 text-slate-500 hover:text-red-400 transition-colors"><Trash2 className="w-4 h-4" /></button>
                           </div>
@@ -4485,7 +4277,7 @@ export default function App() {
                           />
                         </div>
                      ))}
-                     <button onClick={() => addAdminListItem('batteries', { name: 'סוללה חדשה', cost: 0, logo: null, datasheet: null })} className="mt-3 flex items-center gap-1 text-sm text-blue-400 hover:text-blue-300 transition-colors">
+                     <button onClick={() => addAdminListItem('batteries', { name: 'סוללה חדשה', cost: '', logo: null, datasheet: null })} className="mt-3 flex items-center gap-1 text-sm text-blue-400 hover:text-blue-300 transition-colors">
                         <Plus className="w-4 h-4" /> הוסף סוללה למחירון
                      </button>
                   </div>
@@ -4569,6 +4361,26 @@ export default function App() {
                       </div>
                     </div>
                     <div className="pt-4 border-t border-white/8 grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div><label className="block text-sm text-slate-400 mb-1">תוספת מונה ייצור (₪)</label><input type="number" name="productionMeterSurcharge" value={adminPrices.productionMeterSurcharge ?? ''} onChange={handleAdminChange} className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-blue-500/60 transition-all" /></div>
+                      <div><label className="block text-sm text-slate-400 mb-1">פרמיה אורבנית (אגורות לקוט״ש)</label><input type="number" step="0.01" name="urbanPremiumAgorotPerKwh" value={adminPrices.urbanPremiumAgorotPerKwh ?? ''} onChange={handleAdminChange} className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-blue-500/60 transition-all" /></div>
+                      <div><label className="block text-sm text-slate-400 mb-1">שנת סיום פרמיה אורבנית</label><input type="number" name="urbanPremiumValidUntilYear" value={adminPrices.urbanPremiumValidUntilYear ?? ''} onChange={handleAdminChange} className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-blue-500/60 transition-all" /></div>
+                    </div>
+                    <div className="pt-4 border-t border-white/8 space-y-3">
+                      <h4 className="text-sm font-medium text-blue-300">מדרגות תעריף חשמל</h4>
+                      {(adminPrices.tariffBands || []).map((band, index) => (
+                        <div key={index} className="grid grid-cols-[1fr_1fr_auto] gap-3 items-end">
+                          <label className="text-xs text-slate-400">עד kW (ריק במדרגה האחרונה)
+                            <input type="number" value={band.upToKw ?? ''} onChange={(e) => handleTariffBandChange(index, 'upToKw', e.target.value)} className="mt-1 w-full bg-white/5 border border-white/10 rounded-lg p-2 text-white outline-none" />
+                          </label>
+                          <label className="text-xs text-slate-400">אגורות לקוט״ש
+                            <input type="number" step="0.01" value={band.agorotPerKwh ?? ''} onChange={(e) => handleTariffBandChange(index, 'agorotPerKwh', e.target.value)} className="mt-1 w-full bg-white/5 border border-white/10 rounded-lg p-2 text-white outline-none" />
+                          </label>
+                          <button type="button" onClick={() => removeTariffBand(index)} className="rounded-lg border border-red-500/30 px-3 py-2 text-red-300">הסר</button>
+                        </div>
+                      ))}
+                      <button type="button" onClick={addTariffBand} className="rounded-lg border border-blue-500/30 px-3 py-2 text-blue-200">הוסף מדרגה</button>
+                    </div>
+                    <div className="pt-4 border-t border-white/8 grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div><label className="block text-sm text-blue-300 font-medium mb-1">רווח למערכת ביתית (₪ - פיקס)</label><input type="number" name="profitResidentialFixed" value={adminPrices.profitResidentialFixed} onChange={handleAdminChange} className="w-full bg-blue-500/5 border border-blue-500/20 rounded-xl p-3 text-white outline-none focus:border-blue-500/60 transition-all" /></div>
                       <div><label className="block text-sm text-blue-300 font-medium mb-1">רווח למערכת מסחרית (₪ לכל kWp)</label><input type="number" name="profitCommercialPerKw" value={adminPrices.profitCommercialPerKw} onChange={handleAdminChange} className="w-full bg-blue-500/5 border border-blue-500/20 rounded-xl p-3 text-white outline-none focus:border-blue-500/60 transition-all" /></div>
                     </div>
@@ -4642,7 +4454,7 @@ export default function App() {
                 )}
                 {isResidentialProductionMeter(quoteForm) && (
                   <p className="text-xs text-blue-300/90 px-1">
-                    תוספת מונה ייצור: ₪{PRODUCTION_METER_SURCHARGE_ILS.toLocaleString('he-IL')} + מע״מ (נכלל אוטומטית במחיר)
+                    תוספת מונה ייצור: ₪{Number(adminPrices.productionMeterSurcharge).toLocaleString('he-IL')} + מע״מ (נכלל אוטומטית במחיר)
                   </p>
                 )}
               </div>
@@ -4670,7 +4482,7 @@ export default function App() {
                           className="w-full min-w-0 max-w-full bg-white/5 border border-white/10 rounded-xl p-3.5 text-white outline-none transition-all duration-200 focus:border-blue-500/60 focus:bg-white/8"
                           onFocus={e => e.target.style.boxShadow='0 0 0 3px rgba(59,130,246,0.18)'} onBlur={e => e.target.style.boxShadow='none'} />
                         <p className="mt-2 text-xs text-slate-500 leading-snug">
-                          פרמיה אורבנית (חח&quot;י) — {URBAN_PREMIUM_AGOROT_PER_KWH} אגורות לתעריף המשוקלל עד {URBAN_PREMIUM_VALID_UNTIL_YEAR} — תתווסף אוטומטית אם היישוב ברשימת הזכאים (התאמה של לפחות 80%).
+                          פרמיה אורבנית (חח&quot;י) — {adminPrices.urbanPremiumAgorotPerKwh} אגורות לתעריף המשוקלל עד {adminPrices.urbanPremiumValidUntilYear} — תתווסף אוטומטית אם היישוב ברשימת הזכאים (התאמה של לפחות 80%).
                         </p>
                       </div>
                     </div>
@@ -5063,6 +4875,13 @@ export default function App() {
               </div>
 
               <div className="flex flex-col items-end gap-4 pt-6">
+                {pricingSettingsState.phase !== 'ready' && (
+                  <div className="bg-amber-500/10 border border-amber-500/30 text-amber-200 p-4 rounded-2xl w-full text-right font-semibold">
+                    {pricingSettingsState.phase === 'loading'
+                      ? 'נתוני התמחור נטענים מהשרת…'
+                      : pricingSettingsState.message}
+                  </div>
+                )}
                 {errorMsg && (
                   <div className="bg-red-500/10 border border-red-500/30 text-red-300 p-4 rounded-2xl flex items-center gap-3 w-full justify-end animation-fade-in shadow-lg">
                      <p className="font-semibold">{errorMsg}</p>
@@ -5073,8 +4892,8 @@ export default function App() {
                   {/* Glow effect behind button */}
                   <div className="absolute -inset-1 rounded-2xl opacity-60 blur-md group-hover:opacity-90 transition-opacity duration-300"
                        style={{ background: 'linear-gradient(135deg, #f97316, #fbbf24, #f97316)' }}></div>
-                  <button type="submit"
-                    className="relative flex items-center gap-3 text-slate-900 px-10 py-4 rounded-2xl font-black text-xl shadow-2xl transition-all duration-200 hover:scale-[1.03] active:scale-[0.97]"
+                  <button type="submit" disabled={pricingSettingsState.phase !== 'ready'}
+                    className="relative flex items-center gap-3 text-slate-900 px-10 py-4 rounded-2xl font-black text-xl shadow-2xl transition-all duration-200 hover:scale-[1.03] active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50"
                     style={{ background: 'linear-gradient(135deg, #f97316 0%, #fbbf24 50%, #f97316 100%)', backgroundSize: '200%' }}>
                     <FileText className="w-6 h-6" />
                     חשב מחיר והמשך
@@ -5290,8 +5109,8 @@ export default function App() {
                         </div>
                         <p className="break-words px-1 text-base font-medium leading-relaxed text-slate-800 sm:px-2">
                           {(generatedQuote.clientCity || '').trim()
-                            ? `על פי הנתונים ובהתאם לעיר ${(generatedQuote.clientCity || '').trim()}, בה עתידה להיות התקנת המערכת — אתם זכאים לפרמיה אורבנית מתעריף חברת החשמל, הכוללת תוספת של ${URBAN_PREMIUM_AGOROT_PER_KWH} אגורות לתעריף המשוקלל עד שנת ${URBAN_PREMIUM_VALID_UNTIL_YEAR}.`
-                            : `על פי הנתונים שהוזנו בהצעה זו — הפרויקט זכאי לפרמיה אורבנית מתעריף חברת החשמל, עם תוספת של ${URBAN_PREMIUM_AGOROT_PER_KWH} אגורות לתעריף המשוקלל עד שנת ${URBAN_PREMIUM_VALID_UNTIL_YEAR}.`}
+                            ? `על פי הנתונים ובהתאם לעיר ${(generatedQuote.clientCity || '').trim()}, בה עתידה להיות התקנת המערכת — אתם זכאים לפרמיה אורבנית מתעריף חברת החשמל, הכוללת תוספת של ${generatedQuote.urbanPremiumAgorotPerKwh} אגורות לתעריף המשוקלל עד שנת ${generatedQuote.urbanPremiumValidUntilYear}.`
+                            : `על פי הנתונים שהוזנו בהצעה זו — הפרויקט זכאי לפרמיה אורבנית מתעריף חברת החשמל, עם תוספת של ${generatedQuote.urbanPremiumAgorotPerKwh} אגורות לתעריף המשוקלל עד שנת ${generatedQuote.urbanPremiumValidUntilYear}.`}
                         </p>
                       </div>
                     )}

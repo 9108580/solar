@@ -1,12 +1,5 @@
 import { enforceSystemTypeForDc } from './systemTypeRule';
-
-function requiredNumericSetting(settings, key) {
-  const value = Number(settings?.[key]);
-  if (!Number.isFinite(value)) {
-    throw new Error(`Missing numeric admin setting: ${key}`);
-  }
-  return value;
-}
+import { requiredNumberSetting } from './pricingSettings';
 
 export function calculateSystemTypePricing(system, dcKw, settings) {
   const normalizedSystem = enforceSystemTypeForDc(system, dcKw);
@@ -16,8 +9,8 @@ export function calculateSystemTypePricing(system, dcKw, settings) {
   }
 
   if (normalizedSystem.systemType === 'commercial') {
-    const laborRate = requiredNumericSetting(settings, 'laborPerKwCommercial');
-    const profitRate = requiredNumericSetting(settings, 'profitCommercialPerKw');
+    const laborRate = requiredNumberSetting(settings, 'laborPerKwCommercial');
+    const profitRate = requiredNumberSetting(settings, 'profitCommercialPerKw');
     return {
       systemType: 'commercial',
       laborRate,
@@ -28,8 +21,8 @@ export function calculateSystemTypePricing(system, dcKw, settings) {
   }
 
   if (normalizedSystem.systemType === 'residential') {
-    const laborRate = requiredNumericSetting(settings, 'laborPerKwResidential');
-    const profitValue = requiredNumericSetting(settings, 'profitResidentialFixed');
+    const laborRate = requiredNumberSetting(settings, 'laborPerKwResidential');
+    const profitValue = requiredNumberSetting(settings, 'profitResidentialFixed');
     return {
       systemType: 'residential',
       laborRate,
