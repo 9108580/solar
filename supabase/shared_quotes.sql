@@ -27,6 +27,34 @@ alter table public.shared_quotes add column if not exists company_phone text;
 
 create index if not exists shared_quotes_expires_at_idx on public.shared_quotes (expires_at);
 
+-- Backend invariant: persisted quotes at or above 35 kW DC are always commercial.
+-- The UI applies the same rule before pricing; this trigger is the final write barrier.
+create or replace function public.enforce_shared_quote_commercial_system_type()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+declare
+  dc_kw numeric;
+begin
+  begin
+    dc_kw := nullif(trim(new.payload ->> 'systemSizeKw'), '')::numeric;
+  exception when invalid_text_representation then
+    dc_kw := null;
+  end;
+
+  if dc_kw >= 35 then
+    new.payload := jsonb_set(new.payload, '{systemType}', '"commercial"'::jsonb, true);
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists shared_quotes_enforce_commercial_system_type on public.shared_quotes;
+create trigger shared_quotes_enforce_commercial_system_type
+  before insert or update of payload on public.shared_quotes
+  for each row execute function public.enforce_shared_quote_commercial_system_type();
+
 alter table public.shared_quotes enable row level security;
 
 -- No direct SELECT for anon — use get_shared_quote() only (hides expired payload).

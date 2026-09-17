@@ -3,6 +3,11 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { getSupabase } from './supabaseClient';
 import { prepareAdminPricesForCloud, publicAdminAssetUrl } from './adminCloudPayload';
 import {
+  COMMERCIAL_DC_THRESHOLD_KW,
+  enforceSystemTypeForDc,
+  requiresCommercialSystem,
+} from './systemTypeRule';
+import {
   DEFAULT_URBAN_PREMIUM_CITIES,
   resolveUrbanPremiumFromCity,
 } from './urbanPremiumCities';
@@ -2422,7 +2427,7 @@ export default function App() {
       const nextKw = dc != null ? formatDcKwForInput(dc) : prev.systemSizeKw;
       const dcChanged = String(prev.systemSizeKw) !== String(nextKw);
       if (!idsChanged && !dcChanged) return prev;
-      return {
+      return enforceSystemTypeForDc({
         ...prev,
         selectedPanels: nextRows,
         systemSizeKw: nextKw,
@@ -2431,7 +2436,7 @@ export default function App() {
           : dcChanged && isResidentialGreenTrack(prev)
             ? { systemSizeAcKw: '15.00' }
             : {}),
-      };
+      }, dc ?? nextKw);
     });
     return undefined;
   }, [adminPrices.panels]);
@@ -2541,7 +2546,8 @@ export default function App() {
       if (row.ok === true && row.payload && typeof row.payload === 'object') {
         const cities =
           urbanPremiumCities.length > 0 ? urbanPremiumCities : DEFAULT_URBAN_PREMIUM_CITIES;
-        setGeneratedQuote(applyUrbanPremiumToQuote(row.payload, cities, adminPrices));
+        const normalizedPayload = enforceSystemTypeForDc(row.payload, row.payload.systemSizeKw);
+        setGeneratedQuote(applyUrbanPremiumToQuote(normalizedPayload, cities, adminPrices));
         setCurrentUser({ role: 'viewer', data: null });
         setActiveTab('quote');
         setShareQuoteLoad({ phase: 'ready', message: '', waHref: null });
@@ -2618,11 +2624,12 @@ export default function App() {
     const agentPhone = String(generatedQuote?.agentDetails?.phone || adminPrices.companyPhone || '').trim();
     const agentName = String(generatedQuote?.agentDetails?.name || '').trim();
     const companyPhone = String(adminPrices.companyPhone || '').trim();
+    const payload = enforceSystemTypeForDc(generatedQuote, generatedQuote.systemSizeKw);
 
     const urlPromise = (async () => {
       const { error } = await supabase.from('shared_quotes').insert({
         id,
-        payload: generatedQuote,
+        payload,
         expires_at: expiresAt.toISOString(),
         agent_phone: agentPhone || null,
         agent_name: agentName || null,
@@ -2986,6 +2993,24 @@ export default function App() {
     return 15;
   };
 
+  const enforceRequiredSystemType = (formLike, dcKw) => {
+    const enforced = enforceSystemTypeForDc(formLike, dcKw);
+    if (enforced === formLike) return formLike;
+
+    const defaultInv = findDefaultInverterId(adminPrices.inverters, 'commercial');
+    const defaultHyb = findDefaultInverterId(adminPrices.invertersHybrid, 'commercial');
+    return {
+      ...enforced,
+      ...(defaultInv
+        ? { selectedInverters: (formLike.selectedInverters || []).map((row) => ({ ...row, id: defaultInv })) }
+        : {}),
+      ...(defaultHyb
+        ? { selectedHybridInverters: (formLike.selectedHybridInverters || []).map((row) => ({ ...row, id: defaultHyb })) }
+        : {}),
+      ...(!formLike.limitInverter ? { systemSizeAcKw: autoAcFromDcKw(dcKw).toFixed(2) } : {}),
+    };
+  };
+
   const handleFormChange = (e) => {
     const { name, value, type, checked } = e.target;
     const val = type === 'checkbox' ? checked : value;
@@ -3056,7 +3081,8 @@ export default function App() {
           }
         }
       }
-      return newState;
+      const dc = dcKwFromSelectedPanels(newState.selectedPanels, adminPrices.panels);
+      return enforceRequiredSystemType(newState, dc ?? newState.systemSizeKw);
     });
     
     if (name === 'specifyOrientation' && !checked) {
@@ -3067,7 +3093,10 @@ export default function App() {
   const applyDcFromSelectedPanels = (prev, selectedPanels) => {
     const dc = dcKwFromSelectedPanels(selectedPanels, adminPrices.panels);
     if (dc == null) return { ...prev, selectedPanels };
-    const next = { ...prev, selectedPanels, systemSizeKw: formatDcKwForInput(dc) };
+    const next = enforceRequiredSystemType(
+      { ...prev, selectedPanels, systemSizeKw: formatDcKwForInput(dc) },
+      dc
+    );
     // מסלול ירוק — AC תמיד 15
     if (isResidentialGreenTrack(next)) {
       return { ...next, systemSizeAcKw: '15.00' };
@@ -3123,10 +3152,10 @@ export default function App() {
     });
   };
 
-  const getSolarEdgeStatus = () => {
+  const getSolarEdgeStatus = (formLike = quoteForm) => {
     let hasSolarEdge = false;
-    const activeInvertersForm = quoteForm.inverterSystemType === 'hybrid' ? quoteForm.selectedHybridInverters : quoteForm.selectedInverters;
-    const activeInvertersAdmin = quoteForm.inverterSystemType === 'hybrid' ? adminPrices.invertersHybrid : adminPrices.inverters;
+    const activeInvertersForm = formLike.inverterSystemType === 'hybrid' ? formLike.selectedHybridInverters : formLike.selectedInverters;
+    const activeInvertersAdmin = formLike.inverterSystemType === 'hybrid' ? adminPrices.invertersHybrid : adminPrices.inverters;
 
     activeInvertersForm.forEach(sel => {
       const invData = activeInvertersAdmin.find(i => i.id === sel.id);
@@ -3147,12 +3176,12 @@ export default function App() {
   /** AC לקביעת יחס אופטימייזרים — כיוול לממיר אם מסומן, אחרת AC בהצעה */
   const solarEdgeOptimizerAcKw = () => resolveQuoteAcKw(quoteForm);
 
-  const getSungrowStatus = () => {
+  const getSungrowStatus = (formLike = quoteForm) => {
     let hasSungrow = false;
     const activeInvertersForm =
-      quoteForm.inverterSystemType === 'hybrid' ? quoteForm.selectedHybridInverters : quoteForm.selectedInverters;
+      formLike.inverterSystemType === 'hybrid' ? formLike.selectedHybridInverters : formLike.selectedInverters;
     const activeInvertersAdmin =
-      quoteForm.inverterSystemType === 'hybrid' ? adminPrices.invertersHybrid : adminPrices.inverters;
+      formLike.inverterSystemType === 'hybrid' ? adminPrices.invertersHybrid : adminPrices.inverters;
 
     activeInvertersForm.forEach((sel) => {
       const invData = activeInvertersAdmin.find((i) => i.id === sel.id);
@@ -3195,22 +3224,24 @@ export default function App() {
     const panelsDerivedKw = dcKwFromSelectedPanels(quoteForm.selectedPanels, adminPrices.panels);
     const sizeKw =
       panelsDerivedKw != null ? panelsDerivedKw : parseFloat(quoteForm.systemSizeKw) || 0;
-    if (quoteForm.limitInverter && !isResidentialGreenTrack(quoteForm)) {
-      const lim = parseFloat(quoteForm.inverterLimitAcKw);
+    const effectiveQuoteForm = enforceRequiredSystemType(quoteForm, sizeKw);
+    if (effectiveQuoteForm !== quoteForm) setQuoteForm(effectiveQuoteForm);
+    if (effectiveQuoteForm.limitInverter && !isResidentialGreenTrack(effectiveQuoteForm)) {
+      const lim = parseFloat(effectiveQuoteForm.inverterLimitAcKw);
       if (!Number.isFinite(lim) || lim <= 0) {
         setErrorMsg('נא להזין כיוול תקין לממיר (kW AC).');
         return;
       }
     }
     // AC: כיוול לממיר אם מסומן, אחרת שדה AC / אוטו׳ לפי DC
-    const acKw = resolveQuoteAcKw(quoteForm, panelsDerivedKw);
+    const acKw = resolveQuoteAcKw(effectiveQuoteForm, panelsDerivedKw);
     const systemSizeWatts = sizeKw * 1000;
     const usdRate = Number(adminPrices.usdExchangeRate) || 3.75;
 
     let panelsCost = 0;
     let numPanels = 0;
     const panelDetailsList = [];
-    (quoteForm.selectedPanels || []).forEach((sel) => {
+    (effectiveQuoteForm.selectedPanels || []).forEach((sel) => {
       const panelData = (adminPrices.panels || []).find((p) => p.id === sel.id);
       const qty = Number(sel.quantity) || 0;
       if (panelData && qty > 0) {
@@ -3259,12 +3290,12 @@ export default function App() {
        requiredConnectionAmps = Math.ceil(rawAmps);
     }
 
-    const constructionCost = sizeKw * (quoteForm.roofType === 'concrete' ? (Number(adminPrices.constructionConcretePerKw) || 350) : (Number(adminPrices.constructionOtherPerKw) || 200));
+    const constructionCost = sizeKw * (effectiveQuoteForm.roofType === 'concrete' ? (Number(adminPrices.constructionConcretePerKw) || 350) : (Number(adminPrices.constructionOtherPerKw) || 200));
     
     let totalInvertersCost = 0;
     const inverterDetailsList = [];
-    const isHybridSystem = quoteForm.inverterSystemType === 'hybrid';
-    const activeInvertersForm = isHybridSystem ? quoteForm.selectedHybridInverters : quoteForm.selectedInverters;
+    const isHybridSystem = effectiveQuoteForm.inverterSystemType === 'hybrid';
+    const activeInvertersForm = isHybridSystem ? effectiveQuoteForm.selectedHybridInverters : effectiveQuoteForm.selectedInverters;
     const activeInvertersAdmin = isHybridSystem ? adminPrices.invertersHybrid : adminPrices.inverters;
 
     activeInvertersForm.forEach(sel => {
@@ -3286,11 +3317,11 @@ export default function App() {
 
     let totalBatteriesCost = 0;
     const batteryDetailsList = [];
-    const hasBatteries = isHybridSystem && quoteForm.includesBatteries;
+    const hasBatteries = isHybridSystem && effectiveQuoteForm.includesBatteries;
     
     if (hasBatteries) {
       const batteryById = new Map();
-      quoteForm.selectedBatteries.forEach((sel) => {
+      effectiveQuoteForm.selectedBatteries.forEach((sel) => {
         const batData = adminPrices.batteries.find((b) => b.id === sel.id);
         const qty = Number(sel.quantity) || 0;
         if (batData && qty > 0) {
@@ -3316,13 +3347,13 @@ export default function App() {
     let optimizerDetails = { type: 'ללא', quantity: 0 };
     /** מפתח דאטהשיט באופטימייזרים: se1to1 | se1to2 | tigo | sungrow */
     let optimizerKind = null;
-    const seStatusForQuote = getSolarEdgeStatus();
+    const seStatusForQuote = getSolarEdgeStatus(effectiveQuoteForm);
     /** SolarEdge — אופטימייזרים תמיד נכללים (בלי צ׳קבוקס לסוכן) */
     const effectiveIncludesOptimizers =
-      Boolean(quoteForm.includesOptimizers) || seStatusForQuote.hasSolarEdge;
+      Boolean(effectiveQuoteForm.includesOptimizers) || seStatusForQuote.hasSolarEdge;
     if (effectiveIncludesOptimizers) {
       const seStatus = seStatusForQuote;
-      const sgStatus = getSungrowStatus();
+      const sgStatus = getSungrowStatus(effectiveQuoteForm);
       if (seStatus.hasSolarEdge) {
         if (solarEdgeOptimizerUsesOneToTwo(acKw)) {
           const optQty = Math.ceil(numPanels / 2);
@@ -3336,12 +3367,12 @@ export default function App() {
           optimizerKind = 'se1to1';
         }
       } else if (sgStatus.hasSungrow) {
-        const optQty = parseInt(quoteForm.sungrowQuantity, 10) || numPanels;
+        const optQty = parseInt(effectiveQuoteForm.sungrowQuantity, 10) || numPanels;
         optimizersCost = optQty * (Number(adminPrices.optimizerPrices?.sungrow) || 220);
         optimizerDetails = { type: 'Sungrow (סנגרואו)', quantity: optQty };
         optimizerKind = 'sungrow';
       } else {
-        const optQty = parseInt(quoteForm.tigoQuantity, 10) || 0;
+        const optQty = parseInt(effectiveQuoteForm.tigoQuantity, 10) || 0;
         optimizersCost = optQty * (Number(adminPrices.optimizerPrices?.tigo) || 200);
         optimizerDetails = { type: 'Tigo (טייגו)', quantity: optQty };
         optimizerKind = 'tigo';
@@ -3350,31 +3381,31 @@ export default function App() {
 
     const logisticsCost = Number(adminPrices.logisticsCost) || 3100;
     const laborPerKw =
-      quoteForm.systemType === 'commercial'
+      effectiveQuoteForm.systemType === 'commercial'
         ? Number(adminPrices.laborPerKwCommercial) || 550
         : Number(adminPrices.laborPerKwResidential) || Number(adminPrices.laborPerKw) || 650;
     let laborCost = sizeKw * laborPerKw;
     if (hasBatteries) laborCost += (Number(adminPrices.hybridBatteryInstallCost) || 5700); 
 
     const engineeringCost = (Number(adminPrices.planningCost) || 1400) + (Number(adminPrices.constructorEngineer) || 500);
-    const privateCheckCost = quoteForm.systemType === 'residential' ? (Number(adminPrices.privateCheckResidential) || 550) : (Number(adminPrices.privateCheckCommercial) || 800);
-    const electricianCost = quoteForm.systemType === 'residential' ? (Number(adminPrices.electricianResidential) || 750) : (Number(adminPrices.electricianCommercial) || 2000);
+    const privateCheckCost = effectiveQuoteForm.systemType === 'residential' ? (Number(adminPrices.privateCheckResidential) || 550) : (Number(adminPrices.privateCheckCommercial) || 800);
+    const electricianCost = effectiveQuoteForm.systemType === 'residential' ? (Number(adminPrices.electricianResidential) || 750) : (Number(adminPrices.electricianCommercial) || 2000);
     
     let acCableCost = 0;
-    if (quoteForm.systemType === 'residential') {
+    if (effectiveQuoteForm.systemType === 'residential') {
         acCableCost = isHybridSystem ? (Number(adminPrices.acCableHybridResidential) || 600) : (Number(adminPrices.acCableOnGridResidential) || 300);
     } else {
         acCableCost = Number(adminPrices.acCableCommercial) || 3000;
     }
     const accessoriesCost = acCableCost + (Number(adminPrices.antennaCost) || 180) + (Number(adminPrices.communicationLine) || 100);
     
-    const electricalBoxCost = quoteForm.systemType === 'residential' 
+    const electricalBoxCost = effectiveQuoteForm.systemType === 'residential'
       ? (Number(adminPrices.electricalBoxResidential) || 870) 
       : sizeKw * (Number(adminPrices.electricalBoxCommercialPerKw) || 270);
 
-    const washingCost = quoteForm.includesWashing ? (Number(adminPrices.washingSystemBase) || 4500) : 0;
-    const feesCost = quoteForm.feesPayer === 'company' ? (Number(adminPrices.feesCost) || 3000) : 0;
-    const productionMeterCost = isResidentialProductionMeter(quoteForm)
+    const washingCost = effectiveQuoteForm.includesWashing ? (Number(adminPrices.washingSystemBase) || 4500) : 0;
+    const feesCost = effectiveQuoteForm.feesPayer === 'company' ? (Number(adminPrices.feesCost) || 3000) : 0;
+    const productionMeterCost = isResidentialProductionMeter(effectiveQuoteForm)
       ? PRODUCTION_METER_SURCHARGE_ILS
       : 0;
     
@@ -3383,13 +3414,13 @@ export default function App() {
                           electricianCost + accessoriesCost + electricalBoxCost + washingCost + feesCost +
                           productionMeterCost;
     
-    let profitValue = quoteForm.systemType === 'residential' ? (Number(adminPrices.profitResidentialFixed) || 21000) : (sizeKw * (Number(adminPrices.profitCommercialPerKw) || 630));
+    let profitValue = effectiveQuoteForm.systemType === 'residential' ? (Number(adminPrices.profitResidentialFixed) || 21000) : (sizeKw * (Number(adminPrices.profitCommercialPerKw) || 630));
     
     const finalPrice = (totalBaseCost + profitValue) || 0;
 
     const baseCalculatedTariff = calculateTariff(acKw);
     const urbanPremiumMatch = resolveUrbanPremiumFromCity(
-      quoteForm.clientCity,
+      effectiveQuoteForm.clientCity,
       urbanPremiumCities
     );
     const hasUrbanPremium = urbanPremiumMatch.eligible;
@@ -3398,10 +3429,10 @@ export default function App() {
     let productionHoursValid = baseProductionHours;
     let orientationDetails = null;
 
-    if (quoteForm.specifyOrientation) {
-      const pSouth = Number(quoteForm.panelsSouth) || 0;
-      const pEW = Number(quoteForm.panelsEastWest) || 0;
-      const pNorth = Number(quoteForm.panelsNorth) || 0;
+    if (effectiveQuoteForm.specifyOrientation) {
+      const pSouth = Number(effectiveQuoteForm.panelsSouth) || 0;
+      const pEW = Number(effectiveQuoteForm.panelsEastWest) || 0;
+      const pNorth = Number(effectiveQuoteForm.panelsNorth) || 0;
       const sumPanels = pSouth + pEW + pNorth;
       
       if (sumPanels !== numPanels) {
@@ -3409,7 +3440,7 @@ export default function App() {
          return; 
       }
 
-      if (requiredOptimizersForSmallArrays > 0 && !quoteForm.optimizerAcknowledge) {
+      if (requiredOptimizersForSmallArrays > 0 && !effectiveQuoteForm.optimizerAcknowledge) {
          setErrorMsg(`שגיאה: חלוקת הפאנלים דורשת התקנת ${requiredOptimizersForSmallArrays} אופטימייזרים לפחות. אנא סמן "V" בתיבת האישור שמתחת לכיווני האוויר.`);
          return;
       }
@@ -3442,7 +3473,7 @@ export default function App() {
     const estimatedYearlySavingsYear1 = getYearlyEstimatedIncome(1);
 
     const vatRate = Number(adminPrices.vatRate) || 18;
-    const initialInvestment = quoteForm.systemType === 'residential' ? finalPrice * (1 + vatRate / 100) : finalPrice;
+    const initialInvestment = effectiveQuoteForm.systemType === 'residential' ? finalPrice * (1 + vatRate / 100) : finalPrice;
 
     let roiYears = 0;
     let annualYield = 0;
@@ -3519,12 +3550,12 @@ export default function App() {
     const maxProfit = Math.max(1, ...graphData.map(d => d.flow || 0));
     const minLoss = Math.min(0, ...graphData.map(d => d.flow || 0));
 
-    const showLimitedOffer = Boolean(quoteForm.showLimitedOffer);
+    const showLimitedOffer = Boolean(effectiveQuoteForm.showLimitedOffer);
     const offerExpiresAt = showLimitedOffer ? Date.now() + 7 * 24 * 60 * 60 * 1000 : null;
 
     const quotePayload = {
-      ...quoteForm,
-      systemSizeKw: formatDcKwForInput(sizeKw) || quoteForm.systemSizeKw,
+      ...effectiveQuoteForm,
+      systemSizeKw: formatDcKwForInput(sizeKw) || effectiveQuoteForm.systemSizeKw,
       systemSizeAcKw: Number(acKw).toFixed(2),
       includesOptimizers: effectiveIncludesOptimizers,
       calculatedNumPanels: numPanels,
@@ -4573,7 +4604,15 @@ export default function App() {
                 <div className="flex gap-3">
                   <label className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl cursor-pointer border-2 transition-all duration-200 ${quoteForm.systemType === 'residential' ? 'border-blue-500/70 text-blue-200 shadow-[0_0_18px_rgba(59,130,246,0.2)]' : 'border-white/8 text-slate-400 hover:border-white/20 hover:text-slate-300'}`}
                         style={quoteForm.systemType === 'residential' ? { background: 'linear-gradient(135deg, rgba(29,78,216,0.25), rgba(37,99,235,0.12))' } : { background: 'rgba(255,255,255,0.035)' }}>
-                    <input type="radio" name="systemType" value="residential" checked={quoteForm.systemType === 'residential'} onChange={handleFormChange} className="hidden" />
+                    <input
+                      type="radio"
+                      name="systemType"
+                      value="residential"
+                      checked={quoteForm.systemType === 'residential'}
+                      onChange={handleFormChange}
+                      disabled={requiresCommercialSystem(quoteForm.systemSizeKw)}
+                      className="hidden"
+                    />
                     <span className="text-base leading-none">🏠</span>
                     <span className="font-semibold text-sm sm:text-base">מערכת ביתית (פרטית)</span>
                   </label>
@@ -4584,6 +4623,11 @@ export default function App() {
                     <span className="font-semibold text-sm sm:text-base">מערכת מסחרית</span>
                   </label>
                 </div>
+                {requiresCommercialSystem(quoteForm.systemSizeKw) && (
+                  <p className="px-1 text-xs font-semibold text-orange-300">
+                    מ־{COMMERCIAL_DC_THRESHOLD_KW.toFixed(2)} kW DC המערכת מוגדרת אוטומטית כמערכת מסחרית.
+                  </p>
+                )}
                 {quoteForm.systemType === 'residential' && (
                   <div className="flex gap-3">
                     <label className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-xl cursor-pointer border-2 transition-all duration-200 ${quoteForm.residentialTrack === 'green' ? 'border-emerald-500/70 text-emerald-200 shadow-[0_0_16px_rgba(16,185,129,0.2)]' : 'border-white/8 text-slate-400 hover:border-white/20 hover:text-slate-300'}`}
