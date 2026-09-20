@@ -1,4 +1,5 @@
 import { calculateCanonicalPricing, deriveCanonicalDc, panelQuantityForTargetDc } from './pricingEngine';
+import { validateQuoteForSave } from './pricingSettings';
 
 const settings = () => ({
   usdExchangeRate: 3.3,
@@ -58,6 +59,28 @@ const form = (quantity, systemType = 'residential') => ({
 });
 
 describe('canonical pricing engine', () => {
+  test('storage board costs use current prices and quantities in totals and save validation', () => {
+    const current = settings();
+    current.storageElectricalBoards = [{ id: 'a', cost: 1200 }, { id: 'b', cost: 450 }];
+    const hybrid = { ...form(65), inverterSystemType: 'hybrid', includesBatteries: true };
+    const baseline = calculateCanonicalPricing(hybrid, current, { acKw: 15 });
+    hybrid.selectedStorageElectricalBoards = [{ id: 'a', quantity: 2 }, { id: 'b', quantity: 3 }];
+    const result = calculateCanonicalPricing(hybrid, current, { acKw: 15 });
+    expect(result.breakdown.storageElectricalBoards).toBe(3750);
+    expect(result.breakdown.finalPrice - baseline.breakdown.finalPrice).toBe(3750);
+    expect(result.storageElectricalBoardDetailsList[0]).toMatchObject({ unitCost: 1200, totalCost: 2400 });
+    const quote = { ...result.system, hasBatteries: true, breakdown: result.breakdown };
+    expect(validateQuoteForSave(quote, current, result.breakdown)).toBe(true);
+    current.storageElectricalBoards[0].cost = 1500;
+    const updated = calculateCanonicalPricing(hybrid, current, { acKw: 15 });
+    expect(updated.breakdown.storageElectricalBoards).toBe(4350);
+    expect(() => validateQuoteForSave(quote, current, updated.breakdown)).toThrow();
+    expect(calculateCanonicalPricing({ ...hybrid, includesBatteries: false }, current, { acKw: 15 }).breakdown.storageElectricalBoards).toBe(0);
+    current.storageElectricalBoards[0].cost = '';
+    expect(() => calculateCanonicalPricing(hybrid, current, { acKw: 15 })).toThrow('cost');
+    current.storageElectricalBoards[0].cost = 0;
+    expect(calculateCanonicalPricing(hybrid, current, { acKw: 15 }).breakdown.storageElectricalBoards).toBe(1350);
+  });
   test.each([
     [50, 650, 77],
     [50, 665, 75],

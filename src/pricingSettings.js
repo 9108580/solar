@@ -175,6 +175,9 @@ export function validateQuoteForSave(quote, settings, expectedBreakdown = null) 
   const breakdown = quote.breakdown;
   if (!breakdown || typeof breakdown !== 'object') throw new Error('Quote has no pricing breakdown');
   const componentKeys = ['panels', 'construction', 'inverter', 'batteries', 'optimizers', 'logistics', 'labor', 'engineering', 'electricianAndChecks', 'electricalBoxes', 'accessories', 'washing', 'fees', 'productionMeter'];
+  if (breakdown.storageElectricalBoards !== undefined || expectedBreakdown?.storageElectricalBoards > 0) {
+    componentKeys.push('storageElectricalBoards');
+  }
   const calculatedTotal = componentKeys.reduce((sum, key) => sum + requiredNumberSetting(breakdown, key), 0);
   if (!closeEnough(calculatedTotal, requiredNumberSetting(breakdown, 'totalCost'))) throw new Error('Quote total cost is inconsistent');
   if (!closeEnough(calculatedTotal + requiredNumberSetting(breakdown, 'marginValue'), requiredNumberSetting(breakdown, 'finalPrice'))) {

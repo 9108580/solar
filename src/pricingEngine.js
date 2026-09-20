@@ -7,6 +7,7 @@ import {
   validatePricingSettings,
 } from './pricingSettings';
 import { assertProductInStock } from './productAvailability';
+import { resolveStorageElectricalBoardSelections } from './storageElectricalBoards';
 
 function selectedProducts(rows, catalog, label, { required = false } = {}) {
   if (!Array.isArray(rows) || (required && rows.length === 0)) throw new Error(`No selected ${label}`);
@@ -63,6 +64,14 @@ export function calculateCanonicalPricing(form, settings, { acKw, hasSolarEdge =
     : [];
   const batteryCost = batteries.reduce((sum, { product, quantity }) =>
     sum + requiredProductNumber(product, 'cost', 'battery') * quantity, 0);
+  const storageElectricalBoards = hasBatteries
+    ? resolveStorageElectricalBoardSelections(system.selectedStorageElectricalBoards, settings.storageElectricalBoards)
+    : [];
+  const storageElectricalBoardDetailsList = storageElectricalBoards.map((board) => {
+    const product = settings.storageElectricalBoards.find((item) => item.id === board.id);
+    const unitCost = requiredProductNumber(product, 'cost', 'storage electrical board');
+    return { ...board, unitCost, totalCost: unitCost * board.quantity };
+  });
 
   const includesOptimizers = Boolean(system.includesOptimizers) || hasSolarEdge;
   let optimizerKind = null;
@@ -98,6 +107,7 @@ export function calculateCanonicalPricing(form, settings, { acKw, hasSolarEdge =
     construction,
     inverter: inverterCost,
     batteries: batteryCost,
+    storageElectricalBoards: storageElectricalBoardDetailsList.reduce((sum, board) => sum + board.totalCost, 0),
     optimizers: optimizersCost,
     logistics: setting('logisticsCost'),
     labor,
@@ -112,5 +122,5 @@ export function calculateCanonicalPricing(form, settings, { acKw, hasSolarEdge =
   breakdown.totalCost = Object.values(breakdown).reduce((sum, value) => sum + value, 0);
   breakdown.marginValue = typePricing.profitValue;
   breakdown.finalPrice = breakdown.totalCost + breakdown.marginValue;
-  return { system, dcKw, panels, inverters, batteries, numPanels, hasBatteries, includesOptimizers, optimizerKind, optimizerDetails, breakdown };
+  return { system, dcKw, panels, inverters, batteries, storageElectricalBoardDetailsList, numPanels, hasBatteries, includesOptimizers, optimizerKind, optimizerDetails, breakdown };
 }

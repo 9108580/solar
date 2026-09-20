@@ -25,7 +25,6 @@ import {
 } from './urbanPremiumCities';
 import {
   normalizeStorageElectricalBoards,
-  resolveStorageElectricalBoardSelections,
 } from './storageElectricalBoards';
 import { availableProducts, isProductInStock } from './productAvailability';
 import { 
@@ -980,6 +979,7 @@ function QuotePriceConfirmPanel({
         { label: 'קונסטרוקציה', value: b.construction },
         { label: 'ממירים', value: b.inverter },
         { label: 'סוללות', value: b.batteries },
+        { label: 'לוחות חשמל לאגירה', value: b.storageElectricalBoards || 0 },
         { label: 'אופטימייזרים', value: b.optimizers },
         { label: 'לוגיסטיקה', value: b.logistics },
         { label: 'עבודה', value: b.labor },
@@ -3217,12 +3217,7 @@ export default function App() {
       datasheet: normalizeDatasheet(product.datasheet),
     }));
     const hasBatteries = pricing.hasBatteries;
-    const storageElectricalBoardDetailsList = hasBatteries
-      ? resolveStorageElectricalBoardSelections(
-          effectiveQuoteForm.selectedStorageElectricalBoards,
-          adminPrices.storageElectricalBoards
-        )
-      : [];
+    const storageElectricalBoardDetailsList = pricing.storageElectricalBoardDetailsList;
     const effectiveIncludesOptimizers = pricing.includesOptimizers;
     const optimizerKind = pricing.optimizerKind;
     const optimizerDetails = pricing.optimizerDetails;
@@ -4335,6 +4330,13 @@ export default function App() {
                           <button onClick={() => removeAdminListItem('storageElectricalBoards', board.id)} className="p-2 text-slate-500 hover:text-red-400 transition-colors"><Trash2 className="w-4 h-4" /></button>
                         </div>
                         <ProductAvailabilityToggle product={board} onChange={(value) => updateAdminListItem('storageElectricalBoards', board.id, 'inStock', value)} />
+                        <label className="block text-sm text-slate-400">
+                          עלות ליחידה (₪, לפני מע״מ)
+                          <input type="number" min="0" step="any" value={board.cost ?? ''}
+                            onChange={(e) => updateAdminListItem('storageElectricalBoards', board.id, 'cost', e.target.value === '' ? '' : Number(e.target.value))}
+                            className="mt-2 w-full rounded-xl border border-white/10 bg-white/5 p-3 text-white outline-none focus:border-blue-500/60" />
+                        </label>
+                        {board.cost == null || board.cost === '' ? <p className="text-sm text-amber-300">יש להזין עלות לפני חישוב הצעה עם לוח זה.</p> : null}
                         <textarea
                           value={board.description || ''}
                           onChange={(e) => updateAdminListItem('storageElectricalBoards', board.id, 'description', e.target.value)}
@@ -4343,7 +4345,7 @@ export default function App() {
                         />
                       </div>
                     ))}
-                    <button onClick={() => addAdminListItem('storageElectricalBoards', { name: 'לוח חשמל חדש לאגירה', description: '', inStock: true })} className="mt-3 flex items-center gap-1 text-sm text-blue-400 hover:text-blue-300 transition-colors">
+                    <button onClick={() => addAdminListItem('storageElectricalBoards', { name: 'לוח חשמל חדש לאגירה', description: '', cost: '', inStock: true })} className="mt-3 flex items-center gap-1 text-sm text-blue-400 hover:text-blue-300 transition-colors">
                       <Plus className="w-4 h-4" /> הוסף לוח חשמל לאגירה
                     </button>
                   </div>
@@ -6128,6 +6130,7 @@ export default function App() {
                     <p>פאנלים: <span className="text-white font-bold">₪{Math.round(generatedQuote.breakdown.panels)}</span></p>
                     <p>ממירים: <span className="text-white font-bold">₪{Math.round(generatedQuote.breakdown.inverter)}</span></p>
                     <p>אגירה: <span className="text-white font-bold">₪{Math.round(generatedQuote.breakdown.batteries)}</span></p>
+                    <p>לוחות חשמל לאגירה: <span className="text-white font-bold">₪{Math.round(generatedQuote.breakdown.storageElectricalBoards || 0)}</span></p>
                     <p>קונסטרוקציה: <span className="text-white font-bold">₪{Math.round(generatedQuote.breakdown.construction)}</span></p>
                     <p>עבודה: <span className="text-white font-bold">₪{Math.round(generatedQuote.breakdown.labor)}</span></p>
                     <p>הובלות: <span className="text-white font-bold">₪{Math.round(generatedQuote.breakdown.logistics)}</span></p>
