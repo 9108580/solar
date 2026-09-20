@@ -116,7 +116,8 @@ export function calculateCanonicalPricing(form, settings, { acKw, hasSolarEdge =
     batteries: batteryCost,
     storageElectricalBoards: storageElectricalBoardDetailsList.reduce((sum, board) => sum + board.totalCost, 0),
     optimizers: optimizersCost,
-    logistics: setting(residential ? 'logisticsCost' : 'logisticsCostCommercial'),
+    // Delivery alone uses a 50 kW DC threshold, independently of system type.
+    logistics: setting(dcKw > 50 ? 'logisticsCostCommercial' : 'logisticsCost'),
     labor,
     engineering: setting('planningCost') + setting('constructorEngineer'),
     electricianAndChecks: privateCheck + electrician,

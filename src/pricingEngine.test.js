@@ -60,29 +60,44 @@ const form = (quantity, systemType = 'residential') => ({
 });
 
 describe('canonical pricing engine', () => {
-  test('delivery follows canonical system type and current independent admin prices', () => {
+  test('delivery follows DC threshold and current independent admin prices', () => {
     const current = settings();
     current.panels[0].powerWatts = 1000;
     current.logisticsCost = 3300;
     current.logisticsCostCommercial = 7200;
     const calculate = (quantity, type = 'residential') => calculateCanonicalPricing(form(quantity, type), current, { acKw: 15 });
     expect(calculate(30).breakdown.logistics).toBe(3300);
-    expect(calculate(30, 'commercial').breakdown.logistics).toBe(7200);
-    expect(calculate(35).breakdown.logistics).toBe(7200);
-    const before = calculate(36);
+    expect(calculate(30, 'commercial').breakdown.logistics).toBe(3300);
+    expect(calculate(35).breakdown.logistics).toBe(3300);
+    expect(calculate(36).breakdown.logistics).toBe(3300);
+    const before = calculate(51);
     expect(before.system.systemType).toBe('commercial');
     expect(before.breakdown.logistics).toBe(7200);
     current.logisticsCostCommercial = 8100;
-    const after = calculate(36);
+    const after = calculate(51);
     expect(after.breakdown.logistics).toBe(8100);
     expect(after.breakdown.totalCost - before.breakdown.totalCost).toBe(900);
     expect(after.breakdown.finalPrice - before.breakdown.finalPrice).toBe(900);
     expect(calculate(30).breakdown.logistics).toBe(3300);
     current.logisticsCostCommercial = 0;
-    expect(calculate(36).breakdown.logistics).toBe(0);
+    expect(calculate(51).breakdown.logistics).toBe(0);
     current.logisticsCostCommercial = '';
-    expect(() => calculate(36)).toThrow('logisticsCostCommercial');
+    expect(() => calculate(51)).toThrow('logisticsCostCommercial');
   });
+  test.each([[34.99, 3300, 'residential'], [35, 3300, 'commercial'], [49.99, 3300, 'commercial'], [50, 3300, 'commercial'], [50.01, 7200, 'commercial']])(
+    'delivery boundary at %s kW uses %s without changing system type', (dc, delivery, type) => {
+      const current = settings();
+      current.panels[0].powerWatts = 10;
+      current.logisticsCost = 3300;
+      current.logisticsCostCommercial = 7200;
+      const result = calculateCanonicalPricing(form(Math.round(dc * 100)), current, { acKw: 15 });
+      expect(result.dcKw).toBe(dc);
+      expect(result.breakdown.logistics).toBe(delivery);
+      expect(result.system.systemType).toBe(type);
+      expect(result.breakdown.labor).toBe(dc * (type === 'commercial' ? 550 : 650));
+      expect(result.breakdown.marginValue).toBe(type === 'commercial' ? dc * 630 : 21000);
+    }
+  );
   test('pricing rejects a battery from another hybrid inverter brand', () => {
     const current = settings();
     current.batteries[0].name = 'GROWATT 5kWh';
