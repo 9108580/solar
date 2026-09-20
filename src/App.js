@@ -4600,7 +4600,7 @@ export default function App() {
                     <div className="min-w-0">
                       <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">גודל מערכת DC (kWp)</label>
                       <input
-                        required type="number" min="0.001" step="0.01" inputMode="decimal"
+                        required type="number" min="0.001" step="any" inputMode="decimal"
                         aria-label="גודל מערכת DC רצוי (kWp)"
                         value={dcTargetInput}
                         onFocus={() => { dcTargetEditingRef.current = true; }}
