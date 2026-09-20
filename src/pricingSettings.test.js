@@ -15,6 +15,7 @@ const completeSettings = () => ({
   constructionConcretePerKw: 350,
   constructionOtherPerKw: 200,
   logisticsCost: 3300,
+  logisticsCostCommercial: 3300,
   laborPerKwResidential: 650,
   laborPerKwCommercial: 550,
   hybridBatteryInstallCost: 5700,

@@ -116,7 +116,7 @@ export function calculateCanonicalPricing(form, settings, { acKw, hasSolarEdge =
     batteries: batteryCost,
     storageElectricalBoards: storageElectricalBoardDetailsList.reduce((sum, board) => sum + board.totalCost, 0),
     optimizers: optimizersCost,
-    logistics: setting('logisticsCost'),
+    logistics: setting(residential ? 'logisticsCost' : 'logisticsCostCommercial'),
     labor,
     engineering: setting('planningCost') + setting('constructorEngineer'),
     electricianAndChecks: privateCheck + electrician,

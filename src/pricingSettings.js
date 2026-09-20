@@ -5,6 +5,7 @@ export const REQUIRED_PRICING_SETTINGS = [
   'constructionConcretePerKw',
   'constructionOtherPerKw',
   'logisticsCost',
+  'logisticsCostCommercial',
   'laborPerKwResidential',
   'laborPerKwCommercial',
   'hybridBatteryInstallCost',

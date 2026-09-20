@@ -6,6 +6,7 @@ const settings = () => ({
   constructionConcretePerKw: 0,
   constructionOtherPerKw: 0,
   logisticsCost: 0,
+  logisticsCostCommercial: 0,
   laborPerKwResidential: 650,
   laborPerKwCommercial: 550,
   hybridBatteryInstallCost: 0,
@@ -59,6 +60,29 @@ const form = (quantity, systemType = 'residential') => ({
 });
 
 describe('canonical pricing engine', () => {
+  test('delivery follows canonical system type and current independent admin prices', () => {
+    const current = settings();
+    current.panels[0].powerWatts = 1000;
+    current.logisticsCost = 3300;
+    current.logisticsCostCommercial = 7200;
+    const calculate = (quantity, type = 'residential') => calculateCanonicalPricing(form(quantity, type), current, { acKw: 15 });
+    expect(calculate(30).breakdown.logistics).toBe(3300);
+    expect(calculate(30, 'commercial').breakdown.logistics).toBe(7200);
+    expect(calculate(35).breakdown.logistics).toBe(7200);
+    const before = calculate(36);
+    expect(before.system.systemType).toBe('commercial');
+    expect(before.breakdown.logistics).toBe(7200);
+    current.logisticsCostCommercial = 8100;
+    const after = calculate(36);
+    expect(after.breakdown.logistics).toBe(8100);
+    expect(after.breakdown.totalCost - before.breakdown.totalCost).toBe(900);
+    expect(after.breakdown.finalPrice - before.breakdown.finalPrice).toBe(900);
+    expect(calculate(30).breakdown.logistics).toBe(3300);
+    current.logisticsCostCommercial = 0;
+    expect(calculate(36).breakdown.logistics).toBe(0);
+    current.logisticsCostCommercial = '';
+    expect(() => calculate(36)).toThrow('logisticsCostCommercial');
+  });
   test('pricing rejects a battery from another hybrid inverter brand', () => {
     const current = settings();
     current.batteries[0].name = 'GROWATT 5kWh';

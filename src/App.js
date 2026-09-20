@@ -1947,13 +1947,15 @@ export function migratePanelsCatalog(saved) {
   return [];
 }
 
-function normalizeAdminSettings(saved) {
+export function normalizeAdminSettings(saved) {
   if (!saved || typeof saved !== 'object') return { ...EMPTY_ADMIN_SETTINGS };
   const panels = migratePanelsCatalog(saved);
   const primaryPanel = panels[0];
   return {
     ...EMPTY_ADMIN_SETTINGS,
     ...saved,
+    logisticsCostCommercial: Object.prototype.hasOwnProperty.call(saved, 'logisticsCostCommercial')
+      ? saved.logisticsCostCommercial : saved.logisticsCost,
     optimizerPrices: saved.optimizerPrices && typeof saved.optimizerPrices === 'object' ? saved.optimizerPrices : {},
     optimizerDatasheets: saved.optimizerDatasheets && typeof saved.optimizerDatasheets === 'object' ? saved.optimizerDatasheets : {},
     optimizerLogos: saved.optimizerLogos && typeof saved.optimizerLogos === 'object' ? saved.optimizerLogos : {},
@@ -4296,7 +4298,8 @@ export default function App() {
                 {openAdminSection === 'labor' && (
                   <div className="p-6 pt-2 border-t border-white/8 space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div><label className="block text-sm text-slate-400 mb-1">הובלות ולוגיסטיקה (פיקס) - ₪</label><input type="number" name="logisticsCost" value={adminPrices.logisticsCost} onChange={handleAdminChange} className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-blue-500/60 transition-all" /></div>
+                      <div><label className="block text-sm text-slate-400 mb-1">הובלה למערכת BT (פיקס) - ₪</label><input type="number" name="logisticsCost" value={adminPrices.logisticsCost} onChange={handleAdminChange} className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-blue-500/60 transition-all" /></div>
+                      <div><label className="block text-sm text-slate-400 mb-1">הובלה למערכת מסחרית (פיקס) - ₪</label><input type="number" name="logisticsCostCommercial" value={adminPrices.logisticsCostCommercial ?? ''} onChange={handleAdminChange} className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-blue-500/60 transition-all" /></div>
                       <div><label className="block text-sm text-slate-400 mb-1">מהנדס קונסטרוקטור (פיקס) - ₪</label><input type="number" name="constructorEngineer" value={adminPrices.constructorEngineer} onChange={handleAdminChange} className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-blue-500/60 transition-all" /></div>
                       <div className="md:col-span-2"><label className="block text-sm text-blue-300 font-medium mb-1">תוספת התקנה למערכת היברידית</label><input type="number" name="hybridBatteryInstallCost" value={adminPrices.hybridBatteryInstallCost} onChange={handleAdminChange} className="w-full bg-blue-500/5 border border-blue-500/20 rounded-xl p-3 text-white outline-none focus:border-blue-500/60 transition-all" /></div>
                     </div>
