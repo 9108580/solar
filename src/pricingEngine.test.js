@@ -1,4 +1,4 @@
-import { calculateCanonicalPricing, deriveCanonicalDc } from './pricingEngine';
+import { calculateCanonicalPricing, deriveCanonicalDc, panelQuantityForTargetDc } from './pricingEngine';
 
 const settings = () => ({
   usdExchangeRate: 3.3,
@@ -58,6 +58,29 @@ const form = (quantity, systemType = 'residential') => ({
 });
 
 describe('canonical pricing engine', () => {
+  test.each([
+    [50, 650, 77],
+    [50, 665, 75],
+    [35, 650, 54],
+    [34.99, 650, 54],
+  ])('target %s kWp with %sW panels resolves to %s whole panels', (target, watts, quantity) => {
+    expect(panelQuantityForTargetDc(target, watts)).toBe(quantity);
+  });
+
+  test('target DC resolves to an actual panel-derived DC used by commercial rule and pricing', () => {
+    const current = settings();
+    current.panels[0].powerWatts = 650;
+    const quantity = panelQuantityForTargetDc(35, 650);
+    const result = calculateCanonicalPricing(form(quantity), current, { acKw: 23.4 });
+    expect(quantity).toBe(54);
+    expect(result.dcKw).toBe(35.1);
+    expect(result.system.systemType).toBe('commercial');
+  });
+
+  test.each([[null, 650], [0, 650], [-1, 650], [50, 0], [50, null]])(
+    'invalid target/panel pair %p/%p is rejected',
+    (target, watts) => expect(() => panelQuantityForTargetDc(target, watts)).toThrow()
+  );
   test.each([
     [65, 34.645, 'residential'],
     [66, 35.178, 'commercial'],

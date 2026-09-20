@@ -18,6 +18,15 @@ function selectedProducts(rows, catalog, label, { required = false } = {}) {
   });
 }
 
+export function panelQuantityForTargetDc(targetDcKw, panelPowerWatts) {
+  const target = Number(targetDcKw);
+  const watts = Number(panelPowerWatts);
+  if (!Number.isFinite(target) || target <= 0 || !Number.isFinite(watts) || watts <= 0) {
+    throw new Error('Target DC and panel power must be positive numbers');
+  }
+  return Math.max(1, Math.round((target * 1000) / watts));
+}
+
 export function deriveCanonicalDc(form, settings) {
   const panels = selectedProducts(form?.selectedPanels, settings?.panels, 'panel', { required: true });
   const watts = panels.reduce((sum, { product, quantity }) => {

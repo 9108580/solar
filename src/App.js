@@ -7,7 +7,7 @@ import {
   enforceSystemTypeForDc,
   requiresCommercialSystem,
 } from './systemTypeRule';
-import { calculateCanonicalPricing, deriveCanonicalDc } from './pricingEngine';
+import { calculateCanonicalPricing, deriveCanonicalDc, panelQuantityForTargetDc } from './pricingEngine';
 import { prepareSavedQuoteForViewing } from './savedQuoteView';
 import {
   assertPricingReady,
@@ -1390,13 +1390,6 @@ function aggregateInverterLogosForQuote(inverterDetailsList) {
   return [...map.values()];
 }
 
-function suggestedPanelQuantityForDc(systemSizeKw, powerWatts) {
-  const watts = Number(powerWatts);
-  if (!Number.isFinite(watts) || watts <= 0) return 1;
-  const kw = parseFloat(systemSizeKw) || 0;
-  return Math.max(1, Math.round((kw * 1000) / watts));
-}
-
 /** AC אוטומטי לפי DC: ≤14 → 10; 15–24 → 15; >24 → (DC/3)×2 */
 function autoAcFromDcKw(dcKw) {
   const val = parseFloat(dcKw) || 0;
@@ -1444,9 +1437,13 @@ function formatDcKwForInput(kw) {
 }
 
 /** כמות עם כפתורי +/− — עובד גם במובייל (בלי חיצי number של דסקטופ) */
-function QuoteQuantityStepper({ value, onChange, min = 1, label = 'כמות' }) {
+function QuoteQuantityStepper({ value, onChange, onDelta, min = 1, label = 'כמות' }) {
   const qty = Math.max(min, parseInt(value, 10) || min);
   const bump = (delta) => {
+    if (onDelta) {
+      onDelta(delta);
+      return;
+    }
     const next = Math.max(min, qty + delta);
     onChange(String(next));
   };
@@ -2241,6 +2238,12 @@ export default function App() {
     showSungrowLogoOnQuote: true,
   };
   });
+  const [dcTargetInput, setDcTargetInput] = useState('');
+  const dcTargetEditingRef = useRef(false);
+
+  useEffect(() => {
+    if (!dcTargetEditingRef.current) setDcTargetInput(String(quoteForm.systemSizeKw ?? ''));
+  }, [quoteForm.systemSizeKw]);
 
   /** התאמת בחירת פאנלים + סנכרון DC מדויק אחרי טעינת מחירון — דגם אחד בלבד */
   useEffect(() => {
@@ -2254,7 +2257,7 @@ export default function App() {
         nextRows = [
           {
             id: panels[0].id,
-            quantity: suggestedPanelQuantityForDc(22.5, panels[0].powerWatts),
+            quantity: panelQuantityForTargetDc(22.5, panels[0].powerWatts),
           },
         ];
         idsChanged = true;
@@ -2985,6 +2988,30 @@ export default function App() {
       ...next,
       systemSizeAcKw: autoAcFromDcKw(dc).toFixed(2),
     };
+  };
+
+  const commitTargetDc = () => {
+    dcTargetEditingRef.current = false;
+    const selected = (quoteForm.selectedPanels || [])[0];
+    const panel = (adminPrices.panels || []).find((item) => item.id === selected?.id);
+    try {
+      const quantity = panelQuantityForTargetDc(dcTargetInput, panel?.powerWatts);
+      const actualDc = (quantity * Number(panel.powerWatts)) / 1000;
+      setDcTargetInput(formatDcKwForInput(actualDc));
+      setQuoteForm((prev) => applyDcFromSelectedPanels(prev, [{ ...selected, quantity }]));
+      setErrorMsg('');
+    } catch {
+      setDcTargetInput(String(quoteForm.systemSizeKw ?? ''));
+    }
+  };
+
+  const adjustPanelQuantity = (delta) => {
+    setQuoteForm((prev) => {
+      const selected = (prev.selectedPanels || [])[0];
+      if (!selected) return prev;
+      const quantity = Math.max(1, (Number(selected.quantity) || 1) + delta);
+      return applyDcFromSelectedPanels(prev, [{ ...selected, quantity }]);
+    });
   };
 
   const handleQuoteListChange = (listName, index, field, value) => {
@@ -4464,6 +4491,7 @@ export default function App() {
                           <QuoteQuantityStepper
                             value={(quoteForm.selectedPanels || [])[0]?.quantity || 1}
                             onChange={(v) => handleQuoteListChange('selectedPanels', 0, 'quantity', v)}
+                            onDelta={adjustPanelQuantity}
                           />
                         </div>
                       )}
@@ -4471,16 +4499,19 @@ export default function App() {
 
                     <div className="min-w-0">
                       <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">גודל מערכת DC (kWp)</label>
-                      <div
-                        className="w-full min-w-0 max-w-full rounded-xl border border-white/10 bg-black/30 p-3.5 text-2xl font-black text-white tabular-nums select-none"
-                        aria-live="polite"
-                        title="מחושב אוטומטית לפי כמות הפאנלים והספק הדגם"
-                      >
-                        {quoteForm.systemSizeKw}
-                      </div>
+                      <input
+                        required type="number" min="0.001" step="0.01" inputMode="decimal"
+                        aria-label="גודל מערכת DC רצוי (kWp)"
+                        value={dcTargetInput}
+                        onFocus={() => { dcTargetEditingRef.current = true; }}
+                        onChange={(e) => setDcTargetInput(e.target.value)}
+                        onBlur={commitTargetDc}
+                        onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                        className="w-full min-w-0 max-w-full rounded-xl border border-white/10 bg-black/30 p-3.5 text-2xl font-black text-white tabular-nums outline-none transition-all focus:border-blue-500/60"
+                        title="הזינו הספק רצוי; הכמות וההספק בפועל יעוגלו לפאנל השלם הקרוב"
+                      />
                       <p className="text-xs text-slate-500 mt-2">
-                        מחושב אוטומטית מ־<strong className="text-blue-400">{currentCalculatedPanels}</strong> פאנלים
-                        {' · '}לא ניתן לשינוי ידני
+                        הזינו הספק רצוי · הכמות תעוגל לפאנל השלם הקרוב · בפועל <strong className="text-blue-400">{currentCalculatedPanels}</strong> פאנלים
                       </p>
                     </div>
                     <div className="min-w-0">
