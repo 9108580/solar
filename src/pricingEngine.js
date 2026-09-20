@@ -28,7 +28,12 @@ export function panelQuantityForTargetDc(targetDcKw, panelPowerWatts) {
   if (!Number.isFinite(target) || target <= 0 || !Number.isFinite(watts) || watts <= 0) {
     throw new Error('Target DC and panel power must be positive numbers');
   }
-  return Math.max(1, Math.round((target * 1000) / watts));
+  let quantity = Math.floor((target * 1000) / watts);
+  // Compare in kW as well so exact decimal multiples are not lost to floating point division.
+  if (((quantity + 1) * watts) / 1000 <= target) quantity += 1;
+  if ((quantity * watts) / 1000 > target) quantity -= 1;
+  if (quantity < 1) throw new Error('Target DC must accommodate at least one panel');
+  return quantity;
 }
 
 export function deriveCanonicalDc(form, settings) {

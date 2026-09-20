@@ -90,12 +90,18 @@ describe('canonical pricing engine', () => {
     expect(calculateCanonicalPricing(hybrid, current, { acKw: 15 }).breakdown.storageElectricalBoards).toBe(1350);
   });
   test.each([
-    [50, 650, 77],
+    [22.5, 650, 34],
+    [50, 650, 76],
     [50, 665, 75],
-    [35, 650, 54],
-    [34.99, 650, 54],
+    [35, 650, 53],
+    [34.99, 650, 53],
+    [22.1, 650, 34],
+    [16.9, 650, 26],
+    [0.65, 650, 1],
   ])('target %s kWp with %sW panels resolves to %s whole panels', (target, watts, quantity) => {
     expect(panelQuantityForTargetDc(target, watts)).toBe(quantity);
+    expect(quantity * watts / 1000).toBeLessThanOrEqual(target);
+    expect((quantity + 1) * watts / 1000).toBeGreaterThan(target);
   });
 
   test('target DC resolves to an actual panel-derived DC used by commercial rule and pricing', () => {
@@ -103,12 +109,15 @@ describe('canonical pricing engine', () => {
     current.panels[0].powerWatts = 650;
     const quantity = panelQuantityForTargetDc(35, 650);
     const result = calculateCanonicalPricing(form(quantity), current, { acKw: 23.4 });
-    expect(quantity).toBe(54);
-    expect(result.dcKw).toBe(35.1);
-    expect(result.system.systemType).toBe('commercial');
+    expect(quantity).toBe(53);
+    expect(result.dcKw).toBe(34.45);
+    expect(result.system.systemType).toBe('residential');
+    const increased = calculateCanonicalPricing(form(quantity + 1), current, { acKw: 23.4 });
+    expect(increased.dcKw).toBe(35.1);
+    expect(increased.system.systemType).toBe('commercial');
   });
 
-  test.each([[null, 650], [0, 650], [-1, 650], [50, 0], [50, null]])(
+  test.each([[null, 650], [0, 650], [-1, 650], [50, 0], [50, null], [0.5, 650]])(
     'invalid target/panel pair %p/%p is rejected',
     (target, watts) => expect(() => panelQuantityForTargetDc(target, watts)).toThrow()
   );

@@ -4544,10 +4544,10 @@ export default function App() {
                         onBlur={commitTargetDc}
                         onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
                         className="w-full min-w-0 max-w-full appearance-none rounded-xl border border-white/10 bg-black/30 p-3.5 text-2xl font-black text-white tabular-nums outline-none transition-all focus:border-blue-500/60 [-moz-appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                        title="הזינו הספק רצוי; הכמות וההספק בפועל יעוגלו לפאנל השלם הקרוב"
+                        title="הזינו הספק רצוי; הכמות תעוגל כלפי מטה למספר שלם של פאנלים"
                       />
                       <p className="text-xs text-slate-500 mt-2">
-                        הזינו הספק רצוי · הכמות תעוגל לפאנל השלם הקרוב · בפועל <strong className="text-blue-400">{currentCalculatedPanels}</strong> פאנלים
+                        הזינו הספק רצוי · הכמות תעוגל כלפי מטה · בפועל <strong className="text-blue-400">{currentCalculatedPanels}</strong> פאנלים
                       </p>
                     </div>
                     <div className="min-w-0">
