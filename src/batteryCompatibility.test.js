@@ -11,7 +11,7 @@ const settings = {
 };
 const form = (id) => ({ inverterSystemType: 'hybrid', includesBatteries: true, selectedHybridInverters: [{ id, quantity: 1 }] });
 
-test.each([['SOLIS HYBRID50KW', 'solis'], ['סוליס 20', 'solis'], ['5KW HV growatt סוללה', 'growatt'], ['גרואט 5', 'growatt'], ['unknown', null]])('brand of %s is %s', (name, brand) => {
+test.each([['SOLIS HYBRID50KW', 'solis'], ['SOLIS15 LV', 'solis'], ['GROWTT WIT25', 'growatt'], ['סוליס 20', 'solis'], ['5KW HV growatt סוללה', 'growatt'], ['גרואט 5', 'growatt'], ['unknown', null]])('brand of %s is %s', (name, brand) => {
   expect(productBrandFromName(name)).toBe(brand);
 });
 

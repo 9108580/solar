@@ -2,8 +2,8 @@ import { availableProducts } from './productAvailability';
 
 // Match a brand token anywhere in the product name, including Hebrew catalog names.
 const BRAND_NAMES = [
-  ['solis', /\bsolis\b|סוליס/i],
-  ['growatt', /\bgrowatt\b|גרואט|גרוואט|גרווט/i],
+  ['solis', /\bsolis(?=\b|\d)|סוליס/i],
+  ['growatt', /\bgrowa?tt(?=\b|\d)|גרואט|גרוואט|גרווט/i],
   ['solaredge', /\bsolar\s*edge\b|סולאראדג|סולאר\s*אדג/i],
   ['sungrow', /\bsungrow\b|סנגרואו|סאנגרו|סנגרו/i],
   ['deye', /\bdeye\b|דייה|דאיה/i],
