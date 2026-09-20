@@ -23,6 +23,10 @@ import {
   DEFAULT_URBAN_PREMIUM_CITIES,
   resolveUrbanPremiumFromCity,
 } from './urbanPremiumCities';
+import {
+  normalizeStorageElectricalBoards,
+  resolveStorageElectricalBoardSelections,
+} from './storageElectricalBoards';
 import { 
   Calculator, Settings, Sun, User, FileText, CheckCircle, Zap, DollarSign, 
   Trash2, Plus, Minus, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, HardHat, BatteryCharging, ExternalLink, 
@@ -556,6 +560,7 @@ function QuoteSystemSpecSummary({ quote }) {
     .map((inv) => `${inv.name}${inv.quantity > 1 ? ` ×${inv.quantity}` : ''}`)
     .join(' · ');
   const batterySummary = aggregateBatteryStorageSummary(quote.batteryDetailsList);
+  const storageElectricalBoards = quote.storageElectricalBoardDetailsList || [];
   const rows = [
     { label: 'הספק DC', value: `${quote.systemSizeKw} kWp`, Icon: Zap, iconClass: 'text-orange-400' },
     { label: 'הספק AC', value: `${quote.systemSizeAcKw} kWp`, Icon: Activity, iconClass: 'text-sky-400' },
@@ -620,7 +625,7 @@ function QuoteSystemSpecSummary({ quote }) {
           );
         })}
       </dl>
-      {(inverterSummary || (quote.includesOptimizers && quote.optimizerDetails?.type)) && (
+      {(inverterSummary || (quote.includesOptimizers && quote.optimizerDetails?.type) || storageElectricalBoards.length > 0) && (
         <div className="relative mt-4 space-y-2 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm sm:text-base print:border-slate-200 print:bg-slate-50">
           {inverterSummary ? (
             <p className="leading-relaxed text-blue-50 print:text-slate-700">
@@ -637,6 +642,15 @@ function QuoteSystemSpecSummary({ quote }) {
               </span>
             </p>
           ) : null}
+          {storageElectricalBoards.map((board) => (
+            <p key={board.id} className="leading-relaxed text-blue-50 print:text-slate-700">
+              <span className="font-bold text-amber-200 print:text-blue-900">לוח חשמל לאגירה:</span>{' '}
+              <span className="font-semibold text-white print:text-slate-800">
+                {board.name} · {board.quantity} יח׳
+                {board.description ? ` — ${board.description}` : ''}
+              </span>
+            </p>
+          ))}
         </div>
       )}
     </div>
@@ -1882,6 +1896,7 @@ const EMPTY_ADMIN_SETTINGS = {
   inverters: [],
   invertersHybrid: [],
   batteries: [],
+  storageElectricalBoards: [],
   optimizerPrices: {},
   optimizerDatasheets: {},
   optimizerLogos: {},
@@ -1931,6 +1946,7 @@ function normalizeAdminSettings(saved) {
     inverters: Array.isArray(saved.inverters) ? saved.inverters : [],
     invertersHybrid: Array.isArray(saved.invertersHybrid) ? saved.invertersHybrid : [],
     batteries: Array.isArray(saved.batteries) ? saved.batteries : [],
+    storageElectricalBoards: normalizeStorageElectricalBoards(saved.storageElectricalBoards),
     agents: Array.isArray(saved.agents) ? saved.agents : [],
     laborPerKwResidential:
       saved.laborPerKwResidential != null
@@ -2218,6 +2234,7 @@ export default function App() {
     selectedHybridInverters: [],
     includesBatteries: false,
     selectedBatteries: [],
+    selectedStorageElectricalBoards: [],
     includesOptimizers: false,
     tigoQuantity: 0,
     sungrowQuantity: 0,
@@ -2934,6 +2951,9 @@ export default function App() {
       if (name === 'systemSizeAcKw' && isResidentialGreenTrack({ ...newState, residentialTrack: newState.residentialTrack })) {
         newState.systemSizeAcKw = '15';
       }
+      if (name === 'includesBatteries' && !val) {
+        newState.selectedStorageElectricalBoards = [];
+      }
       // סימון כיוול → AC לפי ערך הכיוול (מסלול ירוק נשאר 15); ביטול → אוטו׳ / ידני לפי מסלול
       if (name === 'limitInverter') {
         if (val) {
@@ -3166,6 +3186,12 @@ export default function App() {
       datasheet: normalizeDatasheet(product.datasheet),
     }));
     const hasBatteries = pricing.hasBatteries;
+    const storageElectricalBoardDetailsList = hasBatteries
+      ? resolveStorageElectricalBoardSelections(
+          effectiveQuoteForm.selectedStorageElectricalBoards,
+          adminPrices.storageElectricalBoards
+        )
+      : [];
     const effectiveIncludesOptimizers = pricing.includesOptimizers;
     const optimizerKind = pricing.optimizerKind;
     const optimizerDetails = pricing.optimizerDetails;
@@ -3322,6 +3348,7 @@ export default function App() {
       orientationDetails,
       inverterDetailsList,
       batteryDetailsList,
+      storageElectricalBoardDetailsList,
       optimizerDetails,
       optimizerKind,
       optimizerDatasheet: optimizerKind ? normalizeDatasheet(adminPrices.optimizerDatasheets?.[optimizerKind]) : null,
@@ -4250,7 +4277,43 @@ export default function App() {
                 )}
               </div>
 
-              {/* 7. עבודה, הובלות ואביזרים */}
+              {/* 7. לוחות חשמל לאגירה */}
+              <div className="rounded-2xl overflow-hidden shadow-xl transition-all border border-white/8"
+                   style={{ background: 'linear-gradient(160deg, rgba(255,255,255,0.055) 0%, rgba(255,255,255,0.025) 100%)' }}>
+                <button onClick={() => setOpenAdminSection(prev => prev === 'storageElectricalBoards' ? null : 'storageElectricalBoards')} className="w-full flex items-center justify-between p-5 hover:bg-white/5 transition-colors">
+                  <div className="flex items-center gap-3"><Zap className="w-5 h-5 text-blue-400" /><h3 className="text-lg font-semibold text-white">לוחות חשמל לאגירה</h3></div>
+                  {openAdminSection === 'storageElectricalBoards' ? <ChevronUp className="w-5 h-5 text-slate-400" /> : <ChevronDown className="w-5 h-5 text-slate-400" />}
+                </button>
+                {openAdminSection === 'storageElectricalBoards' && (
+                  <div className="p-6 pt-2 border-t border-white/8 space-y-3">
+                    {(adminPrices.storageElectricalBoards || []).map((board) => (
+                      <div key={board.id} className="space-y-3 p-3 bg-black/20 border border-white/8 rounded-xl">
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={board.name}
+                            onChange={(e) => updateAdminListItem('storageElectricalBoards', board.id, 'name', e.target.value)}
+                            className="flex-1 bg-transparent border-b border-white/15 p-1 text-white outline-none focus:border-blue-400 transition-all"
+                            placeholder="שם לוח החשמל"
+                          />
+                          <button onClick={() => removeAdminListItem('storageElectricalBoards', board.id)} className="p-2 text-slate-500 hover:text-red-400 transition-colors"><Trash2 className="w-4 h-4" /></button>
+                        </div>
+                        <textarea
+                          value={board.description || ''}
+                          onChange={(e) => updateAdminListItem('storageElectricalBoards', board.id, 'description', e.target.value)}
+                          className="min-h-24 w-full resize-y rounded-xl border border-white/10 bg-white/5 p-3 text-sm text-white outline-none transition-all focus:border-blue-500/60"
+                          placeholder="הסבר שיופיע בהצעת המחיר"
+                        />
+                      </div>
+                    ))}
+                    <button onClick={() => addAdminListItem('storageElectricalBoards', { name: 'לוח חשמל חדש לאגירה', description: '' })} className="mt-3 flex items-center gap-1 text-sm text-blue-400 hover:text-blue-300 transition-colors">
+                      <Plus className="w-4 h-4" /> הוסף לוח חשמל לאגירה
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* 8. עבודה, הובלות ואביזרים */}
               <div className="rounded-2xl overflow-hidden shadow-xl transition-all border border-white/8"
                    style={{ background: 'linear-gradient(160deg, rgba(255,255,255,0.055) 0%, rgba(255,255,255,0.025) 100%)' }}>
                 <button onClick={() => setOpenAdminSection(prev => prev === 'labor' ? null : 'labor')} className="w-full flex items-center justify-between p-5 hover:bg-white/5 transition-colors">
@@ -4609,6 +4672,37 @@ export default function App() {
                                  <button type="button" onClick={() => addQuoteListItem('selectedBatteries', 'batteries')} className="mt-4 flex items-center gap-1 text-sm text-blue-400 hover:text-blue-300 transition-colors"><Plus className="w-4 h-4" /> הוסף סוללה</button>
                                </>
                              )}
+
+                             <div className="mt-6 border-t border-white/10 pt-4">
+                               <label className="block text-xs font-semibold text-blue-300 uppercase tracking-wider mb-3">לוחות חשמל לאגירה</label>
+                               {(adminPrices.storageElectricalBoards || []).length === 0 ? (
+                                 <p className="text-sm text-slate-400">לא הוגדרו לוחות חשמל לאגירה באדמין.</p>
+                               ) : (
+                                 <>
+                                   <div className="space-y-3">
+                                     {(quoteForm.selectedStorageElectricalBoards || []).map((item, index) => {
+                                       const selectedBoard = adminPrices.storageElectricalBoards.find((board) => board.id === item.id);
+                                       return (
+                                         <div key={index} className="rounded-xl border border-white/8 bg-black/15 p-3">
+                                           <div className="flex min-w-0 flex-wrap items-center gap-3">
+                                             <select value={item.id} onChange={(e) => handleQuoteListChange('selectedStorageElectricalBoards', index, 'id', e.target.value)} className="min-w-0 flex-1 basis-[12rem] bg-slate-950 border border-white/15 rounded-xl p-2.5 text-slate-100 outline-none focus:border-blue-500/60 transition-all [color-scheme:dark]">
+                                               {adminPrices.storageElectricalBoards.map((board) => (<option key={board.id} value={board.id} className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f1f5f9' }}>{board.name}</option>))}
+                                             </select>
+                                             <QuoteQuantityStepper
+                                               value={item.quantity}
+                                               onChange={(v) => handleQuoteListChange('selectedStorageElectricalBoards', index, 'quantity', v)}
+                                             />
+                                             <button type="button" onClick={() => removeQuoteListItem('selectedStorageElectricalBoards', index)} className="p-2 text-slate-500 hover:text-red-400 rounded-xl transition-colors"><Trash2 className="w-5 h-5" /></button>
+                                           </div>
+                                           {selectedBoard?.description ? <p className="mt-2 text-sm leading-relaxed text-slate-400">{selectedBoard.description}</p> : null}
+                                         </div>
+                                       );
+                                     })}
+                                   </div>
+                                   <button type="button" onClick={() => addQuoteListItem('selectedStorageElectricalBoards', 'storageElectricalBoards')} className="mt-4 flex items-center gap-1 text-sm text-blue-400 hover:text-blue-300 transition-colors"><Plus className="w-4 h-4" /> הוסף לוח חשמל לאגירה</button>
+                                 </>
+                               )}
+                             </div>
                            </div>
                         )}
                       </div>
