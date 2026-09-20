@@ -4507,7 +4507,7 @@ export default function App() {
                         onChange={(e) => setDcTargetInput(e.target.value)}
                         onBlur={commitTargetDc}
                         onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-                        className="w-full min-w-0 max-w-full rounded-xl border border-white/10 bg-black/30 p-3.5 text-2xl font-black text-white tabular-nums outline-none transition-all focus:border-blue-500/60"
+                        className="w-full min-w-0 max-w-full appearance-none rounded-xl border border-white/10 bg-black/30 p-3.5 text-2xl font-black text-white tabular-nums outline-none transition-all focus:border-blue-500/60 [-moz-appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                         title="הזינו הספק רצוי; הכמות וההספק בפועל יעוגלו לפאנל השלם הקרוב"
                       />
                       <p className="text-xs text-slate-500 mt-2">
