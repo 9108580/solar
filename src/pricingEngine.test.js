@@ -37,8 +37,8 @@ const settings = () => ({
   tariffBands: [{ upToKw: null, agorotPerKwh: 0 }],
   panels: [{ id: 'p', powerWatts: 533, pricePerWattUsd: 0 }],
   inverters: [{ id: 'i', name: 'Inverter', cost: 0 }],
-  invertersHybrid: [{ id: 'h', name: 'Hybrid', cost: 0 }],
-  batteries: [{ id: 'b', name: 'Battery', cost: 0 }],
+  invertersHybrid: [{ id: 'h', name: 'Solis Hybrid', cost: 0 }],
+  batteries: [{ id: 'b', name: 'Solis Battery', cost: 0 }],
 });
 
 const form = (quantity, systemType = 'residential') => ({
@@ -59,6 +59,14 @@ const form = (quantity, systemType = 'residential') => ({
 });
 
 describe('canonical pricing engine', () => {
+  test('pricing rejects a battery from another hybrid inverter brand', () => {
+    const current = settings();
+    current.batteries[0].name = 'GROWATT 5kWh';
+    const hybrid = { ...form(65), inverterSystemType: 'hybrid', includesBatteries: true };
+    expect(() => calculateCanonicalPricing(hybrid, current, { acKw: 15 })).toThrow('מותג');
+    current.invertersHybrid[0].name = 'GROWATT 20kW';
+    expect(() => calculateCanonicalPricing(hybrid, current, { acKw: 15 })).not.toThrow();
+  });
   test('storage board costs use current prices and quantities in totals and save validation', () => {
     const current = settings();
     current.storageElectricalBoards = [{ id: 'a', cost: 1200 }, { id: 'b', cost: 450 }];

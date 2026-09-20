@@ -27,6 +27,7 @@ import {
   normalizeStorageElectricalBoards,
 } from './storageElectricalBoards';
 import { availableProducts, isProductInStock } from './productAvailability';
+import { compatibleBatteries } from './batteryCompatibility';
 import { 
   Calculator, Settings, Sun, User, FileText, CheckCircle, Zap, DollarSign, 
   Trash2, Plus, Minus, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, HardHat, BatteryCharging, ExternalLink, 
@@ -2374,9 +2375,17 @@ export default function App() {
     return undefined;
   }, [adminPrices.inverters, adminPrices.invertersHybrid]);
 
-  /** מוצרים שאינם במלאי נשארים באדמין אך מוסרים מבחירות שטרם הופקו. */
+  const availableHybridBatteries = useMemo(() => compatibleBatteries({
+    inverterSystemType: quoteForm.inverterSystemType,
+    selectedHybridInverters: quoteForm.selectedHybridInverters,
+  }, {
+    invertersHybrid: adminPrices.invertersHybrid,
+    batteries: adminPrices.batteries,
+  }), [quoteForm.inverterSystemType, quoteForm.selectedHybridInverters, adminPrices.invertersHybrid, adminPrices.batteries]);
+
+  /** מוצרים שאינם במלאי או שאינם תואמים לממיר מוסרים מבחירות שטרם הופקו. */
   useEffect(() => {
-    const batteryIds = new Set(availableProducts(adminPrices.batteries).map((item) => item.id));
+    const batteryIds = new Set(availableHybridBatteries.map((item) => item.id));
     const boardIds = new Set(availableProducts(adminPrices.storageElectricalBoards).map((item) => item.id));
     setQuoteForm((prev) => {
       const selectedBatteries = (prev.selectedBatteries || []).filter((item) => batteryIds.has(item.id));
@@ -2387,7 +2396,7 @@ export default function App() {
       ) return prev;
       return { ...prev, selectedBatteries, selectedStorageElectricalBoards };
     });
-  }, [adminPrices.batteries, adminPrices.storageElectricalBoards]);
+  }, [availableHybridBatteries, adminPrices.storageElectricalBoards]);
 
   const [generatedQuote, setGeneratedQuote] = useState(null);
   /** טיוטת הצעה אחרי חישוב — לפני אישור מחיר ללקוח */
@@ -3088,7 +3097,9 @@ export default function App() {
 
   const addQuoteListItem = (formListName, adminListName) => {
     if (formListName === 'selectedPanels') return; // דגם פאנל אחד בלבד למערכת
-    const full = availableProducts(adminPrices[adminListName]);
+    const full = adminListName === 'batteries'
+      ? availableHybridBatteries
+      : availableProducts(adminPrices[adminListName]);
     if (!full || full.length === 0) return;
     let newId = full[0].id;
     if (adminListName === 'inverters' || adminListName === 'invertersHybrid') {
@@ -3159,7 +3170,7 @@ export default function App() {
       calculateQuoteWithSettings();
     } catch (error) {
       console.warn('Quote calculation blocked:', error?.message || error);
-      setErrorMsg('לא ניתן לחשב הצעה כעת – נתוני התמחור אינם תקינים. יש לפנות למנהל.');
+      setErrorMsg(error.code === 'INCOMPATIBLE_BATTERY' ? error.message : 'לא ניתן לחשב הצעה כעת – נתוני התמחור אינם תקינים. יש לפנות למנהל.');
     }
   };
 
@@ -4692,13 +4703,13 @@ export default function App() {
                         {quoteForm.includesBatteries && (
                            <div className="mt-4 border-t border-white/10 pt-4">
                              <label className="block text-xs font-semibold text-blue-300 uppercase tracking-wider mb-3">בחירת סוללות אגירה</label>
-                             {availableProducts(adminPrices.batteries).length === 0 ? <p className="text-sm text-red-400">אין סוללות זמינות במלאי.</p> : (
+                             {availableHybridBatteries.length === 0 ? <p className="text-sm text-amber-300">אין סוללות במלאי מאותו מותג של הממיר ההיברידי שנבחר. יש לבחור ממיר אחר או לעדכן את קטלוג הסוללות ושמות המותגים באדמין.</p> : (
                                <>
                                  <div className="space-y-3">
                                    {quoteForm.selectedBatteries.map((item, index) => (
                                      <div key={index} className="flex min-w-0 flex-wrap items-center gap-3">
                                        <select value={item.id} onChange={(e) => handleQuoteListChange('selectedBatteries', index, 'id', e.target.value)} className="min-w-0 flex-1 basis-[12rem] bg-slate-950 border border-white/15 rounded-xl p-2.5 text-slate-100 outline-none focus:border-blue-500/60 transition-all [color-scheme:dark]">
-                                         {availableProducts(adminPrices.batteries).map(bat => (<option key={bat.id} value={bat.id} className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f1f5f9' }}>{bat.name}</option>))}
+                                         {availableHybridBatteries.map(bat => (<option key={bat.id} value={bat.id} className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f1f5f9' }}>{bat.name}</option>))}
                                        </select>
                                        <QuoteQuantityStepper
                                          value={item.quantity}

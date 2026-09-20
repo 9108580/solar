@@ -8,6 +8,7 @@ import {
 } from './pricingSettings';
 import { assertProductInStock } from './productAvailability';
 import { resolveStorageElectricalBoardSelections } from './storageElectricalBoards';
+import { assertBatteryCompatibility } from './batteryCompatibility';
 
 function selectedProducts(rows, catalog, label, { required = false } = {}) {
   if (!Array.isArray(rows) || (required && rows.length === 0)) throw new Error(`No selected ${label}`);
@@ -64,6 +65,7 @@ export function calculateCanonicalPricing(form, settings, { acKw, hasSolarEdge =
     : [];
   const batteryCost = batteries.reduce((sum, { product, quantity }) =>
     sum + requiredProductNumber(product, 'cost', 'battery') * quantity, 0);
+  assertBatteryCompatibility(system, settings);
   const storageElectricalBoards = hasBatteries
     ? resolveStorageElectricalBoardSelections(system.selectedStorageElectricalBoards, settings.storageElectricalBoards)
     : [];
