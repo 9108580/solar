@@ -29,6 +29,7 @@ import {
 import { availableProducts, isProductInStock } from './productAvailability';
 import { compatibleBatteries } from './batteryCompatibility';
 import { productsByPrice, findDefaultInverterId } from './productSelection';
+import { QuoteVisualization, QuoteVisualizationUpload } from './QuoteVisualization';
 import { 
   Calculator, Settings, Sun, User, FileText, CheckCircle, Zap, DollarSign, 
   Trash2, Plus, Minus, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, HardHat, BatteryCharging, ExternalLink, 
@@ -2323,6 +2324,7 @@ export default function App() {
     });
   }, [availableHybridBatteries, adminPrices.storageElectricalBoards]);
 
+  const [visualizationBusy, setVisualizationBusy] = useState(false);
   const [generatedQuote, setGeneratedQuote] = useState(null);
   /** טיוטת הצעה אחרי חישוב — לפני אישור מחיר ללקוח */
   const [quoteDraft, setQuoteDraft] = useState(null);
@@ -3086,6 +3088,7 @@ export default function App() {
 
   const calculateQuote = (e) => {
     e.preventDefault();
+    if (visualizationBusy) return;
     if (pricingSettingsState.phase !== 'ready') {
       setErrorMsg(pricingSettingsState.message || 'לא ניתן לחשב הצעה כעת – נתוני התמחור לא נטענו. יש לנסות שוב או לפנות למנהל.');
       return;
@@ -4897,6 +4900,11 @@ export default function App() {
                        </div>
                     </div>
 
+                    <QuoteVisualizationUpload
+                      asset={quoteForm.visualization}
+                      onChange={(visualization) => setQuoteForm((prev) => ({ ...prev, visualization }))}
+                      onBusyChange={setVisualizationBusy}
+                    />
                     {/* סיכומים נוספים */}
                     <div className="md:col-span-2 pt-4 border-t border-white/8 mt-2">
                        <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">סיכומים נוספים (אופציונלי)</label>
@@ -4932,7 +4940,7 @@ export default function App() {
                   {/* Glow effect behind button */}
                   <div className="absolute -inset-1 rounded-2xl opacity-60 blur-md group-hover:opacity-90 transition-opacity duration-300"
                        style={{ background: 'linear-gradient(135deg, #f97316, #fbbf24, #f97316)' }}></div>
-                  <button type="submit" disabled={pricingSettingsState.phase !== 'ready'}
+                  <button type="submit" disabled={visualizationBusy || pricingSettingsState.phase !== 'ready'}
                     className="relative flex items-center gap-3 text-slate-900 px-10 py-4 rounded-2xl font-black text-xl shadow-2xl transition-all duration-200 hover:scale-[1.03] active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50"
                     style={{ background: 'linear-gradient(135deg, #f97316 0%, #fbbf24 50%, #f97316 100%)', backgroundSize: '200%' }}>
                     <FileText className="w-6 h-6" />
@@ -5915,6 +5923,7 @@ export default function App() {
                 </section>
 
                 {/* --- PAGE 6.1: ADDITIONAL NOTES (CONDITIONAL) --- */}
+                <QuoteVisualization asset={generatedQuote.visualization} />
                 {generatedQuote.additionalNotes && generatedQuote.additionalNotes.trim() !== '' && (
                   <section className="quote-print-section py-10 px-8 md:px-20 bg-white border-t border-slate-200 print:py-5">
                      <div className="max-w-4xl mx-auto bg-blue-50 border border-blue-100 p-8 rounded-3xl shadow-sm">
