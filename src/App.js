@@ -1922,13 +1922,14 @@ const EMPTY_ADMIN_SETTINGS = {
   companyPhone: '',
 };
 /** ממיר הגדרות פאנל ישנות (שדות גלובליים) לרשימת מוצרים כמו ממירים */
-function migratePanelsCatalog(saved) {
+export function migratePanelsCatalog(saved) {
   if (Array.isArray(saved?.panels) && saved.panels.length > 0) {
     return saved.panels.map((p, idx) => ({
       id: p?.id || `pnl-${idx}`,
       name: typeof p?.name === 'string' && p.name.trim() ? p.name : `פאנל ${idx + 1}`,
       powerWatts: p?.powerWatts,
       pricePerWattUsd: p?.pricePerWattUsd,
+      inStock: p?.inStock !== false,
       logo: p?.logo != null ? p.logo : null,
       datasheet: p?.datasheet != null ? p.datasheet : null,
     }));

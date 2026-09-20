@@ -1,6 +1,17 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import App from './App';
+import App, { migratePanelsCatalog } from './App';
+import { productsByPrice } from './productSelection';
+
+test('loaded panel settings preserve stock before choosing the cheapest panel', () => {
+  const panels = migratePanelsCatalog({ panels: [
+    { id: 'risen', name: 'RISEN', pricePerWattUsd: 0.09, inStock: false },
+    { id: 'aiko', name: 'AIKO', pricePerWattUsd: 0.15 },
+    { id: 'space', name: 'SOLAR SPACE', pricePerWattUsd: 0.1, inStock: true },
+  ] });
+  expect(panels[0].inStock).toBe(false);
+  expect(productsByPrice(panels, 'pricePerWattUsd').map(p => p.id)).toEqual(['space', 'aiko']);
+});
 
 test('renders login screen without crashing', () => {
   render(
