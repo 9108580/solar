@@ -28,6 +28,7 @@ import {
 } from './storageElectricalBoards';
 import { availableProducts, isProductInStock } from './productAvailability';
 import { compatibleBatteries } from './batteryCompatibility';
+import { productsByPrice, findDefaultInverterId } from './productSelection';
 import { 
   Calculator, Settings, Sun, User, FileText, CheckCircle, Zap, DollarSign, 
   Trash2, Plus, Minus, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, HardHat, BatteryCharging, ExternalLink, 
@@ -1972,74 +1973,6 @@ function normalizeAdminSettings(saved) {
   };
 }
 
-function normalizeInvName(s) {
-  return String(s || '').trim().toUpperCase().replace(/\s+/g, ' ');
-}
-
-function effectiveInverterKw(inv) {
-  const fromField = Number(inv?.capacityKw);
-  if (Number.isFinite(fromField) && fromField > 0) return fromField;
-  const raw = String(inv?.name || '');
-  const mKw = raw.match(/(\d+(?:\.\d+)?)\s*kW\b/i);
-  if (mKw) return Number(mKw[1]);
-  const mHe = raw.match(/(\d+(?:\.\d+)?)\s*קוטל/i);
-  if (mHe) return Number(mHe[1]);
-  // "SOLAREDGE NEXIS 20" / "SE 15" — מספר בסוף השם בלי יחידה
-  const mTrail = raw.match(/(?:^|[\s\-_/])(\d+(?:\.\d+)?)\s*$/i);
-  if (mTrail) {
-    const n = Number(mTrail[1]);
-    if (Number.isFinite(n) && n >= 1 && n <= 300) return n;
-  }
-  return NaN;
-}
-
-function isSolisInverter(inv) {
-  const name = String(inv?.name || '');
-  return /\bSOLIS\b/i.test(normalizeInvName(name)) || /סוליס/.test(name);
-}
-
-/** ברירת מחדל לפי סוג מערכת — ביתית: SOLIS ~15kW, מסחרית: SOLIS ~50kW */
-function findDefaultInverterId(adminList, systemType) {
-  const pool = adminList || [];
-  if (!pool.length) return '';
-
-  const targetKw = systemType === 'residential' ? 15 : 50;
-  const targetLabel = `SOLIS ${targetKw}`;
-
-  const exact = pool.find((inv) => normalizeInvName(inv.name) === targetLabel);
-  if (exact) return exact.id;
-
-  // גם "SOLIS 15kW" / "Solis 15 KW" וכו'
-  const exactWithUnit = pool.find((inv) => {
-    const n = normalizeInvName(inv.name);
-    return n === `SOLIS ${targetKw}KW` || n === `SOLIS ${targetKw} KW`;
-  });
-  if (exactWithUnit) return exactWithUnit.id;
-
-  const solisCandidates = pool.filter(isSolisInverter);
-  if (solisCandidates.length) {
-    const kwMatch = solisCandidates.find((inv) => effectiveInverterKw(inv) === targetKw);
-    if (kwMatch) return kwMatch.id;
-
-    const nameHasKw = solisCandidates.find((inv) =>
-      new RegExp(`\\b${targetKw}\\b`).test(normalizeInvName(inv.name))
-    );
-    if (nameHasKw) return nameHasKw.id;
-
-    const byNearest = [...solisCandidates].sort(
-      (a, b) =>
-        Math.abs(effectiveInverterKw(a) - targetKw) - Math.abs(effectiveInverterKw(b) - targetKw)
-    );
-    return byNearest[0].id;
-  }
-
-  const byNearestAll = [...pool].sort(
-    (a, b) =>
-      Math.abs(effectiveInverterKw(a) - targetKw) - Math.abs(effectiveInverterKw(b) - targetKw)
-  );
-  return byNearestAll[0]?.id || pool[0].id;
-}
-
 export default function App() {
   const routeParams = useParams();
   const navigate = useNavigate();
@@ -2281,7 +2214,7 @@ export default function App() {
 
   /** התאמת בחירת פאנלים + סנכרון DC מדויק אחרי טעינת מחירון — דגם אחד בלבד */
   useEffect(() => {
-    const panels = availableProducts(adminPrices.panels);
+    const panels = productsByPrice(adminPrices.panels, 'pricePerWattUsd');
     if (!panels.length) return undefined;
     setQuoteForm((prev) => {
       const rows = prev.selectedPanels || [];
@@ -2325,11 +2258,10 @@ export default function App() {
     return undefined;
   }, [adminPrices.panels]);
 
-  /** אחרי טעינת מחירון — ברירת מחדל Solis (פעם אחת כשיש Solis במחירון); תמיד מתקנים id חסר */
-  const solisInverterDefaultAppliedRef = useRef(false);
+  /** Initialize or repair selections using the cheapest available inverter. */
   useEffect(() => {
-    const ongrid = availableProducts(adminPrices.inverters);
-    const hybrid = availableProducts(adminPrices.invertersHybrid);
+    const ongrid = productsByPrice(adminPrices.inverters);
+    const hybrid = productsByPrice(adminPrices.invertersHybrid);
     if (!ongrid.length && !hybrid.length) return undefined;
 
     setQuoteForm((prev) => {
@@ -2349,13 +2281,6 @@ export default function App() {
               });
         if (rows.length === 0) changed = true;
 
-        if (!solisInverterDefaultAppliedRef.current && list.some(isSolisInverter)) {
-          const first = list.find((inv) => inv.id === next[0]?.id);
-          if (!first || !isSolisInverter(first)) {
-            next = [{ ...next[0], id: defaultId, quantity: next[0]?.quantity || 1 }, ...next.slice(1)];
-            changed = true;
-          }
-        }
         return changed ? next : null;
       };
 
@@ -2369,9 +2294,6 @@ export default function App() {
       };
     });
 
-    if (ongrid.some(isSolisInverter) || hybrid.some(isSolisInverter)) {
-      solisInverterDefaultAppliedRef.current = true;
-    }
     return undefined;
   }, [adminPrices.inverters, adminPrices.invertersHybrid]);
 
@@ -2729,8 +2651,8 @@ export default function App() {
 
   // --- עזרי תצוגה טרום-חישוב (לשימוש בטופס הסוכן) ---
   const primarySelectedPanel =
-    availableProducts(adminPrices.panels).find((p) => p.id === quoteForm.selectedPanels?.[0]?.id) ||
-    availableProducts(adminPrices.panels)[0] ||
+    productsByPrice(adminPrices.panels, 'pricePerWattUsd').find((p) => p.id === quoteForm.selectedPanels?.[0]?.id) ||
+    productsByPrice(adminPrices.panels, 'pricePerWattUsd')[0] ||
     null;
   const panelPowerConst = Number.isFinite(Number(primarySelectedPanel?.powerWatts))
     ? Number(primarySelectedPanel.powerWatts)
@@ -2935,8 +2857,8 @@ export default function App() {
     const enforced = enforceSystemTypeForDc(formLike, dcKw);
     if (enforced === formLike) return formLike;
 
-    const defaultInv = findDefaultInverterId(availableProducts(adminPrices.inverters), 'commercial');
-    const defaultHyb = findDefaultInverterId(availableProducts(adminPrices.invertersHybrid), 'commercial');
+    const defaultInv = findDefaultInverterId(productsByPrice(adminPrices.inverters), 'commercial');
+    const defaultHyb = findDefaultInverterId(productsByPrice(adminPrices.invertersHybrid), 'commercial');
     return {
       ...enforced,
       ...(defaultInv
@@ -2959,8 +2881,8 @@ export default function App() {
         newState.optimizerAcknowledge = false;
       }
       if (name === 'systemType') {
-        const defaultInv = findDefaultInverterId(availableProducts(adminPrices.inverters), val);
-        const defaultHyb = findDefaultInverterId(availableProducts(adminPrices.invertersHybrid), val);
+        const defaultInv = findDefaultInverterId(productsByPrice(adminPrices.inverters), val);
+        const defaultHyb = findDefaultInverterId(productsByPrice(adminPrices.invertersHybrid), val);
         if (defaultInv) {
           newState.selectedInverters = prev.selectedInverters.map((r) => ({ ...r, id: defaultInv }));
         }
@@ -3079,7 +3001,7 @@ export default function App() {
       let updatedList = [...(prev[listName] || [])];
       // פאנלים: תמיד שורה אחת בלבד
       if (listName === 'selectedPanels') {
-        const current = updatedList[0] || { id: availableProducts(adminPrices.panels)[0]?.id, quantity: 1 };
+        const current = updatedList[0] || { id: productsByPrice(adminPrices.panels, 'pricePerWattUsd')[0]?.id, quantity: 1 };
         updatedList = [current];
         index = 0;
       }
@@ -4581,7 +4503,7 @@ export default function App() {
                     {/* בחירת פאנלים — דגם אחד בלבד למערכת */}
                     <div className="min-w-0 md:col-span-2 rounded-2xl border border-white/10 bg-black/20 p-5">
                       <label className="block text-xs font-semibold text-blue-400 uppercase tracking-wider mb-3">בחירת פאנלים</label>
-                      {availableProducts(adminPrices.panels).length === 0 ? (
+                      {productsByPrice(adminPrices.panels, 'pricePerWattUsd').length === 0 ? (
                         <p className="text-sm text-red-400">אין דגמי פאנלים זמינים במלאי.</p>
                       ) : (
                         <div className="flex min-w-0 flex-wrap items-center gap-3">
@@ -4590,7 +4512,7 @@ export default function App() {
                             onChange={(e) => handleQuoteListChange('selectedPanels', 0, 'id', e.target.value)}
                             className="min-w-0 flex-1 basis-[12rem] bg-slate-950 border border-white/15 rounded-xl p-2.5 text-slate-100 outline-none focus:border-blue-500/60 transition-all [color-scheme:dark]"
                           >
-                            {availableProducts(adminPrices.panels).map((panel) => (
+                            {productsByPrice(adminPrices.panels, 'pricePerWattUsd').map((panel) => (
                               <option
                                 key={panel.id}
                                 value={panel.id}
@@ -4665,7 +4587,7 @@ export default function App() {
                       <label className="block text-xs font-semibold text-blue-400 uppercase tracking-wider mb-3">בחירת ממירים</label>
                       {(() => {
                         const isHybrid = quoteForm.inverterSystemType === 'hybrid';
-                        const adminList = availableProducts(isHybrid ? adminPrices.invertersHybrid : adminPrices.inverters);
+                        const adminList = productsByPrice(isHybrid ? adminPrices.invertersHybrid : adminPrices.inverters);
                         const formListName = isHybrid ? 'selectedHybridInverters' : 'selectedInverters';
                         const currentSelections = quoteForm[formListName];
                         if (adminList.length === 0) return <p className="text-sm text-red-400">לא קיימים דגמים במערכת.</p>;
