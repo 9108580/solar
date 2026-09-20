@@ -27,6 +27,7 @@ import {
   normalizeStorageElectricalBoards,
   resolveStorageElectricalBoardSelections,
 } from './storageElectricalBoards';
+import { availableProducts, isProductInStock } from './productAvailability';
 import { 
   Calculator, Settings, Sun, User, FileText, CheckCircle, Zap, DollarSign, 
   Trash2, Plus, Minus, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, HardHat, BatteryCharging, ExternalLink, 
@@ -1495,6 +1496,21 @@ function QuoteQuantityStepper({ value, onChange, onDelta, min = 1, label = 'כמ
   );
 }
 
+function ProductAvailabilityToggle({ product, onChange }) {
+  const checked = isProductInStock(product);
+  return (
+    <label className={`inline-flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${checked ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' : 'border-slate-600/40 bg-slate-800/50 text-slate-400'}`}>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+        className="h-4 w-4 accent-emerald-500"
+      />
+      האם קיים במלאי
+    </label>
+  );
+}
+
 const DATASHEET_MAX_BYTES = 8 * 1024 * 1024;
 const QUOTE_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 /** ריבוע אחיד ללוגואים בהצעת מחיר (contain בתוך הריבוע) */
@@ -2264,7 +2280,7 @@ export default function App() {
 
   /** התאמת בחירת פאנלים + סנכרון DC מדויק אחרי טעינת מחירון — דגם אחד בלבד */
   useEffect(() => {
-    const panels = adminPrices.panels || [];
+    const panels = availableProducts(adminPrices.panels);
     if (!panels.length) return undefined;
     setQuoteForm((prev) => {
       const rows = prev.selectedPanels || [];
@@ -2311,8 +2327,8 @@ export default function App() {
   /** אחרי טעינת מחירון — ברירת מחדל Solis (פעם אחת כשיש Solis במחירון); תמיד מתקנים id חסר */
   const solisInverterDefaultAppliedRef = useRef(false);
   useEffect(() => {
-    const ongrid = adminPrices.inverters || [];
-    const hybrid = adminPrices.invertersHybrid || [];
+    const ongrid = availableProducts(adminPrices.inverters);
+    const hybrid = availableProducts(adminPrices.invertersHybrid);
     if (!ongrid.length && !hybrid.length) return undefined;
 
     setQuoteForm((prev) => {
@@ -2357,6 +2373,21 @@ export default function App() {
     }
     return undefined;
   }, [adminPrices.inverters, adminPrices.invertersHybrid]);
+
+  /** מוצרים שאינם במלאי נשארים באדמין אך מוסרים מבחירות שטרם הופקו. */
+  useEffect(() => {
+    const batteryIds = new Set(availableProducts(adminPrices.batteries).map((item) => item.id));
+    const boardIds = new Set(availableProducts(adminPrices.storageElectricalBoards).map((item) => item.id));
+    setQuoteForm((prev) => {
+      const selectedBatteries = (prev.selectedBatteries || []).filter((item) => batteryIds.has(item.id));
+      const selectedStorageElectricalBoards = (prev.selectedStorageElectricalBoards || []).filter((item) => boardIds.has(item.id));
+      if (
+        selectedBatteries.length === (prev.selectedBatteries || []).length &&
+        selectedStorageElectricalBoards.length === (prev.selectedStorageElectricalBoards || []).length
+      ) return prev;
+      return { ...prev, selectedBatteries, selectedStorageElectricalBoards };
+    });
+  }, [adminPrices.batteries, adminPrices.storageElectricalBoards]);
 
   const [generatedQuote, setGeneratedQuote] = useState(null);
   /** טיוטת הצעה אחרי חישוב — לפני אישור מחיר ללקוח */
@@ -2689,8 +2720,8 @@ export default function App() {
 
   // --- עזרי תצוגה טרום-חישוב (לשימוש בטופס הסוכן) ---
   const primarySelectedPanel =
-    (adminPrices.panels || []).find((p) => p.id === quoteForm.selectedPanels?.[0]?.id) ||
-    (adminPrices.panels || [])[0] ||
+    availableProducts(adminPrices.panels).find((p) => p.id === quoteForm.selectedPanels?.[0]?.id) ||
+    availableProducts(adminPrices.panels)[0] ||
     null;
   const panelPowerConst = Number.isFinite(Number(primarySelectedPanel?.powerWatts))
     ? Number(primarySelectedPanel.powerWatts)
@@ -2895,8 +2926,8 @@ export default function App() {
     const enforced = enforceSystemTypeForDc(formLike, dcKw);
     if (enforced === formLike) return formLike;
 
-    const defaultInv = findDefaultInverterId(adminPrices.inverters, 'commercial');
-    const defaultHyb = findDefaultInverterId(adminPrices.invertersHybrid, 'commercial');
+    const defaultInv = findDefaultInverterId(availableProducts(adminPrices.inverters), 'commercial');
+    const defaultHyb = findDefaultInverterId(availableProducts(adminPrices.invertersHybrid), 'commercial');
     return {
       ...enforced,
       ...(defaultInv
@@ -2919,8 +2950,8 @@ export default function App() {
         newState.optimizerAcknowledge = false;
       }
       if (name === 'systemType') {
-        const defaultInv = findDefaultInverterId(adminPrices.inverters, val);
-        const defaultHyb = findDefaultInverterId(adminPrices.invertersHybrid, val);
+        const defaultInv = findDefaultInverterId(availableProducts(adminPrices.inverters), val);
+        const defaultHyb = findDefaultInverterId(availableProducts(adminPrices.invertersHybrid), val);
         if (defaultInv) {
           newState.selectedInverters = prev.selectedInverters.map((r) => ({ ...r, id: defaultInv }));
         }
@@ -3039,7 +3070,7 @@ export default function App() {
       let updatedList = [...(prev[listName] || [])];
       // פאנלים: תמיד שורה אחת בלבד
       if (listName === 'selectedPanels') {
-        const current = updatedList[0] || { id: (adminPrices.panels || [])[0]?.id, quantity: 1 };
+        const current = updatedList[0] || { id: availableProducts(adminPrices.panels)[0]?.id, quantity: 1 };
         updatedList = [current];
         index = 0;
       }
@@ -3057,7 +3088,7 @@ export default function App() {
 
   const addQuoteListItem = (formListName, adminListName) => {
     if (formListName === 'selectedPanels') return; // דגם פאנל אחד בלבד למערכת
-    const full = adminPrices[adminListName];
+    const full = availableProducts(adminPrices[adminListName]);
     if (!full || full.length === 0) return;
     let newId = full[0].id;
     if (adminListName === 'inverters' || adminListName === 'invertersHybrid') {
@@ -3944,6 +3975,7 @@ export default function App() {
                               <Trash2 className="w-4 h-4" />
                             </button>
                           </div>
+                          <ProductAvailabilityToggle product={panel} onChange={(value) => updateAdminListItem('panels', panel.id, 'inStock', value)} />
                           <div className="flex gap-2 text-sm">
                             <div className="flex-1">
                               <label className="text-slate-500 text-xs block">הספק (וואט)</label>
@@ -3995,6 +4027,7 @@ export default function App() {
                             name: 'פאנל חדש',
                             powerWatts: '',
                             pricePerWattUsd: '',
+                            inStock: true,
                             logo: null,
                             datasheet: null,
                           })
@@ -4138,6 +4171,7 @@ export default function App() {
                               <input type="text" value={inv.name} onChange={(e) => updateAdminListItem('inverters', inv.id, 'name', e.target.value)} className="flex-1 bg-transparent border-b border-white/15 p-1 text-white outline-none focus:border-blue-400 transition-all" placeholder="שם הממיר" />
                               <button onClick={() => removeAdminListItem('inverters', inv.id)} className="p-1 text-slate-500 hover:text-red-400 transition-colors"><Trash2 className="w-4 h-4" /></button>
                             </div>
+                            <ProductAvailabilityToggle product={inv} onChange={(value) => updateAdminListItem('inverters', inv.id, 'inStock', value)} />
                             <div className="flex gap-2 text-sm">
                               <div className="flex-1"><label className="text-slate-500 text-xs block">הספק (kW)</label><input type="number" value={inv.capacityKw} onChange={(e) => updateAdminListItem('inverters', inv.id, 'capacityKw', e.target.value === '' ? '' : Number(e.target.value))} className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-white outline-none focus:border-blue-500/60 transition-all" /></div>
                               <div className="flex-1"><label className="text-slate-500 text-xs block">עלות (₪)</label><input type="number" value={inv.cost} onChange={(e) => updateAdminListItem('inverters', inv.id, 'cost', e.target.value === '' ? '' : Number(e.target.value))} className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-white outline-none focus:border-blue-500/60 transition-all" /></div>
@@ -4176,7 +4210,7 @@ export default function App() {
                             />
                           </div>
                         ))}
-                        <button onClick={() => addAdminListItem('inverters', { name: 'ממיר חדש', cost: '', capacityKw: 10, isSolarEdge: false, inverterLogoKey: 'auto', customLogo: null, datasheet: null })} className="w-full mt-2 flex items-center justify-center gap-2 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 text-blue-400 p-2 rounded-xl text-sm transition-all">
+                        <button onClick={() => addAdminListItem('inverters', { name: 'ממיר חדש', cost: '', capacityKw: 10, inStock: true, isSolarEdge: false, inverterLogoKey: 'auto', customLogo: null, datasheet: null })} className="w-full mt-2 flex items-center justify-center gap-2 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 text-blue-400 p-2 rounded-xl text-sm transition-all">
                           <Plus className="w-4 h-4" /> הוסף ממיר אונגריד
                         </button>
                       </div>
@@ -4190,6 +4224,7 @@ export default function App() {
                               <input type="text" value={inv.name} onChange={(e) => updateAdminListItem('invertersHybrid', inv.id, 'name', e.target.value)} className="flex-1 bg-transparent border-b border-white/15 p-1 text-white outline-none focus:border-blue-400 transition-all" placeholder="שם הממיר" />
                               <button onClick={() => removeAdminListItem('invertersHybrid', inv.id)} className="p-1 text-slate-500 hover:text-red-400 transition-colors"><Trash2 className="w-4 h-4" /></button>
                             </div>
+                            <ProductAvailabilityToggle product={inv} onChange={(value) => updateAdminListItem('invertersHybrid', inv.id, 'inStock', value)} />
                             <div className="flex gap-2 text-sm">
                               <div className="flex-1"><label className="text-slate-500 text-xs block">הספק (kW)</label><input type="number" value={inv.capacityKw} onChange={(e) => updateAdminListItem('invertersHybrid', inv.id, 'capacityKw', e.target.value === '' ? '' : Number(e.target.value))} className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-white outline-none focus:border-blue-500/60 transition-all" /></div>
                               <div className="flex-1"><label className="text-slate-500 text-xs block">עלות (₪)</label><input type="number" value={inv.cost} onChange={(e) => updateAdminListItem('invertersHybrid', inv.id, 'cost', e.target.value === '' ? '' : Number(e.target.value))} className="w-full bg-white/5 border border-white/10 rounded-lg p-1.5 text-white outline-none focus:border-blue-500/60 transition-all" /></div>
@@ -4228,7 +4263,7 @@ export default function App() {
                             />
                           </div>
                         ))}
-                        <button onClick={() => addAdminListItem('invertersHybrid', { name: 'ממיר היברידי חדש', cost: '', capacityKw: 10, isSolarEdge: false, inverterLogoKey: 'auto', customLogo: null, datasheet: null })} className="w-full mt-2 flex items-center justify-center gap-2 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 text-blue-400 p-2 rounded-xl text-sm transition-all">
+                        <button onClick={() => addAdminListItem('invertersHybrid', { name: 'ממיר היברידי חדש', cost: '', capacityKw: 10, inStock: true, isSolarEdge: false, inverterLogoKey: 'auto', customLogo: null, datasheet: null })} className="w-full mt-2 flex items-center justify-center gap-2 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 text-blue-400 p-2 rounded-xl text-sm transition-all">
                           <Plus className="w-4 h-4" /> הוסף ממיר היברידי
                         </button>
                       </div>
@@ -4256,6 +4291,7 @@ export default function App() {
                             </div>
                             <button onClick={() => removeAdminListItem('batteries', bat.id)} className="p-2 text-slate-500 hover:text-red-400 transition-colors"><Trash2 className="w-4 h-4" /></button>
                           </div>
+                          <ProductAvailabilityToggle product={bat} onChange={(value) => updateAdminListItem('batteries', bat.id, 'inStock', value)} />
                           <AdminLogoRow
                             label="לוגו סוללה להצעת מחיר"
                             logo={bat.logo}
@@ -4270,7 +4306,7 @@ export default function App() {
                           />
                         </div>
                      ))}
-                     <button onClick={() => addAdminListItem('batteries', { name: 'סוללה חדשה', cost: '', logo: null, datasheet: null })} className="mt-3 flex items-center gap-1 text-sm text-blue-400 hover:text-blue-300 transition-colors">
+                     <button onClick={() => addAdminListItem('batteries', { name: 'סוללה חדשה', cost: '', inStock: true, logo: null, datasheet: null })} className="mt-3 flex items-center gap-1 text-sm text-blue-400 hover:text-blue-300 transition-colors">
                         <Plus className="w-4 h-4" /> הוסף סוללה למחירון
                      </button>
                   </div>
@@ -4298,6 +4334,7 @@ export default function App() {
                           />
                           <button onClick={() => removeAdminListItem('storageElectricalBoards', board.id)} className="p-2 text-slate-500 hover:text-red-400 transition-colors"><Trash2 className="w-4 h-4" /></button>
                         </div>
+                        <ProductAvailabilityToggle product={board} onChange={(value) => updateAdminListItem('storageElectricalBoards', board.id, 'inStock', value)} />
                         <textarea
                           value={board.description || ''}
                           onChange={(e) => updateAdminListItem('storageElectricalBoards', board.id, 'description', e.target.value)}
@@ -4306,7 +4343,7 @@ export default function App() {
                         />
                       </div>
                     ))}
-                    <button onClick={() => addAdminListItem('storageElectricalBoards', { name: 'לוח חשמל חדש לאגירה', description: '' })} className="mt-3 flex items-center gap-1 text-sm text-blue-400 hover:text-blue-300 transition-colors">
+                    <button onClick={() => addAdminListItem('storageElectricalBoards', { name: 'לוח חשמל חדש לאגירה', description: '', inStock: true })} className="mt-3 flex items-center gap-1 text-sm text-blue-400 hover:text-blue-300 transition-colors">
                       <Plus className="w-4 h-4" /> הוסף לוח חשמל לאגירה
                     </button>
                   </div>
@@ -4531,8 +4568,8 @@ export default function App() {
                     {/* בחירת פאנלים — דגם אחד בלבד למערכת */}
                     <div className="min-w-0 md:col-span-2 rounded-2xl border border-white/10 bg-black/20 p-5">
                       <label className="block text-xs font-semibold text-blue-400 uppercase tracking-wider mb-3">בחירת פאנלים</label>
-                      {(adminPrices.panels || []).length === 0 ? (
-                        <p className="text-sm text-red-400">לא הוגדרו דגמי פאנלים באדמין.</p>
+                      {availableProducts(adminPrices.panels).length === 0 ? (
+                        <p className="text-sm text-red-400">אין דגמי פאנלים זמינים במלאי.</p>
                       ) : (
                         <div className="flex min-w-0 flex-wrap items-center gap-3">
                           <select
@@ -4540,7 +4577,7 @@ export default function App() {
                             onChange={(e) => handleQuoteListChange('selectedPanels', 0, 'id', e.target.value)}
                             className="min-w-0 flex-1 basis-[12rem] bg-slate-950 border border-white/15 rounded-xl p-2.5 text-slate-100 outline-none focus:border-blue-500/60 transition-all [color-scheme:dark]"
                           >
-                            {(adminPrices.panels || []).map((panel) => (
+                            {availableProducts(adminPrices.panels).map((panel) => (
                               <option
                                 key={panel.id}
                                 value={panel.id}
@@ -4615,7 +4652,7 @@ export default function App() {
                       <label className="block text-xs font-semibold text-blue-400 uppercase tracking-wider mb-3">בחירת ממירים</label>
                       {(() => {
                         const isHybrid = quoteForm.inverterSystemType === 'hybrid';
-                        const adminList = isHybrid ? adminPrices.invertersHybrid : adminPrices.inverters;
+                        const adminList = availableProducts(isHybrid ? adminPrices.invertersHybrid : adminPrices.inverters);
                         const formListName = isHybrid ? 'selectedHybridInverters' : 'selectedInverters';
                         const currentSelections = quoteForm[formListName];
                         if (adminList.length === 0) return <p className="text-sm text-red-400">לא קיימים דגמים במערכת.</p>;
@@ -4653,13 +4690,13 @@ export default function App() {
                         {quoteForm.includesBatteries && (
                            <div className="mt-4 border-t border-white/10 pt-4">
                              <label className="block text-xs font-semibold text-blue-300 uppercase tracking-wider mb-3">בחירת סוללות אגירה</label>
-                             {adminPrices.batteries.length === 0 ? <p className="text-sm text-red-400">לא הוגדרו סוללות באדמין.</p> : (
+                             {availableProducts(adminPrices.batteries).length === 0 ? <p className="text-sm text-red-400">אין סוללות זמינות במלאי.</p> : (
                                <>
                                  <div className="space-y-3">
                                    {quoteForm.selectedBatteries.map((item, index) => (
                                      <div key={index} className="flex min-w-0 flex-wrap items-center gap-3">
                                        <select value={item.id} onChange={(e) => handleQuoteListChange('selectedBatteries', index, 'id', e.target.value)} className="min-w-0 flex-1 basis-[12rem] bg-slate-950 border border-white/15 rounded-xl p-2.5 text-slate-100 outline-none focus:border-blue-500/60 transition-all [color-scheme:dark]">
-                                         {adminPrices.batteries.map(bat => (<option key={bat.id} value={bat.id} className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f1f5f9' }}>{bat.name}</option>))}
+                                         {availableProducts(adminPrices.batteries).map(bat => (<option key={bat.id} value={bat.id} className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f1f5f9' }}>{bat.name}</option>))}
                                        </select>
                                        <QuoteQuantityStepper
                                          value={item.quantity}
@@ -4675,18 +4712,18 @@ export default function App() {
 
                              <div className="mt-6 border-t border-white/10 pt-4">
                                <label className="block text-xs font-semibold text-blue-300 uppercase tracking-wider mb-3">לוחות חשמל לאגירה</label>
-                               {(adminPrices.storageElectricalBoards || []).length === 0 ? (
-                                 <p className="text-sm text-slate-400">לא הוגדרו לוחות חשמל לאגירה באדמין.</p>
+                               {availableProducts(adminPrices.storageElectricalBoards).length === 0 ? (
+                                 <p className="text-sm text-slate-400">אין לוחות חשמל לאגירה זמינים במלאי.</p>
                                ) : (
                                  <>
                                    <div className="space-y-3">
                                      {(quoteForm.selectedStorageElectricalBoards || []).map((item, index) => {
-                                       const selectedBoard = adminPrices.storageElectricalBoards.find((board) => board.id === item.id);
+                                       const selectedBoard = availableProducts(adminPrices.storageElectricalBoards).find((board) => board.id === item.id);
                                        return (
                                          <div key={index} className="rounded-xl border border-white/8 bg-black/15 p-3">
                                            <div className="flex min-w-0 flex-wrap items-center gap-3">
                                              <select value={item.id} onChange={(e) => handleQuoteListChange('selectedStorageElectricalBoards', index, 'id', e.target.value)} className="min-w-0 flex-1 basis-[12rem] bg-slate-950 border border-white/15 rounded-xl p-2.5 text-slate-100 outline-none focus:border-blue-500/60 transition-all [color-scheme:dark]">
-                                               {adminPrices.storageElectricalBoards.map((board) => (<option key={board.id} value={board.id} className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f1f5f9' }}>{board.name}</option>))}
+                                               {availableProducts(adminPrices.storageElectricalBoards).map((board) => (<option key={board.id} value={board.id} className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f1f5f9' }}>{board.name}</option>))}
                                              </select>
                                              <QuoteQuantityStepper
                                                value={item.quantity}

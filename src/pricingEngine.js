@@ -6,12 +6,14 @@ import {
   requiredProductNumber,
   validatePricingSettings,
 } from './pricingSettings';
+import { assertProductInStock } from './productAvailability';
 
 function selectedProducts(rows, catalog, label, { required = false } = {}) {
   if (!Array.isArray(rows) || (required && rows.length === 0)) throw new Error(`No selected ${label}`);
   return (rows || []).map((selection) => {
     const product = (catalog || []).find((item) => item.id === selection.id);
     if (!product) throw new Error(`Unknown selected ${label}: ${selection.id}`);
+    assertProductInStock(product, label);
     const quantity = requiredNumberSetting(selection, 'quantity');
     if (!Number.isInteger(quantity) || quantity <= 0) throw new Error(`Invalid ${label} quantity`);
     return { product, quantity };

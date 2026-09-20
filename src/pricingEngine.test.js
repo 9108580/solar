@@ -117,6 +117,26 @@ describe('canonical pricing engine', () => {
     expect(() => calculateCanonicalPricing(form(65), broken, { acKw: 15 })).toThrow('cost');
   });
 
+  test.each([
+    ['panels', 'panel'],
+    ['inverters', 'inverter'],
+  ])('an out-of-stock %s selection is blocked by canonical pricing', (catalogKey, label) => {
+    const current = settings();
+    current[catalogKey][0].inStock = false;
+    expect(() => calculateCanonicalPricing(form(65), current, { acKw: 15 })).toThrow(`Selected ${label} is not in stock`);
+  });
+
+  test('an out-of-stock battery is blocked for a hybrid system', () => {
+    const current = settings();
+    current.batteries[0].inStock = false;
+    const hybrid = {
+      ...form(65),
+      inverterSystemType: 'hybrid',
+      includesBatteries: true,
+    };
+    expect(() => calculateCanonicalPricing(hybrid, current, { acKw: 15 })).toThrow('Selected battery is not in stock');
+  });
+
   test('production meter surcharge comes from settings and accepts zero', () => {
     const productionMeterForm = { ...form(65), residentialTrack: 'production_meter' };
     const current = settings();

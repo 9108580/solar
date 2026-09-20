@@ -29,3 +29,10 @@ test('rejects stale products and invalid quantities', () => {
   expect(() => resolveStorageElectricalBoardSelections([{ id: 'a', quantity: 0 }], [{ id: 'a' }]))
     .toThrow('Invalid storage electrical board quantity');
 });
+
+test('rejects a storage electrical board that is not in stock', () => {
+  expect(() => resolveStorageElectricalBoardSelections(
+    [{ id: 'a', quantity: 1 }],
+    [{ id: 'a', name: 'לוח A', inStock: false }]
+  )).toThrow('not in stock');
+});

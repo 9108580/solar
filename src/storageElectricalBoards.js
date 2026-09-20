@@ -1,3 +1,5 @@
+import { assertProductInStock } from './productAvailability';
+
 export function normalizeStorageElectricalBoards(value) {
   if (!Array.isArray(value)) return [];
   return value.map((item, index) => ({
@@ -14,6 +16,7 @@ export function resolveStorageElectricalBoardSelections(selections, catalog) {
   return selections.map((selection) => {
     const product = products.find((item) => item.id === selection?.id);
     if (!product) throw new Error(`Unknown selected storage electrical board: ${selection?.id || ''}`);
+    assertProductInStock(product, 'storage electrical board');
     const quantity = Number(selection?.quantity);
     if (!Number.isInteger(quantity) || quantity <= 0) {
       throw new Error('Invalid storage electrical board quantity');
