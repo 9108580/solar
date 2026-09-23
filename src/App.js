@@ -3098,7 +3098,7 @@ export default function App() {
       calculateQuoteWithSettings();
     } catch (error) {
       console.warn('Quote calculation blocked:', error?.message || error);
-      setErrorMsg(['INCOMPATIBLE_BATTERY', 'MISSING_BATTERY'].includes(error.code) ? error.message : 'לא ניתן לחשב הצעה כעת – נתוני התמחור אינם תקינים. יש לפנות למנהל.');
+      setErrorMsg(error.code === 'INCOMPATIBLE_BATTERY' ? error.message : 'לא ניתן לחשב הצעה כעת – נתוני התמחור אינם תקינים. יש לפנות למנהל.');
     }
   };
 
@@ -4631,6 +4631,7 @@ export default function App() {
                         </label>
                         {quoteForm.includesBatteries && (
                            <div className="mt-4 border-t border-white/10 pt-4">
+                             <p className="text-sm text-slate-300 mb-3">ניתן לבחור סוללות, לוחות חשמל לאגירה, או את שניהם.</p>
                              <label className="block text-xs font-semibold text-blue-300 uppercase tracking-wider mb-3">בחירת סוללות אגירה</label>
                              {availableHybridBatteries.length === 0 ? <p className="text-sm text-amber-300">אין סוללות במלאי מאותו מותג של הממיר ההיברידי שנבחר. יש לבחור ממיר אחר או לעדכן את קטלוג הסוללות ושמות המותגים באדמין.</p> : (
                                <>

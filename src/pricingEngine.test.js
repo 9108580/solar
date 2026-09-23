@@ -60,12 +60,27 @@ const form = (quantity, systemType = 'residential') => ({
 });
 
 describe('canonical pricing engine', () => {
-  test('enabled storage without a selected battery gives an actionable error', () => {
-    const input = { ...form(30), inverterSystemType: 'hybrid', includesBatteries: true, selectedBatteries: [] };
-    expect(() => calculateCanonicalPricing(input, settings(), { acKw: 15 })).toThrow('הוסף סוללה');
-    try { calculateCanonicalPricing(input, settings(), { acKw: 15 }); } catch (error) { expect(error.code).toBe('MISSING_BATTERY'); }
-    expect(() => calculateCanonicalPricing({ ...input, includesBatteries: false }, settings(), { acKw: 15 })).not.toThrow();
-  });
+  test.each([[false, true], [true, false], [true, true], [false, false]])(
+    'storage independently prices batteries=%s and boards=%s', (withBattery, withBoard) => {
+      const current = settings();
+      current.hybridBatteryInstallCost = 1000;
+      current.batteries[0].cost = 4000;
+      current.storageElectricalBoards = [{ id: 'board', name: 'Board', cost: 1200 }];
+      const input = { ...form(30), inverterSystemType: 'hybrid', includesBatteries: true,
+        selectedBatteries: withBattery ? [{ id: 'b', quantity: 2 }] : [],
+        selectedStorageElectricalBoards: withBoard ? [{ id: 'board', quantity: 3 }] : [] };
+      const result = calculateCanonicalPricing(input, current, { acKw: 15 });
+      expect(result.hasBatteries).toBe(withBattery);
+      expect(result.breakdown.batteries).toBe(withBattery ? 8000 : 0);
+      expect(result.breakdown.storageElectricalBoards).toBe(withBoard ? 3600 : 0);
+      expect(result.breakdown.labor).toBe(result.dcKw * 650 + (withBattery ? 1000 : 0));
+      expect(validateQuoteForSave({ ...result.system, hasBatteries: result.hasBatteries, breakdown: result.breakdown }, current, result.breakdown)).toBe(true);
+      const disabled = calculateCanonicalPricing({ ...input, includesBatteries: false }, current, { acKw: 15 });
+      expect(disabled.breakdown.batteries).toBe(0);
+      expect(disabled.breakdown.storageElectricalBoards).toBe(0);
+      expect(result.breakdown.finalPrice - disabled.breakdown.finalPrice).toBe((withBattery ? 9000 : 0) + (withBoard ? 3600 : 0));
+    }
+  );
   test('delivery follows DC threshold and current independent admin prices', () => {
     const current = settings();
     current.panels[0].powerWatts = 1000;
