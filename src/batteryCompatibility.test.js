@@ -11,6 +11,15 @@ const settings = {
 };
 const form = (id) => ({ inverterSystemType: 'hybrid', includesBatteries: true, selectedHybridInverters: [{ id, quantity: 1 }] });
 
+test.each(['GROWATTT MID 5KW HV', 'GROWATTT WIT 5kW LV'])('catalog spelling %s matches Growatt only', (name) => {
+  const catalog = { ...settings, batteries: [{ id: 'typo', name, inStock: true }] };
+  expect(compatibleBatteries(form('g'), catalog).map(b => b.id)).toEqual(['typo']);
+  expect(() => assertBatteryCompatibility({ ...form('g'), selectedBatteries: [{ id: 'typo', quantity: 1 }] }, catalog)).not.toThrow();
+  expect(() => assertBatteryCompatibility({ ...form('s'), selectedBatteries: [{ id: 'typo', quantity: 1 }] }, catalog)).toThrow();
+  catalog.batteries[0].inStock = false;
+  expect(compatibleBatteries(form('g'), catalog)).toEqual([]);
+});
+
 test.each([['SOLIS HYBRID50KW', 'solis'], ['SOLIS15 LV', 'solis'], ['GROWTT WIT25', 'growatt'], ['סוליס 20', 'solis'], ['5KW HV growatt סוללה', 'growatt'], ['גרואט 5', 'growatt'], ['unknown', null]])('brand of %s is %s', (name, brand) => {
   expect(productBrandFromName(name)).toBe(brand);
 });

@@ -60,6 +60,12 @@ const form = (quantity, systemType = 'residential') => ({
 });
 
 describe('canonical pricing engine', () => {
+  test('enabled storage without a selected battery gives an actionable error', () => {
+    const input = { ...form(30), inverterSystemType: 'hybrid', includesBatteries: true, selectedBatteries: [] };
+    expect(() => calculateCanonicalPricing(input, settings(), { acKw: 15 })).toThrow('הוסף סוללה');
+    try { calculateCanonicalPricing(input, settings(), { acKw: 15 }); } catch (error) { expect(error.code).toBe('MISSING_BATTERY'); }
+    expect(() => calculateCanonicalPricing({ ...input, includesBatteries: false }, settings(), { acKw: 15 })).not.toThrow();
+  });
   test('delivery follows DC threshold and current independent admin prices', () => {
     const current = settings();
     current.panels[0].powerWatts = 1000;

@@ -65,6 +65,11 @@ export function calculateCanonicalPricing(form, settings, { acKw, hasSolarEdge =
   const inverterCost = inverters.reduce((sum, { product, quantity }) =>
     sum + requiredProductNumber(product, 'cost', 'inverter') * quantity, 0);
   const hasBatteries = hybrid && Boolean(system.includesBatteries);
+  if (hasBatteries && (!Array.isArray(system.selectedBatteries) || system.selectedBatteries.length === 0)) {
+    const error = new Error('סומנה מערכת עם אגירה. יש להוסיף לפחות סוללה אחת באמצעות "הוסף סוללה", או לבטל את סימון האגירה.');
+    error.code = 'MISSING_BATTERY';
+    throw error;
+  }
   const batteries = hasBatteries
     ? selectedProducts(system.selectedBatteries, settings.batteries, 'battery', { required: true })
     : [];

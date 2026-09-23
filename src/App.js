@@ -3098,7 +3098,7 @@ export default function App() {
       calculateQuoteWithSettings();
     } catch (error) {
       console.warn('Quote calculation blocked:', error?.message || error);
-      setErrorMsg(error.code === 'INCOMPATIBLE_BATTERY' ? error.message : 'לא ניתן לחשב הצעה כעת – נתוני התמחור אינם תקינים. יש לפנות למנהל.');
+      setErrorMsg(['INCOMPATIBLE_BATTERY', 'MISSING_BATTERY'].includes(error.code) ? error.message : 'לא ניתן לחשב הצעה כעת – נתוני התמחור אינם תקינים. יש לפנות למנהל.');
     }
   };
 
